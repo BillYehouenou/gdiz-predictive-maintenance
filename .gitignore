@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+mlops_env/
+.env
+
+# Data & Models
+data/*.csv
+models/*.joblib
+models/*.pkl
+
+# OS
+.DS_Store
