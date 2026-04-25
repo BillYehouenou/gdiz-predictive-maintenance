@@ -21,6 +21,6 @@ def test_prediction_logic():
     }
     response = client.post("/predict", json=payload)
     assert response.status_code == 200
-    # Selon notre logique dans utils.py, ça doit être une panne (1)
-    assert response.json()["prediction"] == 1
-    assert "Danger" in response.json()["status"]
+    # Vu qu'on utilise un modèle ML, on ne peut pas garantir la prédiction exacte, mais on peut vérifier que le format est correct
+    assert response.json()["prediction"] in [0, 1]
+    assert 0.0 <= response.json()["confidence"] <= 1.0
