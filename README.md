@@ -1,11 +1,30 @@
-# Résumé de notre avancée
+# API de maintenance prédictive
 
-Architecture du Projet : Nous avons structuré le code selon les standards du marché (app/ pour le service, src/ pour la logique, data/ pour les futurs datasets).
+Ce projet déploie un modèle ML capable de prédire les pannes machines en temps réel. Il combine **FastAPI** pour l'inférence et la portabilité de **Docker**.
 
-Contrat de Données (Schemas) : Utilisation de Pydantic pour définir et valider les entrées de l'API (température, vitesse, etc.). Cela garantit que l'API ne plante pas si les données sont malformées.
+## Fonctionnalités
+* **IA Inside** : Modèle ?? entraîné pour détecter les défaillances.
+* **Validation de données** : Utilisation de Pydantic pour garantir l'intégrité des entrées capteurs.
+* **Architecture ML Ops** : Tests unitaires automatisés et conteneurisation Docker.
+* **Monitoring** : Interface Swagger/Streamlit.
 
-Logique Métier & Feature Engineering : Création d'une fonction dans utils.py qui transforme les données brutes (ex: calcul du delta de température) avant de passer par un modèle heuristique.
 
-API de Production (FastAPI) : Mise en place d'une API web capable de recevoir des requêtes JSON et de renvoyer des prédictions en temps réel avec une documentation interactive (Swagger).
+## Installation et lancement
 
-Conteneurisation (Docker) : Création d'un Dockerfile pour empaqueter l'application et ses dépendances dans une image isolée et reproductible.
+Le projet est entièrement conteneurisé. Aucune installation Python locale n'est requise.
+
+1. **Build de l'image :** `docker build -t maintenance-api .`
+
+2. **Lancement du conteneur :** `docker run -p 8000:8000 maintenance-api`
+
+3. **Accès à l'API :**
+   - Endpoint de prédiction : `http://localhost:8000/predict`
+   - Documentation interactive : `http://localhost:8000/docs`
+
+## Tests
+
+Des tests unitaires sont inclus pour valider les prédictions de l'API. Ils peuvent être exécutés localement ou via GitHub Actions.
+
+```bash
+python -m pytest
+```
