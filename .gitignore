@@ -1,14 +1,18 @@
-# Python
+# Python & Env
 __pycache__/
-*.py[cod]
-*$py.class
-mlops_env/
+.venv/
 .env
+.pytest_cache/
+.ipynb_checkpoints/
 
 # Data & Models
 data/
-models/*.joblib
-models/*.pkl
+models/
+!models/.gitkeep 
+
+# MLOps
+mlruns/
+mlartifacts/
 
 # OS
 .DS_Store

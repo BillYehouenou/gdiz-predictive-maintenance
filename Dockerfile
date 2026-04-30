@@ -1,20 +1,22 @@
-# 1. On part d'une image Python officielle légère
-FROM python:3.10-slim
+# On utilise une image python légère
+FROM python:3.11-slim
 
-# 2. On définit le dossier de travail dans le conteneur
+# Installation de uv et uvx pour gérer les dépendances et le lancement de l'application
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
 WORKDIR /app
 
-# 3. On copie le fichier des dépendances
-COPY requirements.txt .
+# Copie des fichiers de config de l'application dans le container
+COPY pyproject.toml uv.lock ./
 
-# 4. On installe les bibliothèques
-RUN pip install --no-cache-dir -r requirements.txt
+# Installation des dépendances sans créer de venv 
+RUN uv sync --frozen --no-install-project
 
-# 5. On copie tout le reste du code (app, src, etc.)
+# Copie du code de l'application dans le container
 COPY . .
 
-# 6. On expose le port 8000 (celui de FastAPI)
+# Expose le port sur lequel l'application va tourner
 EXPOSE 8000
 
-# 7. La commande pour lancer l'API au démarrage du conteneur
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Démarrage de l'application avec uvicorn
+CMD ["uv run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
