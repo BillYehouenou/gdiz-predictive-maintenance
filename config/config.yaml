@@ -1,0 +1,31 @@
+# Configuration des chemins
+paths:
+  raw_data_path: "data/raw"
+  processed_data_path: "data/processed"
+  model_path: "models"
+
+# Informations sur le dataset
+dataset:
+  name: 'gdiz_dataset.csv'
+  target_column: 'target'
+  features:
+    - 'season'
+    - 'machine_type'
+    - 'ambient_temperature'
+    - 'process_temperature'
+    - 'rotational_speed'
+    - 'torque'
+    - 'tool_wear'
+    - 'machine_load'
+    - 'vibration'
+    - 'humidity'
+    - 'dust'
+    - 'rain_flag'
+    - 'power_outage'
+    - 'voltage'
+    - 'voltage_stability'
+
+# Paramètres de tracking (MLflow)
+mlflow:
+  experiment_name: "GDIZ_Maintenance_Predictive"
+  tracking_uri: "http://127.0.0.1:5000"

@@ -2,29 +2,31 @@ import pandas as pd
 import logging
 import pathlib
 from typing import Optional
+from src.config_loader import load_config
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class DataLoader:
-    def __init__(self, data_path: str):
+    def __init__(self):
         """
-        Initialise le chargeur de données.
-        data_path: Chemin vers le dossier contenant les fichiers CSV ou Parquet.
+        Initialise le chargeur de données en chargeant la configuration et en définissant les chemins d'accès.
         """
-        self.data_path = pathlib.Path(data_path)
+        self.config = load_config()
+        self.raw_path = pathlib.Path(self.config['paths']['raw_data_path'])
         
-    def load_raw_data(self, filename: str) -> Optional[pd.DataFrame]:
+    def load_raw_data(self) -> pd.DataFrame:
         """
-        Charge un fichier CSV ou Parquet depuis le dossier data/raw.
+        Charge un fichier CSV ou Parquet.
         """
-        file_full_path = self.data_path / 'raw' / filename
+        filename = self.config['dataset']['name']
+        file_full_path = self.raw_path / filename
         
         try:
-            logger.info(f"Tentative de chargement des données depuis : {file_full_path}")
+            logger.info(f"Tentative de chargement des données")
             
             if not file_full_path.exists():
-                raise FileNotFoundError(f"Le fichier {filename} est introuvable dans {file_full_path}")
+                raise FileNotFoundError(f"Le fichier {filename} est introuvable dans {self.raw_path}")
             
             if filename.endswith(".csv"):
                 df = pd.read_csv(file_full_path)
@@ -46,5 +48,5 @@ class DataLoader:
 
 # Test
 if __name__ == "__main__":
-    loader = DataLoader(data_path="data")
-    data = loader.load_raw_data("gdiz_dataset.csv")
+    loader = DataLoader()
+    data = loader.load_raw_data()
