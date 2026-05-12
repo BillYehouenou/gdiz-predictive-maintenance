@@ -48,9 +48,8 @@ class Predictor:
         logger.info(f"Lancement des prédictions sur {len(data)} lignes...")
 
         predictions = self.pipeline.predict(data)
-        probabilities = self.pipeline.predict_proba(data)[:, 1] # Probabilité de panne
+        probabilities = self.pipeline.predict_proba(data)[:, 1] 
         
-        # On construit un DataFrame de résultats propre
         results = data.copy()
         results['prediction'] = predictions
         results['failure_probability'] = probabilities
@@ -79,7 +78,6 @@ if __name__ == "__main__":
        'voltage_stability': [1, 0, 1]
     })
     
-    # Run de prédiction
     predictor = Predictor(use_mlflow=True)
     predictions = predictor.predict(new_data)
     
