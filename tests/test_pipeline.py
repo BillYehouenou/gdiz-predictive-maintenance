@@ -27,10 +27,10 @@ def machine_en_surchauffe():
     """Simule une machine en train de rendre l'âme (température et usure critiques)."""
     return pd.DataFrame({
         'ambient_temperature': [45.0], 'process_temperature': [95.0],
-        'rotational_speed': [2800], 'torque': [90.0], 'tool_wear': [240],
+        'rotational_speed': [2800], 'torque': [90.0], 'tool_wear': [400],
         'machine_load': [0.95], 'vibration': [8.5], 'humidity': [85.0],
-        'dust': [0.8], 'rain_flag': [0], 'power_outage': [0],
-        'voltage': [190.0], 'voltage_stability': [0.70],
+        'dust': [0.8], 'rain_flag': [0], 'power_outage': [1],
+        'voltage': [180.0], 'voltage_stability': [0.20],
         'season': [1], 'machine_type': ['L']
     })
 
