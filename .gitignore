@@ -4,6 +4,7 @@ __pycache__/
 .env
 .pytest_cache/
 .ipynb_checkpoints/
+*.coverage
 
 # Data & Models
 data/

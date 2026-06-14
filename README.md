@@ -10,17 +10,6 @@ Le projet suit un cycle MLOps :
 3. Un pipeline CI : GitHub Actions pour automatiser les tests et le déploiement.
 4. Un système de monitoring : Suivi des prédictions avec MLflow (Logging).
 
-```mermaid
-graph LR
-    A[Notebooks / Training] --> B(MLflow Tracking)
-    B --> C{Modèle Artifact}
-    C --> D[FastAPI / Docker]
-    D --> E[GitHub Actions CI]
-    E --> F[Inférence Temps Réel]
-    F --> G(MLflow Monitoring)
-    G -.-> |Détection Drift| A
-```
-
 ## 3. Lancer le projet en une commande
 Grâce à Docker, vous n'avez pas besoin d'installer Python ou les dépendances localement. Pour démarrer l'API de maintenance en une seule ligne :
 

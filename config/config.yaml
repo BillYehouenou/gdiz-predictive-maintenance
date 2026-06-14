@@ -6,26 +6,27 @@ paths:
 
 # Informations sur le dataset
 dataset:
-  name: 'gdiz_dataset.csv'
+  name: 'gdiz_dataset.parquet'
   target_column: 'target'
   features:
-    - 'season'
+    - 'benin_season'
     - 'machine_type'
     - 'ambient_temperature'
     - 'process_temperature'
     - 'rotational_speed'
     - 'torque'
     - 'tool_wear'
-    - 'machine_load'
+    - 'activity_level'
     - 'vibration'
     - 'humidity'
-    - 'dust'
+    - 'dust_concentration'
     - 'rain_flag'
-    - 'power_outage'
-    - 'voltage'
+    - 'power_loss_indicator'
+    - 'voltage_level'
     - 'voltage_stability'
 
-# Paramètres de tracking (MLflow)
+# Paramètres de tracking des expériences mlflow
 mlflow:
-  experiment_name: "GDIZ_Maintenance_Predictive"
-  tracking_uri: "http://127.0.0.1:5000"
+  experiment_name: "GDIZ_Predictive_Maintenance"
+  tracking_uri: "sqlite:///mlflow.db"
+  model_name: "RF_Baseline"

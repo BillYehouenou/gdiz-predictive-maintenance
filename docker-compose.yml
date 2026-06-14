@@ -1,0 +1,32 @@
+services:
+  mlflow:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_data:/app/mlflow
+    entrypoint: ["uv", "run", "mlflow", "server"]
+    command:
+      - "--backend-store-uri=sqlite:////app/mlflow/mlflow.db"
+      - "--default-artifact-root=/app/mlflow/artifacts"
+      - "--host=0.0.0.0"
+      - "--port=5000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 10s
+      retries: 5
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    volumes:
+      - ./models:/app/models:ro
+
+volumes:
+  mlflow_data:

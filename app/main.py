@@ -1,24 +1,36 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import APIRouter, FastAPI, HTTPException
+
 from app.schemas import MachineData, PredictionResponse
 from app.utils import process_prediction
 
-# Pour lancer : uv run uvicorn app.main:app --reload
-app = FastAPI()
+app = FastAPI(
+    title="GDIZ Maintenance Prédictive API",
+    description="API de maintenance prédictive pour les machines textiles GDIZ Bénin",
+    version="1.0.0",
+)
+
+router = APIRouter(prefix="/api/v1")
+
+
+@app.get("/health")
+def health():
+    """Liveness probe — vérifie que l'API répond."""
+    return {"status": "healthy"}
+
 
 @app.get("/")
 def root():
-    """Vérifie si l'API est bien en ligne."""
     return {"status": "ok", "message": "GDIZ Maintenance API is running"}
 
-@app.post("/predict", response_model=PredictionResponse)
+
+@router.post("/predict", response_model=PredictionResponse)
 def predict(data: MachineData):
-    """Reçoit les données machine, valide le format et renvoie la prédiction.
-    """
+    """Reçoit les données machine, valide le format et renvoie la prédiction."""
     try:
-        input_data = data.model_dump()
-        result = process_prediction(input_data)
-        
+        result = process_prediction(data.model_dump())
         return result
-        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+app.include_router(router)
