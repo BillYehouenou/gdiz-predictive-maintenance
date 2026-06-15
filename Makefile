@@ -1,4 +1,4 @@
-.PHONY: install install-dev lint format test train serve mlflow-ui docker-up docker-down clean
+.PHONY: install install-dev lint format test train serve dashboard mlflow-ui docker-up docker-down clean
 
 install:
 	uv sync --frozen
@@ -22,6 +22,9 @@ train:
 
 serve:
 	uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+dashboard:
+	uv run streamlit run dashboard.py --server.port 8501
 
 mlflow-ui:
 	uv run mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5000
