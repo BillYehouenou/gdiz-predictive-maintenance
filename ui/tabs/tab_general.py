@@ -2,8 +2,14 @@ import plotly.graph_objects as go
 import streamlit as st
 from ui.constants import PERIOD_MAP, PERIOD_PREV_MAP, PERIOD_PREV_LABEL
 from ui.helpers import badge, cost_delta_html, fmt_fcfa, plot_axis, plot_layout, rgba
-from ui.queries import q_cost_period, q_failures_by_type_cause_period, q_healthy_machines_pct, q_kpis_period
-
+from ui.queries import (
+    q_cost_period,
+    q_cost_timeline,
+    q_failures_by_type_cause_period,
+    q_healthy_machines_pct,
+    q_kpis_period,
+    q_top5_machines,
+)
 
 def render(C: dict) -> None:
     sel_period = st.segmented_control(
@@ -40,8 +46,7 @@ def render(C: dict) -> None:
     c4.metric("Délestages (30j)", f"{kpi['blackouts_30d']:,}", help="Événements SBEE sur les 30 derniers jours du dataset")
 
     _help_cost = (
-        f"C_panne = C_production + C_technique + C_qualité · {cost_curr['n_events']} événements "
-        f"({cost_curr['n_events']} pannes groupées par machine). "
+        f"C_panne = C_production + C_technique + C_qualité · {cost_curr['n_events']} événements. "
         f"Prod: {fmt_fcfa(cost_curr['c_production'])} · "
         f"Tech: {fmt_fcfa(cost_curr['c_technique'])} · "
         f"Qualité: {fmt_fcfa(cost_curr['c_qualite'])}"
@@ -53,8 +58,10 @@ def render(C: dict) -> None:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Graphique des pannes par type de machine et cause
-    st.markdown(f"###### Pannes par type de machine · {sel_period}")
+    st.markdown(
+        f"<p style='color:{C['muted']};font-size:1.3rem;font-weight:660;letter-spacing:0;margin:0;'>Pannes par type de machine · {sel_period}</p>",
+        unsafe_allow_html=True,
+    )
     df_fail = q_failures_by_type_cause_period(date_from, date_to)
     types = ["L", "M", "H"]
     cause_colors = {
@@ -72,14 +79,8 @@ def render(C: dict) -> None:
         **plot_layout(
             C,
             barmode="stack",
-            height=340,
+            height=300,
             plot_bgcolor="rgba(0,0,0,0)",
-            title=dict(
-                text="",
-                font=dict(size=11, color=C["muted"]),
-                x=0,
-                xanchor="left",
-            ),
             legend=dict(
                 orientation="h",
                 yanchor="top",
@@ -87,10 +88,40 @@ def render(C: dict) -> None:
                 xanchor="center",
                 x=0.5,
                 bgcolor="rgba(0,0,0,0)",
-                font=dict(size=11, color=C["muted"]),
+                font=dict(size=14, color=C["muted"]),
             ),
         ),
         xaxis=dict(**plot_axis(C), title=""),
-        yaxis=dict(**plot_axis(C), title="Pannes")
+        yaxis=dict(**plot_axis(C), title="Pannes"),
     )
-    st.plotly_chart(fig_bar, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig_bar, width='stretch', config={"displayModeBar": False})
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    st.markdown(
+        f"<p style='color:{C['muted']};font-size:1.3rem;font-weight:660;letter-spacing:0;margin:0;'>Coût des pannes · {sel_period}</p>",
+        unsafe_allow_html=True,
+    )
+    df_timeline = q_cost_timeline(date_from, date_to)
+
+    if df_timeline.empty:
+        st.caption("Aucune panne sur la période.")
+    else:
+        fig_cost = go.Figure()
+        fig_cost.add_trace(go.Scatter(
+            x=df_timeline["period"],
+            y=df_timeline["cost"],
+            name="Coût",
+            mode="lines+markers",
+            line=dict(color=C["red"], width=2, shape="spline"),
+            marker=dict(size=6, color=C["red"]),
+            fill="tozeroy",
+            fillcolor=rgba(C["red"], 0.08),
+            hovertemplate="%{x|%b %Y}<br>%{y:,.0f} FCFA<extra></extra>",
+        ))
+        fig_cost.update_layout(
+            **plot_layout(C, height=260, plot_bgcolor="rgba(0,0,0,0)", showlegend=False),
+            xaxis=dict(**plot_axis(C)),
+            yaxis=dict(**plot_axis(C), title="Coût"),
+        )
+        st.plotly_chart(fig_cost, width='stretch', config={"displayModeBar": False})

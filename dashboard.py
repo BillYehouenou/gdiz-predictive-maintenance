@@ -7,7 +7,7 @@ import streamlit as st
 
 from ui.constants import _DARK, _LIGHT
 from ui.styles import apply_styles
-from ui.tabs import tab_general, tab_machine
+from ui.tabs import tab_about, tab_general, tab_machine
 
 # Configuration de la page
 st.set_page_config(
@@ -41,12 +41,16 @@ with col_toggle:
         st.rerun()
 
 # Onglets
-tab1, tab2 = st.tabs([
+tab1, tab2, tab3 = st.tabs([
     ":material/dashboard: Dashboard Général",
     ":material/build: Vue Machine",
+    ":material/psychology: Modèle & Architecture",
 ])
 with tab1:
     tab_general.render(C)
 
 with tab2:
     tab_machine.render(C)
+
+with tab3:
+    tab_about.render(C)

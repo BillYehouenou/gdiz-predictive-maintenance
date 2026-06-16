@@ -13,6 +13,7 @@ dependencies = [
     "plotly>=5.22.0",
     "pydantic>=2.13.3",
     "pyyaml>=6.0.3",
+    "lightgbm>=4.0.0",
     "scikit-learn>=1.8.0",
     "streamlit>=1.35.0",
     "uvicorn>=0.46.0",

@@ -24,9 +24,13 @@ dataset:
     - 'power_loss_indicator'
     - 'voltage_level'
     - 'voltage_stability'
+    # Features temporelles (rolling 24h) — calculées par src/features.py
+    - 'tool_wear_delta_24h'
+    - 'vibration_max_24h'
+    - 'process_temp_max_24h'
 
 # Paramètres de tracking des expériences mlflow
 mlflow:
   experiment_name: "GDIZ_Predictive_Maintenance"
   tracking_uri: "sqlite:///mlflow.db"
-  model_name: "RF_Baseline"
+  model_name: "LGBM_Predictive_Maintenance"

@@ -237,7 +237,7 @@ class ExogenousContextGenerator:
 class MachineStateEvolver:
     """Gère l'évolution d'état chronologique d'une machine (Dépendance physique N-1)."""
 
-    def __init__(self, machine_id: str, machine_type: str, df_global: pd.DataFrame, config: SyntheticDataConfig = None):
+    def __init__(self, machine_id: str, machine_type: str, df_global: pd.DataFrame, config: SyntheticDataConfig = None, override_params: dict = None):
         self.machine_id = machine_id
         self.machine_type = machine_type
         self.df_global = df_global
@@ -255,6 +255,8 @@ class MachineStateEvolver:
         self.activity_level_array = df_global["activity_level"].values
         self.power_loss_array = df_global["power_loss_indicator"].values
         self._set_machine_parameters()
+        if override_params:
+            self.params.update(override_params)
         self._init_state_arrays()
 
     def _set_machine_parameters(self):

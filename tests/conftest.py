@@ -11,7 +11,7 @@ def predictor():
 
 @pytest.fixture
 def machine_normale():
-    """Machine H en saison des pluies — état sain nominal."""
+    """Machine H en saison des pluies — état sain nominal, aucune dégradation récente."""
     return pd.DataFrame(
         {
             "ambient_temperature": [26.0],
@@ -29,13 +29,17 @@ def machine_normale():
             "power_loss_indicator": [0],
             "benin_season": [2],
             "machine_type": ["H"],
+            # Features temporelles : machine stable, aucune variation sur 24h
+            "tool_wear_delta_24h": [0.5],
+            "vibration_max_24h": [1.3],
+            "process_temp_max_24h": [41.0],
         }
     )
 
 
 @pytest.fixture
 def machine_en_surchauffe():
-    """Machine L en Harmattan — usure critique + délestage + haute poussière."""
+    """Machine L en Harmattan — usure critique + délestage + dégradation rapide sur 24h."""
     return pd.DataFrame(
         {
             "ambient_temperature": [41.0],
@@ -53,5 +57,9 @@ def machine_en_surchauffe():
             "power_loss_indicator": [1],
             "benin_season": [1],
             "machine_type": ["L"],
+            # Features temporelles : machine en dégradation rapide sur les 24h précédentes
+            "tool_wear_delta_24h": [15.0],
+            "vibration_max_24h": [8.2],
+            "process_temp_max_24h": [92.0],
         }
     )

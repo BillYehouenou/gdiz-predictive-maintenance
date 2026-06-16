@@ -5,6 +5,9 @@ services:
       - "5000:5000"
     volumes:
       - mlflow_data:/app/mlflow
+      - ./data:/app/data:ro
+    environment:
+      - PYTHONPATH=/app
     entrypoint: ["uv", "run", "mlflow", "server"]
     command:
       - "--backend-store-uri=sqlite:////app/mlflow/mlflow.db"
@@ -14,6 +17,7 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 10s
+      timeout: 5s
       retries: 5
 
   api:
@@ -21,12 +25,35 @@ services:
     ports:
       - "8000:8000"
     environment:
+      - PYTHONPATH=/app
       - MLFLOW_TRACKING_URI=http://mlflow:5000
     depends_on:
       mlflow:
         condition: service_healthy
     volumes:
       - ./models:/app/models:ro
+      - ./data:/app/data:ro
+    command: ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  dashboard:
+    build: .
+    ports:
+      - "8501:8501"
+    environment:
+      - PYTHONPATH=/app
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data:ro
+      - ./models:/app/models:ro
+    command: ["uv", "run", "streamlit", "run", "dashboard.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
 
 volumes:
   mlflow_data:

@@ -26,13 +26,8 @@ def test_robustesse_colonnes_absentes(predictor):
         predictor.predict(data_incomplète)
 
 
-@pytest.mark.xfail(
-    reason="RF baseline sans class_weight sur ratio 5833:1 — prédit toujours 0. "
-    "À corriger par le collaborateur DS avec class_weight='balanced'.",
-    strict=False,
-)
 def test_sensibilite_surchauffe(predictor, machine_en_surchauffe):
-    """Non-régression : le modèle doit détecter un cas de panne évident."""
+    """Non-régression : LightGBM avec seuil F2 doit détecter un cas de panne évident."""
     res = predictor.predict(machine_en_surchauffe)
     assert res["failure_probability"].iloc[0] > 0.5
     assert res["prediction"].iloc[0] == 1

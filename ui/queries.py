@@ -2,6 +2,8 @@ import duckdb
 import pandas as pd
 import streamlit as st
 
+from datetime import date
+
 from ui.constants import DB_PATH, TABLE, _PARTS, _PROD_COEFF, _QUAL_FIX, _TECH_RATE
 
 
@@ -160,34 +162,6 @@ def q_failures_by_type_cause_period(date_from: str, date_to: str) -> "pd.DataFra
 
 
 @st.cache_data(ttl=300)
-def q_failures_weekly(date_from: str, date_to: str) -> "pd.DataFrame":
-    with duckdb.connect(str(DB_PATH), read_only=True) as conn:
-        return conn.execute(
-            f"""SELECT DATE_TRUNC('week', timestamp) AS week,
-                       machine_type,
-                       SUM(target) AS n_failures
-                FROM {TABLE}
-                WHERE timestamp BETWEEN ? AND ?
-                GROUP BY 1, 2
-                ORDER BY 1""",
-            [date_from, date_to],
-        ).fetchdf()
-
-
-@st.cache_data(ttl=300)
-def q_machine_ranking(date_from: str, date_to: str) -> "pd.DataFrame":
-    with duckdb.connect(str(DB_PATH), read_only=True) as conn:
-        return conn.execute(
-            f"""SELECT machine_id, machine_type, SUM(target) AS n_failures
-                FROM {TABLE}
-                WHERE timestamp BETWEEN ? AND ?
-                GROUP BY machine_id, machine_type
-                ORDER BY n_failures DESC""",
-            [date_from, date_to],
-        ).fetchdf()
-
-
-@st.cache_data(ttl=300)
 def q_machine_ts_full(machine_id: str, steps: int) -> "pd.DataFrame":
     """Retourne la série temporelle complète avec toutes les features ML + indicateurs visuels."""
     with duckdb.connect(str(DB_PATH), read_only=True) as conn:
@@ -245,40 +219,104 @@ def q_machine_last(machine_id: str) -> dict:
 
 
 @st.cache_data(ttl=300)
-def q_machine_ts(machine_id: str, steps: int) -> "pd.DataFrame":
+def q_top5_machines(date_from: str, date_to: str) -> "pd.DataFrame":
+    """Top 5 machines par nombre de pannes sur la période, avec type et coût estimé."""
+    Lv = _PROD_COEFF["L"] + _TECH_RATE
+    Lf = _PARTS["L"] + _QUAL_FIX["L"]
+    Mv = _PROD_COEFF["M"] + _TECH_RATE
+    Mf = _PARTS["M"] + _QUAL_FIX["M"]
+    Hv = _PROD_COEFF["H"] + _TECH_RATE
+    Hf = _PARTS["H"] + _QUAL_FIX["H"]
+
+    sql = f"""
+    WITH failure_rows AS (
+        SELECT machine_id, machine_type, timestamp,
+               LAG(timestamp) OVER (PARTITION BY machine_id ORDER BY timestamp) AS prev_ts
+        FROM {TABLE}
+        WHERE target = 1 AND timestamp BETWEEN ? AND ?
+    ),
+    events AS (
+        SELECT machine_id, machine_type,
+               SUM(CASE WHEN prev_ts IS NULL OR DATEDIFF('minute', prev_ts, timestamp) > 30
+                        THEN 1 ELSE 0 END)
+                   OVER (PARTITION BY machine_id ORDER BY timestamp) AS event_id
+        FROM failure_rows
+    ),
+    durations AS (
+        SELECT machine_id, machine_type, event_id,
+               COUNT(*) * 0.5 AS dur_h
+        FROM events
+        GROUP BY machine_id, machine_type, event_id
+    )
+    SELECT machine_id,
+           machine_type,
+           COUNT(*)  AS n_events,
+           SUM(CASE machine_type
+               WHEN 'L' THEN {Lv} * dur_h + {Lf}
+               WHEN 'M' THEN {Mv} * dur_h + {Mf}
+               WHEN 'H' THEN {Hv} * dur_h + {Hf}
+               ELSE 0 END) AS total_cost
+    FROM durations
+    GROUP BY machine_id, machine_type
+    ORDER BY n_events DESC
+    LIMIT 5
+    """
     with duckdb.connect(str(DB_PATH), read_only=True) as conn:
-        df = conn.execute(
-            f"""SELECT timestamp, process_temperature, ambient_temperature,
-                       tool_wear, vibration, voltage_stability, target
-                FROM {TABLE}
-                WHERE machine_id = ?
-                ORDER BY timestamp DESC LIMIT ?""",
-            [machine_id, steps],
-        ).fetchdf()
-    return df.sort_values("timestamp").reset_index(drop=True)
+        df = conn.execute(sql, [date_from, date_to]).fetchdf()
+    df["label"] = df["machine_id"].str.extract(r"(M_\d+)$")[0].fillna(df["machine_id"])
+    return df
 
 
 @st.cache_data(ttl=300)
-def q_voltage_weekly() -> "pd.DataFrame":
-    with duckdb.connect(str(DB_PATH), read_only=True) as conn:
-        return conn.execute(
-            f"""SELECT DATE_TRUNC('week', timestamp) AS week,
-                       AVG(voltage_stability) AS avg_stab,
-                       SUM(power_loss_indicator) AS blackouts,
-                       MIN(voltage_stability)    AS min_stab
-                FROM {TABLE} GROUP BY 1 ORDER BY 1"""
-        ).fetchdf()
+def q_cost_timeline(date_from: str, date_to: str) -> "pd.DataFrame":
+    """Coût des pannes agrégé par semaine ou mois selon l'étendue de la période."""
+    days = (date.fromisoformat(date_to) - date.fromisoformat(date_from)).days
+    trunc = "week" if days <= 90 else "month"
 
+    Lv = _PROD_COEFF["L"] + _TECH_RATE
+    Lf = _PARTS["L"] + _QUAL_FIX["L"]
+    Mv = _PROD_COEFF["M"] + _TECH_RATE
+    Mf = _PARTS["M"] + _QUAL_FIX["M"]
+    Hv = _PROD_COEFF["H"] + _TECH_RATE
+    Hf = _PARTS["H"] + _QUAL_FIX["H"]
 
-@st.cache_data(ttl=300)
-def q_dust_history() -> "pd.DataFrame":
+    sql = f"""
+    WITH failure_rows AS (
+        SELECT machine_id, machine_type, timestamp,
+               LAG(timestamp) OVER (PARTITION BY machine_id ORDER BY timestamp) AS prev_ts
+        FROM {TABLE}
+        WHERE target = 1 AND timestamp BETWEEN ? AND ?
+    ),
+    events AS (
+        SELECT machine_id, machine_type, timestamp,
+               SUM(CASE WHEN prev_ts IS NULL OR DATEDIFF('minute', prev_ts, timestamp) > 30
+                        THEN 1 ELSE 0 END)
+                   OVER (PARTITION BY machine_id ORDER BY timestamp) AS event_id
+        FROM failure_rows
+    ),
+    event_agg AS (
+        SELECT machine_id, machine_type, event_id,
+               MIN(timestamp) AS event_start,
+               COUNT(*) * 0.5 AS dur_h
+        FROM events
+        GROUP BY machine_id, machine_type, event_id
+    )
+    SELECT DATE_TRUNC('{trunc}', event_start) AS period,
+           SUM(CASE machine_type
+               WHEN 'L' THEN {Lv} * dur_h + {Lf}
+               WHEN 'M' THEN {Mv} * dur_h + {Mf}
+               WHEN 'H' THEN {Hv} * dur_h + {Hf}
+               ELSE 0 END)                    AS cost,
+           COUNT(*)                           AS n_events
+    FROM event_agg
+    GROUP BY period
+    ORDER BY period
+    """
     with duckdb.connect(str(DB_PATH), read_only=True) as conn:
-        return conn.execute(
-            f"""SELECT DATE_TRUNC('day', timestamp) AS day,
-                       AVG(dust_concentration) AS avg_dust,
-                       MAX(dust_concentration) AS max_dust
-                FROM {TABLE} GROUP BY 1 ORDER BY 1"""
-        ).fetchdf()
+        df = conn.execute(sql, [date_from, date_to]).fetchdf()
+    if not df.empty:
+        df["cumulative_cost"] = df["cost"].cumsum()
+    return df
 
 
 @st.cache_resource

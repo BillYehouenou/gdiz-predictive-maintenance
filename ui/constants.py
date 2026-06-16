@@ -17,6 +17,10 @@ FEAT_COLS: list[str] = [
     "power_loss_indicator",
     "voltage_level",
     "voltage_stability",
+    # Features temporelles rolling 24h — calculées par enrich_inference_series()
+    "tool_wear_delta_24h",
+    "vibration_max_24h",
+    "process_temp_max_24h",
 ]
 
 # ─── COÛTS DE MAINTENANCE — constantes métier GDIZ Bénin ─────────────────────

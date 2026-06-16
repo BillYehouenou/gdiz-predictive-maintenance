@@ -1,4 +1,5 @@
 import streamlit as st
+from ui.helpers import rgba
 
 
 def apply_styles(C: dict, DARK: bool) -> None:
@@ -12,7 +13,9 @@ def apply_styles(C: dict, DARK: bool) -> None:
 <style>
   [data-testid="stAppViewContainer"] {{ background:{C["bg"]}; }}
   [data-testid="block-container"]    {{ padding:0.6rem 2.5rem 2rem; }}
-  #MainMenu, footer, header          {{ visibility:hidden; }}
+  [data-testid="stHeader"],
+  [data-testid="stDecoration"]       {{ display:none !important; }}
+  #MainMenu, footer                  {{ visibility:hidden; }}
 
   /* Metric cards */
   [data-testid="metric-container"] {{
@@ -76,30 +79,53 @@ def apply_styles(C: dict, DARK: bool) -> None:
     transition: transform 0.3s cubic-bezier(.4,0,.2,1) !important;
   }}
 
-  /* Segmented control — période & horizon */
-  [data-testid="stSegmentedControl"] {{
-    background: {C["card"]} !important;
-    border: 1px solid {C["border"]} !important;
-    border-radius: 8px !important;
-    padding: 3px !important;
+  /* CSS custom properties — force Streamlit native theme à matcher notre C dict */
+  :root {{
+    --primary-color: {C["blue"]};
+    --background-color: {C["bg"]};
+    --secondary-background-color: {C["card"]};
+    --text-color: {C["text"]};
   }}
-  [data-testid="stSegmentedControl"] button {{
-    background: transparent !important;
-    color: {C["muted"]} !important;
-    border: none !important;
-    border-radius: 6px !important;
+
+  /* Period selector — st.radio(horizontal=True) stylé en segmented control */
+  [data-testid="stRadio"] div[role="radiogroup"] {{
+    background: {C["card"]};
+    border: 1px solid {C["border"]};
+    border-radius: 8px;
+    padding: 3px;
+    gap: 2px;
+    display: inline-flex !important;
+    flex-direction: row !important;
+  }}
+  [data-testid="stRadio"] label {{
+    display: flex !important;
+    align-items: center;
+    background: transparent;
+    border-radius: 6px;
+    padding: .3rem .8rem;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+    color: {C["muted"]};
+    user-select: none;
+  }}
+  [data-testid="stRadio"] label:hover {{
+    background: {C["border"]};
+    color: {C["text"]};
+  }}
+  [data-testid="stRadio"] label:has(input:checked) {{
+    background: {rgba(C["blue"], 0.15) if DARK else "white"};
+    color: {C["blue"]};
+    box-shadow: {"0 0 0 1px " + rgba(C["blue"], 0.35) + ", 0 1px 4px rgba(0,0,0,.4)" if DARK else "0 1px 4px rgba(0,0,0,.12), 0 0 0 1px " + rgba(C["blue"], 0.25)};
+  }}
+  [data-testid="stRadio"] input[type="radio"] {{
+    display: none !important;
+  }}
+  [data-testid="stRadio"] p {{
+    margin: 0 !important;
     font-size: .8rem !important;
     font-weight: 500 !important;
-    transition: background .15s, color .15s !important;
-  }}
-  [data-testid="stSegmentedControl"] button:hover {{
-    background: {C["border"]} !important;
-    color: {C["text"]} !important;
-  }}
-  [data-testid="stSegmentedControl"] button[aria-checked="true"] {{
-    background: {C["blue"]}22 !important;
-    color: {C["blue"]} !important;
-    box-shadow: 0 0 0 1px {C["blue"]}44 !important;
+    color: inherit !important;
+    line-height: 1 !important;
   }}
 </style>
 """,

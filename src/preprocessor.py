@@ -70,6 +70,8 @@ class Preprocessor(BaseEstimator, TransformerMixin):
         logger.info("Transformation des données en cours...")
         existing_features = [col for col in self.all_features if col in X.columns]
         result = self.pipeline.transform(X[existing_features])
+        feature_names = self.pipeline.get_feature_names_out()
+        result = pd.DataFrame(result, columns=feature_names, index=X.index)
         logger.info("Transformation des données terminée.")
         return result
 
@@ -77,4 +79,5 @@ class Preprocessor(BaseEstimator, TransformerMixin):
         """
         Combine le fit et le transform.
         """
-        return self.fit(X).transform(X)
+        self.fit(X)
+        return self.transform(X)
