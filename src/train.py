@@ -2,7 +2,6 @@ import json
 import logging
 import os
 import tempfile
-
 import joblib
 import matplotlib.pyplot as plt
 import mlflow
@@ -19,7 +18,6 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 from sklearn.pipeline import Pipeline
-
 from src.configloader import load_config
 from src.preprocessor import Preprocessor
 
@@ -46,14 +44,14 @@ class ModelPipeline:
         df["timestamp"] = pd.to_datetime(df["timestamp"])
         train = df[df["timestamp"] < SPLIT_DATE]
         test = df[df["timestamp"] >= SPLIT_DATE]
-        logger.info(f"Split temporel → Train: {len(train):,} lignes (< {SPLIT_DATE}) | Test: {len(test):,} lignes")
+        logger.info(f"Split temporel - Train: {len(train):,} lignes (< {SPLIT_DATE}) | Test: {len(test):,} lignes")
         return (
             train[self.features_cols], train[self.target_col],
             test[self.features_cols], test[self.target_col],
         )
 
     def _find_optimal_threshold(self, probas: np.ndarray, y_true: np.ndarray) -> float:
-        """Seuil optimal sur F2-score (2× plus de poids au Recall qu'à la Précision)."""
+        """Seuil optimal sur F2-score (2 fois plus de poids au Recall qu'à la Précision)."""
         thresholds = np.arange(0.005, 0.50, 0.005)
         f2_scores = [
             fbeta_score(y_true, (probas >= t).astype(int), beta=2, zero_division=0)
@@ -142,7 +140,7 @@ class ModelPipeline:
             with open(THRESHOLD_PATH, "w") as f:
                 json.dump({"threshold": optimal_threshold}, f)
 
-            logger.info(f"Pipeline sauvegardé : models/model_pipeline.pkl")
+            logger.info("Pipeline sauvegardé : models/model_pipeline.pkl")
             logger.info(f"Seuil optimal sauvegardé : {THRESHOLD_PATH}")
 
             for name, val in metrics.items():

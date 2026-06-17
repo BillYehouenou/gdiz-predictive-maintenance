@@ -1,15 +1,16 @@
 import plotly.graph_objects as go
 import streamlit as st
-from ui.constants import PERIOD_MAP, PERIOD_PREV_MAP, PERIOD_PREV_LABEL
-from ui.helpers import badge, cost_delta_html, fmt_fcfa, plot_axis, plot_layout, rgba
+
+from ui.constants import PERIOD_MAP, PERIOD_PREV_LABEL, PERIOD_PREV_MAP
+from ui.helpers import cost_delta_html, fmt_fcfa, plot_axis, plot_layout, rgba
 from ui.queries import (
     q_cost_period,
     q_cost_timeline,
     q_failures_by_type_cause_period,
     q_healthy_machines_pct,
     q_kpis_period,
-    q_top5_machines,
 )
+
 
 def render(C: dict) -> None:
     sel_period = st.segmented_control(

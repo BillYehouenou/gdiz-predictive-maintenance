@@ -1,5 +1,5 @@
-import yaml
 import pathlib
+import yaml
 
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
 

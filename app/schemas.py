@@ -6,7 +6,11 @@ from pydantic import BaseModel, Field
 class MachineData(BaseModel):
     """Schéma d'entrée pour les données de la machine."""
 
-    machine_id: Optional[str] = Field(default=None, description="ID de la machine (ex: GDIZ_TEX_M_01) — active l'enrichissement temporel depuis DuckDB", examples=["GDIZ_TEX_M_01"])
+    machine_id: Optional[str] = Field(
+        default=None,
+        description="ID de la machine (ex: GDIZ_TEX_M_01) — active l'enrichissement temporel depuis DuckDB",
+        examples=["GDIZ_TEX_M_01"],
+    )
     ambient_temperature: float = Field(..., description="Température ambiante en °C", examples=[28.0])
     process_temperature: float = Field(..., description="Température du process en °C", examples=[52.0])
     rotational_speed: float = Field(..., description="Vitesse de rotation (tr/min)", examples=[1200.0])

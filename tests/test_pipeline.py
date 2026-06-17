@@ -27,7 +27,7 @@ def test_robustesse_colonnes_absentes(predictor):
 
 
 def test_sensibilite_surchauffe(predictor, machine_en_surchauffe):
-    """Non-régression : LightGBM avec seuil F2 doit détecter un cas de panne évident."""
+    """Non régression : LightGBM avec seuil F2 doit détecter un cas de panne évident."""
     res = predictor.predict(machine_en_surchauffe)
     assert res["failure_probability"].iloc[0] > 0.5
     assert res["prediction"].iloc[0] == 1

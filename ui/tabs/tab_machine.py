@@ -1,9 +1,10 @@
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+
 from src.features import enrich_inference_series
 from ui.constants import FEAT_COLS, STEPS_MAP
-from ui.helpers import plot_axis, plot_layout, rgba
+from ui.helpers import plot_axis, plot_layout
 from ui.queries import get_predictor, q_machine_last, q_machine_list, q_machine_ts_full
 
 

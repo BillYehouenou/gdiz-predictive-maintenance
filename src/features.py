@@ -1,16 +1,4 @@
-"""
-Feature engineering temporel — source unique de vérité pour l'entraînement ET l'inférence.
-
-3 features rolling haute valeur, fenêtre 24h (48 pas × 30 min) :
-  - tool_wear_delta_24h   : taux d'accumulation de l'usure → détecte la dégradation rapide
-  - vibration_max_24h     : pire vibration récente → plus robuste qu'un point instantané
-  - process_temp_max_24h  : pic thermique récent → stress mécanique cumulé
-
-Règle : toujours clip(lower=0) sur les deltas pour absorber les remises à zéro post-maintenance.
-"""
-
 import logging
-
 import numpy as np
 import pandas as pd
 
@@ -35,7 +23,7 @@ def enrich_training_df(df: pd.DataFrame) -> pd.DataFrame:
 
     grp = df.groupby("machine_id", sort=False)
 
-    # Δ usure sur 24h : wear_t - wear_(t-48), clampé à 0 (absorbe les resets post-maintenance)
+    # delta usure sur 24h : wear_t - wear_(t-48), clampé à 0 (absorbe les resets post-maintenance)
     df["tool_wear_delta_24h"] = (
         grp["tool_wear"]
         .transform(lambda x: (x - x.shift(WINDOW_24H)).clip(lower=0))
@@ -92,7 +80,7 @@ def enrich_inference_point(current: dict, history_df: pd.DataFrame) -> dict:
         result["process_temp_max_24h"] = float(current.get("process_temperature", 0.0))
         return result
 
-    # Δ usure : wear courant - wear il y a 24h (première ligne de l'historique)
+    # delta usure : wear courant - wear il y a 24h (première ligne de l'historique)
     oldest_wear = float(history_df["tool_wear"].iloc[0])
     current_wear = float(current.get("tool_wear", 0.0))
     result["tool_wear_delta_24h"] = max(0.0, current_wear - oldest_wear)

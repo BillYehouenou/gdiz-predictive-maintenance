@@ -4,9 +4,6 @@ from ui.helpers import rgba
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
 
-_DUCKDB_COLOR = "#e6a817"
-
-
 def _css(C: dict) -> str:
     return f"""
     <style>
@@ -163,54 +160,42 @@ def render(C: dict) -> None:
     st.markdown("<p class='sec-label' style='margin-top:1.8rem;'>Pipeline</p>", unsafe_allow_html=True)
 
     STEPS = [
-        ("DuckDB", _DUCKDB_COLOR,
-         "Les données sont <strong>générées synthétiquement</strong> selon le framework AI4I 2020 "
-         "adapté au parc textile de la GDIZ. Architecture en 3 étapes : <strong>A</strong> — contexte "
-         "exogène global partagé par toutes les machines (saisons du Bénin, température ambiante, "
-         "cycle électrique SBEE avec délestages, pluies par chaîne de Markov) ; <strong>B</strong> — "
-         "évolution séquentielle par machine avec dépendance N−1 (usure cumulative, inertie thermique "
-         "α=0,55, vibrations, probabilité de panne) ; <strong>C</strong> — agrégation, injection de "
-         "bruit IoT (2 % de valeurs manquantes) et ingestion dans une base <strong>DuckDB</strong> "
-         "embarquée indexée sur <code>(machine_id, timestamp)</code>. "
-         "Résultat : 30 machines × 730 jours × 48 pas = <strong>1,05 M lignes</strong>."),
-        ("Features", C["teal"],
-         "Trois <strong>features temporelles</strong> calculées sur fenêtre glissante de 24 h "
-         "(48 pas × 30 min) enrichissent chaque observation : "
-         "<code>tool_wear_delta_24h</code> — taux d'accumulation d'usure sur 24 h, clampé à 0 "
-         "pour absorber les remises à zéro post-maintenance ; "
-         "<code>vibration_max_24h</code> — pire vibration récente, plus robuste qu'un point "
-         "instantané ; <code>process_temp_max_24h</code> — pic thermique sur 24 h, reflet du "
-         "stress mécanique cumulé. Ces trois signaux rendent visible la dynamique de dégradation "
-         "qu'un snapshot instantané ne peut pas capturer."),
-        ("Preprocessor", C["muted"],
-         "Le <code>Preprocessor</code> est un <code>BaseEstimator</code> scikit-learn encapsulant "
-         "un <code>ColumnTransformer</code> : les features numériques passent par "
-         "<code>SimpleImputer(median)</code> puis <code>StandardScaler</code> ; les variables "
-         "catégorielles (<code>benin_season</code>, <code>machine_type</code>) par "
-         "<code>SimpleImputer(most_frequent)</code> puis <code>OneHotEncoder</code>. "
-         "Fitté une seule fois sur les données 2024 et sérialisé dans <code>model_pipeline.pkl</code>, "
-         "il garantit une transformation <strong>strictement identique</strong> à l'entraînement "
-         "et à l'inférence, sans data leakage."),
-        ("LightGBM", C["orange"],
-         "<strong>LightGBM</strong> entraîné avec <code>class_weight='balanced'</code> pour "
-         "compenser le déséquilibre extrême (~0,02 % de pannes). <strong>Split temporel strict</strong> : "
-         "entraînement sur 2024, évaluation sur 2025 — aucune donnée future n'est vue pendant le fit. "
-         "Le seuil de décision est optimisé sur le <strong>F2-Score</strong> (recall pondéré 2×) "
-         "sur une grille [0,005 ; 0,50], aboutissant à <strong>0,015</strong>. La probabilité brute "
-         "est ensuite normalisée via logit pour que 0,015 → 50 % affiché. "
-         "Métriques, artefacts et importances de features tracés via <strong>MLflow</strong>."),
-        ("FastAPI", C["green"],
-         "Le modèle est exposé en <strong>API REST</strong> via FastAPI (<code>POST /api/v1/predict</code>). "
-         "Chaque requête enrichit le vecteur reçu avec les features temporelles "
-         "(<code>enrich_inference_point</code>), applique le pipeline de prétraitement et retourne "
-         "la probabilité logit-normalisée avec la décision de maintenance (alerte / nominal). "
-         "En cas d'indisponibilité de MLflow, un repli automatique sur "
-         "<code>model_pipeline.pkl</code> garantit la continuité de service."),
-        ("Streamlit", C["blue"],
-         "Dashboard temps réel : vue globale des 30 machines avec indicateurs d'alerte, "
-         "détail par machine avec séries historiques, probabilités normalisées et recommandations "
-         "de maintenance. Les données sont interrogées à chaque interaction directement depuis "
-         "<strong>DuckDB</strong> via des lectures vectorisées en colonnes pour une réponse rapide."),
+        ("DuckDB", "#e6d817",
+         "Les données simulent fidèlement le parc textile de la <strong>GDIZ</strong>, inspiré du dataset AI4I 2020 grâce à un modèle basé sur 3 piliers :"
+         "<ul style='margin-top: 5px; padding-left: 20px;'>"
+         "<li>La météo du Bénin et les coupures électriques de la SBEE qui impactent toutes les machines ;</li>"
+         "<li>Chaque machine accumule sa propre usure, sa chaleur et ses vibrations d'un moment à l'autre ;</li>"
+         "<li>Le tout est stocké dans une base de données ultra-rapide <strong>DuckDB</strong> après l'ajout de bruits de capteurs (bruits capteurs IoT).</li>"
+         "</ul>"
+        ),
+         
+        ("Indicateurs", "#e6d817",
+         "Pour repérer les pannes avant qu'elles n'arrivent, nous calculons des indicateurs clés combinant les <strong>mesures instantanées</strong> des capteurs et leur <strong>historique sur une fenêtre glissante de 24 heures</strong>. "
+         "Ces analyses temporelles permettent à l'IA de voir venir une dégradation lente qu'un simple contrôle ponctuel ne détecterait pas."
+        ),
+         
+        ("Préparation des données", "#e6d817",
+         "Avant d'alimenter l'IA, les données brutes sont nettoyées automatiquement. Les valeurs manquantes sont imputées, les chiffres sont mis à la même échelle (StandardScaler) "
+         "et les variables catégrorielles comme le type de machine sont traduits en valeurs numériques (OneHotEncoder). "
+         "Ce bloc de préparation est figé dans un artefact pour garantir que les données du dashboard soient traitées <strong>exactement de la même manière</strong> que lors de l'entraînement de l'IA."
+        ),
+         
+        ("ML", "#e6d817",
+         "Nous utilisons l'algorithme <strong>LightGBM</strong> configuré pour surmonter le déséquilibre extrême des données. L'IA a été entraînée sur l'année 2024 "
+         "et testée sur 2025. Le seuil d'alerte a été réglé à <strong>1,5 % de suspicion</strong> : "
+         "c'est le point d'équilibre idéal (F2-Score) pour intercepter un maximum de pannes sans déclencher "
+         "trop de fausses alertes. Toutes les performances sont sauvegardées et tracées dans <strong>MLflow</strong>."),
+         
+        ("Moteur de calcul", "#e6d817",
+         "L'IA est propulsée sous forme d'un service web privé API REST ultra-rapide. "
+         "Dès que le dashboard lui envoie les mesures d'une machine, ce moteur calcule les indicateurs sur 24h, applique les filtres et renvoie instantanément la probabilité de panne et la décision "
+         "de maintenance. Si l'outil de suivi MLflow est en panne, l'API bascule automatiquement sur un fichier de secours pour garantir 100% de disponibilité."
+        ),
+         
+        ("Interface", C["blue"],
+         "L'application finale offre une vue d'ensemble du parc des 30 machines avec leurs voyants d'alerte, un suivi historique détaillé par machine et des conseils de maintenance. "
+         "L'affichage est instantané car <strong>Streamlit</strong> interroge directement la base de données avec des requêtes optimisées en colonnes."
+        )
     ]
 
     step_names = [s[0] for s in STEPS]

@@ -1,18 +1,23 @@
-# Python & Env
-__pycache__/
+# Environnement virtuel et packages
 .venv/
+__pycache__/
 .env
+
+# Caches d'outils de test et qualité de code
 .pytest_cache/
+.ruff_cache/
+.coverage*
+
+# Notebooks Jupyter
 .ipynb_checkpoints/
-*.coverage
 
-# Data & Models
+# Données, modèles et artefacts binaires lourds
 data/
-!models/.gitkeep 
+models/
 
-# MLOps
+# Suivi d'expériences MLflow
 mlruns/
 mlflow.db
 
-# OS
+# Fichiers système
 .DS_Store

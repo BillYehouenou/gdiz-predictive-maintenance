@@ -88,7 +88,7 @@ def process_prediction(machine_data_dict: dict) -> dict:
         history_df = _get_machine_history(machine_id)
         features = enrich_inference_point(features, history_df)
     else:
-        # Pas d'historique disponible → valeurs neutres (pas d'accélération détectée)
+        # Pas d'historique disponible - valeurs neutres (pas d'accélération détectée)
         features["tool_wear_delta_24h"] = 0.0
         features["vibration_max_24h"] = float(features.get("vibration", 0.0))
         features["process_temp_max_24h"] = float(features.get("process_temperature", 0.0))

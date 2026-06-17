@@ -29,12 +29,6 @@ def test_health():
     assert r.json()["status"] == "healthy"
 
 
-def test_root():
-    r = client.get("/")
-    assert r.status_code == 200
-    assert r.json()["status"] == "ok"
-
-
 def test_predict_valid_input():
     r = client.post("/api/v1/predict", json=payload_normal)
     assert r.status_code == 200

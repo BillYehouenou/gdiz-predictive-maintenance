@@ -1,5 +1,4 @@
 from fastapi import APIRouter, FastAPI, HTTPException
-
 from app.schemas import MachineData, PredictionResponse
 from app.utils import process_prediction
 
@@ -14,13 +13,8 @@ router = APIRouter(prefix="/api/v1")
 
 @app.get("/health")
 def health():
-    """Liveness probe — vérifie que l'API répond."""
+    """Vérifie que l'API répond correctement."""
     return {"status": "healthy"}
-
-
-@app.get("/")
-def root():
-    return {"status": "ok", "message": "GDIZ Maintenance API is running"}
 
 
 @router.post("/predict", response_model=PredictionResponse)

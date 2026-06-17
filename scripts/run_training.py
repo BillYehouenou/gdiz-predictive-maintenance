@@ -1,7 +1,6 @@
 """Entrypoint d'entraînement — uv run python scripts/run_training.py"""
 
 from lightgbm import LGBMClassifier
-
 from src.dataloader import DataLoader
 from src.train import ModelPipeline
 

@@ -1,4 +1,5 @@
 import logging
+
 import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -44,7 +45,7 @@ class Preprocessor(BaseEstimator, TransformerMixin):
             ]
         )
 
-        # 3. Assemblage des deux pipelines
+        # Assemblage des deux pipelines
         self.pipeline = ColumnTransformer(
             transformers=[
                 ("num", numeric_transformer, self.numeric_features),

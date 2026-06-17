@@ -1,10 +1,10 @@
+from datetime import date
+
 import duckdb
 import pandas as pd
 import streamlit as st
 
-from datetime import date
-
-from ui.constants import DB_PATH, TABLE, _PARTS, _PROD_COEFF, _QUAL_FIX, _TECH_RATE
+from ui.constants import _PARTS, _PROD_COEFF, _QUAL_FIX, _TECH_RATE, DB_PATH, TABLE
 
 
 @st.cache_data(ttl=300)

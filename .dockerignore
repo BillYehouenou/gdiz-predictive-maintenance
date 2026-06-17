@@ -1,15 +1,33 @@
-.git/
+# Environnement local
 .venv/
 .env
-.pytest_cache/
 __pycache__/
-mlruns/
-mlflow.db
-data/
-notebooks/
-tests/
-scripts/
-*.md
+.pytest_cache/
+.ruff_cache/
+.coverage*
+
+# Git et outils de développement
+.git/
+.github/
+.gitignore
+.claude/
 .pre-commit-config.yaml
 Makefile
+
+# Documentation
+notebooks/
+README.md
+
+# Tests et scripts
+tests/
+scripts/
+
+# Données lourdes et artefacts MLflow
+data/
+models/
+mlruns/
+mlflow.db
+
+# Fichiers Docker
 docker-compose.yml
+.dockerignore

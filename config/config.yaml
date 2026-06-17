@@ -24,7 +24,7 @@ dataset:
     - 'power_loss_indicator'
     - 'voltage_level'
     - 'voltage_stability'
-    # Features temporelles (rolling 24h) — calculées par src/features.py
+    # Features temporelles — calculées par src/features.py
     - 'tool_wear_delta_24h'
     - 'vibration_max_24h'
     - 'process_temp_max_24h'

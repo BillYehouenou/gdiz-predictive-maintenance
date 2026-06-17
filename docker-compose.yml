@@ -48,12 +48,17 @@ services:
       - PYTHONPATH=/app
       - MLFLOW_TRACKING_URI=http://mlflow:5000
     depends_on:
-      api:
+      mlflow:
         condition: service_healthy
     volumes:
       - ./data:/app/data:ro
       - ./models:/app/models:ro
     command: ["uv", "run", "streamlit", "run", "dashboard.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
 volumes:
   mlflow_data:

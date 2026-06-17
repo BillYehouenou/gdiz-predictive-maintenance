@@ -35,14 +35,6 @@ def rgba(hex_color: str, alpha: float) -> str:
     return f"rgba({r},{g},{b},{alpha})"
 
 
-def badge(C: dict, text: str, color: str | None = None) -> str:
-    col = color or C["faint"]
-    return (
-        f"<span style='background:{col}18;color:{col};border:1px solid {col}30;"
-        f"border-radius:4px;padding:.15rem .5rem;font-size:.72rem;font-weight:500;'>{text}</span>"
-    )
-
-
 def fmt_fcfa(amount: float) -> str:
     if amount >= 1_000_000:
         return f"{amount / 1_000_000:.1f} M FCFA"

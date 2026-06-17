@@ -57,9 +57,9 @@ class Predictor:
     def _normalize_probability(self, raw_prob: float) -> float:
         """
         Normalise la probabilité brute sur l'axe logit centré au seuil optimal.
-        - raw_prob = threshold  → normalized = 0.5  (exactement à la frontière)
-        - raw_prob > threshold  → normalized > 0.5  (prédiction = panne)
-        - raw_prob < threshold  → normalized < 0.5  (prédiction = sain)
+        - raw_prob = threshold  - normalized = 0.5  (exactement à la frontière)
+        - raw_prob > threshold  - normalized > 0.5  (prédiction = panne)
+        - raw_prob < threshold  - normalized < 0.5  (prédiction = sain)
         Cela corrige le biais de calibration dû à l'extrême déséquilibre de classes.
         """
         eps = 1e-10
