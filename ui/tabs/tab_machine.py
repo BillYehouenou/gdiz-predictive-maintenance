@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.features import enrich_inference_series
+from src.features import WINDOW_24H, enrich_inference_series
 from ui.constants import FEAT_COLS, STEPS_MAP
 from ui.helpers import plot_axis, plot_layout
 from ui.queries import get_predictor, q_machine_last, q_machine_list, q_machine_ts_full
@@ -12,9 +12,16 @@ from ui.queries import get_predictor, q_machine_last, q_machine_list, q_machine_
 logger = logging.getLogger(__name__)
 
 
-def _predict_series(predictor, df_ts: pd.DataFrame) -> pd.DataFrame:
-    """Enrichit temporellement puis prédit sur toute la série — retourne df avec failure_probability."""
-    df_enriched = enrich_inference_series(df_ts)
+def _predict_series(predictor, df_ts_buffered: pd.DataFrame, display_steps: int) -> pd.DataFrame:
+    """
+    Enrichit temporellement puis prédit sur toute la série, puis ne garde que les
+    `display_steps` dernières lignes. `df_ts_buffered` doit contenir display_steps +
+    WINDOW_24H lignes : sans ce tampon, les features glissantes 24h des premières
+    lignes de la fenêtre affichée seraient calculées avec un historique tronqué
+    (ex. tool_wear_delta_24h=0 par défaut faute de point 24h en arrière disponible),
+    ce qui fausse la probabilité affichée selon la fenêtre choisie (24h/7j/30j).
+    """
+    df_enriched = enrich_inference_series(df_ts_buffered)
     feat_df = df_enriched[[k for k in FEAT_COLS if k in df_enriched.columns]].dropna()
     if len(feat_df) == 0:
         return pd.DataFrame()
@@ -22,7 +29,7 @@ def _predict_series(predictor, df_ts: pd.DataFrame) -> pd.DataFrame:
     out = df_enriched.loc[feat_df.index, ["timestamp", "tool_wear", "vibration", "target"]].copy()
     out["failure_probability"] = preds["failure_probability"].values
     out["prediction"] = preds["prediction"].values
-    return out.reset_index(drop=True)
+    return out.reset_index(drop=True).tail(display_steps).reset_index(drop=True)
 
 
 def render(C: dict) -> None:
@@ -67,7 +74,10 @@ def render(C: dict) -> None:
 
     try:
         predictor = get_predictor()
-        df_pred = _predict_series(predictor, df_ts)
+        # +WINDOW_24H lignes de tampon : sans elles, les features glissantes 24h des
+        # premières lignes de la fenêtre affichée seraient tronquées (cf. _predict_series).
+        df_ts_buffered = q_machine_ts_full(sel_id, steps + WINDOW_24H)
+        df_pred = _predict_series(predictor, df_ts_buffered, steps)
         if len(df_pred) > 0:
             peak_idx = int(df_pred["failure_probability"].idxmax())
             peak_prob = float(df_pred.loc[peak_idx, "failure_probability"])

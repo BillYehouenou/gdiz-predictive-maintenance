@@ -67,6 +67,14 @@ def render(C: dict) -> None:
     types = ["L", "M", "H"]
     # Causes façon AI4I 2020 : TWF=usure, HDF=dissipation thermique, OSF=surcharge
     # mécanique, PWF=électrique, RNF=aléatoire (sans précurseur, par construction).
+    # Libellés en français + sigle technique entre parenthèses (cohérent avec tab_about).
+    cause_labels = {
+        "TWF": "Usure (TWF)",
+        "HDF": "Surchauffe (HDF)",
+        "OSF": "Surcharge méca. (OSF)",
+        "PWF": "Électrique (PWF)",
+        "RNF": "Aléatoire (RNF)",
+    }
     cause_colors = {
         "TWF": rgba(C["orange"], 0.72),
         "HDF": rgba(C["teal"], 0.72),
@@ -78,7 +86,7 @@ def render(C: dict) -> None:
     for cause, color in cause_colors.items():
         sub = df_fail[df_fail["cause"] == cause].set_index("machine_type")
         y_vals = [float(sub.loc[t, "n"]) if t in sub.index else 0 for t in types]
-        fig_bar.add_trace(go.Bar(name=cause, x=types, y=y_vals, marker_color=color, marker_line_width=0))
+        fig_bar.add_trace(go.Bar(name=cause_labels[cause], x=types, y=y_vals, marker_color=color, marker_line_width=0))
 
     fig_bar.update_layout(
         **plot_layout(
