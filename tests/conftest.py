@@ -32,8 +32,14 @@ def machine_normale():
             "machine_type": ["H"],
             # Features temporelles : machine stable, aucune variation sur 24h
             "tool_wear_delta_24h": [0.5],
+            "tool_wear_delta_4h": [0.1],
             "vibration_max_24h": [1.3],
+            "vibration_mean_24h": [1.2],
+            "vibration_std_24h": [0.1],
+            "vibration_delta_4h": [0.05],
             "process_temp_max_24h": [41.0],
+            "process_temp_mean_24h": [40.0],
+            "process_temp_delta_4h": [0.5],
         }
     )
 
@@ -60,7 +66,13 @@ def machine_en_surchauffe():
             "machine_type": ["L"],
             # Features temporelles : machine en dégradation rapide sur les 24h précédentes
             "tool_wear_delta_24h": [15.0],
+            "tool_wear_delta_4h": [4.0],
             "vibration_max_24h": [8.2],
+            "vibration_mean_24h": [6.5],
+            "vibration_std_24h": [1.8],
+            "vibration_delta_4h": [2.1],
             "process_temp_max_24h": [92.0],
+            "process_temp_mean_24h": [85.0],
+            "process_temp_delta_4h": [6.0],
         }
     )

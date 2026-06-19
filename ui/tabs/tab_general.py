@@ -65,10 +65,14 @@ def render(C: dict) -> None:
     )
     df_fail = q_failures_by_type_cause_period(date_from, date_to)
     types = ["L", "M", "H"]
+    # Causes façon AI4I 2020 : TWF=usure, HDF=dissipation thermique, OSF=surcharge
+    # mécanique, PWF=électrique, RNF=aléatoire (sans précurseur, par construction).
     cause_colors = {
-        "Mécanique": rgba(C["orange"], 0.72),
-        "Électrique": rgba(C["blue"], 0.72),
-        "Thermique": rgba(C["teal"], 0.72),
+        "TWF": rgba(C["orange"], 0.72),
+        "HDF": rgba(C["teal"], 0.72),
+        "OSF": rgba(C["red"], 0.72),
+        "PWF": rgba(C["blue"], 0.72),
+        "RNF": rgba(C["green"], 0.72),
     }
     fig_bar = go.Figure()
     for cause, color in cause_colors.items():

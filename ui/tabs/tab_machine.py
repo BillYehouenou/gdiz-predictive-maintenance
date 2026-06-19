@@ -1,3 +1,5 @@
+import logging
+
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -6,6 +8,8 @@ from src.features import enrich_inference_series
 from ui.constants import FEAT_COLS, STEPS_MAP
 from ui.helpers import plot_axis, plot_layout
 from ui.queries import get_predictor, q_machine_last, q_machine_list, q_machine_ts_full
+
+logger = logging.getLogger(__name__)
 
 
 def _predict_series(predictor, df_ts: pd.DataFrame) -> pd.DataFrame:
@@ -69,8 +73,8 @@ def render(C: dict) -> None:
             peak_prob = float(df_pred.loc[peak_idx, "failure_probability"])
             peak_ts = df_pred.loc[peak_idx, "timestamp"]
             current_prob = float(df_pred.iloc[-1]["failure_probability"])
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Prédiction indisponible pour {sel_id} : {e}")
 
     # Risque pic = métrique principale pour la maintenance
     disp_prob = peak_prob
@@ -97,10 +101,10 @@ def render(C: dict) -> None:
                 background:{p_color}14;
                 border:1px solid {p_color}35;
                 height:100%;box-sizing:border-box;'>
-              <div style='font-size:.75rem;color:{C["faint"]};letter-spacing:.04em;'>RISQUE MAX · {_h.upper()}</div>
+              <div style='font-size:.75rem;color:{C["faint"]};letter-spacing:.04em;'>RISQUE DE PANNE · ≤ 5 JOURS</div>
               <div style='font-size:2.6rem;font-weight:700;color:{p_color};line-height:1.15;margin:.2rem 0;'>{disp_prob * 100:.1f}%</div>
               <div style='font-size:.85rem;color:{p_color};'>{p_label}</div>
-              <div style='font-size:.68rem;color:{C["faint"]};margin-top:.3rem;'>{_peak_date}</div>
+              <div style='font-size:.68rem;color:{C["faint"]};margin-top:.3rem;'>pic sur les {_h} · {_peak_date}</div>
               <div style='font-size:.68rem;color:{C["faint"]};margin-top:.2rem;'>{_calib_note}</div>
             </div>""",
             unsafe_allow_html=True,

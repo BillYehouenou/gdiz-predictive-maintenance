@@ -7,7 +7,7 @@ paths:
 # Informations sur le dataset
 dataset:
   name: 'gdiz_dataset.parquet'
-  target_column: 'target'
+  target_column: 'target_h120_predictable'
   features:
     - 'benin_season'
     - 'machine_type'
@@ -26,8 +26,14 @@ dataset:
     - 'voltage_stability'
     # Features temporelles — calculées par src/features.py
     - 'tool_wear_delta_24h'
+    - 'tool_wear_delta_4h'
     - 'vibration_max_24h'
+    - 'vibration_mean_24h'
+    - 'vibration_std_24h'
+    - 'vibration_delta_4h'
     - 'process_temp_max_24h'
+    - 'process_temp_mean_24h'
+    - 'process_temp_delta_4h'
 
 # Paramètres de tracking des expériences mlflow
 mlflow:

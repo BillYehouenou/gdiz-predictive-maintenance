@@ -146,11 +146,11 @@ def render(C: dict) -> None:
     # ── Rangée 2 : Métriques (ROC-AUC + F2 + Seuil) ──────────────────────────
     row2 = [
         ("https://img.icons8.com/?size=100&id=Yt084riMRP1m&format=png&color=FFFFFF",
-         "ROC-AUC", "0.825", "Split temporel 2024 - 2025", C["blue"]),
+         "ROC-AUC", "0.843", "Split temporel 2024 → 2025", C["blue"]),
         ("https://img.icons8.com/?size=100&id=0ZNXJnXqu3Lh&format=png&color=FFFFFF",
-         "F2-Score", "0.055", "Métrique de performance", C["orange"]),
+         "F2-Score", "0.382", "Recall 56 % · Précision 17 %", C["orange"]),
         ("https://img.icons8.com/?size=100&id=hvx78MXvVF91&format=png&color=000000",
-         "Seuil F2", "0.015", "Logit-normalisé à 50 %", C["red"]),
+         "Seuil F2", "0.06", "Logit-normalisé à 50 %", C["red"]),
     ]
     m1, m2, m3 = st.columns(3)
     for col, (icon, label, val, sub, color), delay in zip([m1, m2, m3], row2, [0.14, 0.21, 0.28]):
@@ -161,39 +161,52 @@ def render(C: dict) -> None:
 
     STEPS = [
         ("DuckDB", "#e6d817",
-         "Les données simulent fidèlement le parc textile de la <strong>GDIZ</strong>, inspiré du dataset AI4I 2020 grâce à un modèle basé sur 3 piliers :"
+         "Les données simulent fidèlement le parc textile de la <strong>GDIZ</strong>, inspiré du dataset AI4I 2020 :"
          "<ul style='margin-top: 5px; padding-left: 20px;'>"
-         "<li>La météo du Bénin et les coupures électriques de la SBEE qui impactent toutes les machines ;</li>"
-         "<li>Chaque machine accumule sa propre usure, sa chaleur et ses vibrations d'un moment à l'autre ;</li>"
-         "<li>Le tout est stocké dans une base de données ultra-rapide <strong>DuckDB</strong> après l'ajout de bruits de capteurs (bruits capteurs IoT).</li>"
+         "<li>La météo du Bénin et les coupures électriques de la SBEE impactent toutes les machines ;</li>"
+         "<li>Chaque machine accumule sa propre usure, sa chaleur et ses vibrations d'un moment à l'autre — avec un "
+         "<strong>seuil de casse propre à chaque machine</strong> (certaines tiennent jusqu'à 95-99 % d'usure, d'autres "
+         "cassent dès 65-70 %), plutôt qu'un seuil universel irréaliste ;</li>"
+         "<li>Chaque panne a une <strong>cause précise</strong> parmi 5, façon AI4I 2020 : usure outil (TWF), "
+         "surchauffe (HDF), surcharge mécanique (OSF), électrique (PWF) et aléatoire (RNF) ;</li>"
+         "<li>Le tout est stocké dans une base de données ultra-rapide <strong>DuckDB</strong> après l'ajout de bruits "
+         "de capteurs IoT.</li>"
          "</ul>"
         ),
-         
+
         ("Indicateurs", "#e6d817",
-         "Pour repérer les pannes avant qu'elles n'arrivent, nous calculons des indicateurs clés combinant les <strong>mesures instantanées</strong> des capteurs et leur <strong>historique sur une fenêtre glissante de 24 heures</strong>. "
-         "Ces analyses temporelles permettent à l'IA de voir venir une dégradation lente qu'un simple contrôle ponctuel ne détecterait pas."
+         "Pour repérer les pannes avant qu'elles n'arrivent, nous combinons les <strong>mesures instantanées</strong> "
+         "des capteurs avec leur évolution récente sur deux fenêtres glissantes — <strong>4 heures</strong> "
+         "(accélération court terme : delta rapide d'usure, de vibration, de température) et <strong>24 heures</strong> "
+         "(tendance, moyenne, volatilité). Ces analyses temporelles permettent à l'IA de voir venir une dégradation "
+         "lente qu'un simple contrôle ponctuel ne détecterait pas."
         ),
-         
+
         ("Préparation des données", "#e6d817",
          "Avant d'alimenter l'IA, les données brutes sont nettoyées automatiquement. Les valeurs manquantes sont imputées, les chiffres sont mis à la même échelle (StandardScaler) "
          "et les variables catégrorielles comme le type de machine sont traduits en valeurs numériques (OneHotEncoder). "
          "Ce bloc de préparation est figé dans un artefact pour garantir que les données du dashboard soient traitées <strong>exactement de la même manière</strong> que lors de l'entraînement de l'IA."
         ),
-         
+
         ("ML", "#e6d817",
-         "Nous utilisons l'algorithme <strong>LightGBM</strong> configuré pour surmonter le déséquilibre extrême des données. L'IA a été entraînée sur l'année 2024 "
-         "et testée sur 2025. Le seuil d'alerte a été réglé à <strong>1,5 % de suspicion</strong> : "
-         "c'est le point d'équilibre idéal (F2-Score) pour intercepter un maximum de pannes sans déclencher "
-         "trop de fausses alertes. Toutes les performances sont sauvegardées et tracées dans <strong>MLflow</strong>."),
-         
+         "Nous utilisons l'algorithme <strong>LightGBM</strong>, entraîné sur l'année 2024 et testé sur 2025. Le modèle "
+         "cible uniquement les <strong>pannes à cause prévisible</strong> (usure, surchauffe, surcharge mécanique) sur un "
+         "horizon de <strong>5 jours</strong> — les pannes électriques et aléatoires n'ont, par nature, aucun signal "
+         "annonciateur à apprendre, les inclure aurait juste noyé le signal utile. Le seuil d'alerte a été réglé à "
+         "<strong>6 % de suspicion</strong> : c'est le point d'équilibre (F2-Score) qui intercepte plus d'une panne "
+         "prévisible sur deux (recall 56 %) tout en gardant près d'une alerte sur six fondée (précision 17 %). "
+         "Toutes les performances sont sauvegardées et tracées dans <strong>MLflow</strong>."),
+
         ("Moteur de calcul", "#e6d817",
          "L'IA est propulsée sous forme d'un service web privé API REST ultra-rapide. "
-         "Dès que le dashboard lui envoie les mesures d'une machine, ce moteur calcule les indicateurs sur 24h, applique les filtres et renvoie instantanément la probabilité de panne et la décision "
+         "Dès que le dashboard lui envoie les mesures d'une machine, ce moteur calcule les indicateurs temporels (4h/24h), applique les filtres et renvoie instantanément la probabilité de panne et la décision "
          "de maintenance. Si l'outil de suivi MLflow est en panne, l'API bascule automatiquement sur un fichier de secours pour garantir 100% de disponibilité."
         ),
-         
+
         ("Interface", C["blue"],
          "L'application finale offre une vue d'ensemble du parc des 30 machines avec leurs voyants d'alerte, un suivi historique détaillé par machine et des conseils de maintenance. "
+         "Le risque affiché par machine correspond toujours à la probabilité de panne prévisible <strong>dans les 5 jours</strong> ; "
+         "le sélecteur 24h/7j/30j ne change que la fenêtre d'historique affichée, pas l'horizon de prédiction. "
          "L'affichage est instantané car <strong>Streamlit</strong> interroge directement la base de données avec des requêtes optimisées en colonnes."
         )
     ]

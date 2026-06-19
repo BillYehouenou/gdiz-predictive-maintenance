@@ -89,9 +89,17 @@ def process_prediction(machine_data_dict: dict) -> dict:
         features = enrich_inference_point(features, history_df)
     else:
         # Pas d'historique disponible - valeurs neutres (pas d'accélération détectée)
+        vibr = float(features.get("vibration", 0.0))
+        temp = float(features.get("process_temperature", 0.0))
         features["tool_wear_delta_24h"] = 0.0
-        features["vibration_max_24h"] = float(features.get("vibration", 0.0))
-        features["process_temp_max_24h"] = float(features.get("process_temperature", 0.0))
+        features["tool_wear_delta_4h"] = 0.0
+        features["vibration_max_24h"] = vibr
+        features["vibration_mean_24h"] = vibr
+        features["vibration_std_24h"] = 0.0
+        features["vibration_delta_4h"] = 0.0
+        features["process_temp_max_24h"] = temp
+        features["process_temp_mean_24h"] = temp
+        features["process_temp_delta_4h"] = 0.0
 
     df = pd.DataFrame([features])
     results = predictor.predict(df)

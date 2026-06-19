@@ -46,7 +46,54 @@ class SyntheticDataConfig:
     # La valeur de base doit donc rester à 0.005 pour rester dans la plage cible.
     base_wear_increment = 0.005
     initial_wear_range = (10, 70)
+    # Indicatif seulement (dashboard) — n'est plus un déclencheur dur dans la physique :
+    # le hasard de panne TWF est désormais un modèle de survie continu (cf. twf_weibull_*).
     critical_wear_threshold = 85
+
+    # Fragilité individuelle (frailty model) — variabilité unité-à-unité de fabrication.
+    # Gamma(shape, 1/shape) → moyenne 1, CV = 1/sqrt(shape). shape=2.5 → CV ≈ 63 % :
+    # une machine fragile (frailty ≈ 2) peut casser dès ~70 % d'usure, une robuste
+    # (frailty ≈ 0.4) peut tenir jusqu'à 95-99 % sans casser sur l'horizon de 2 ans.
+    frailty_shape = 2.5
+
+    # TWF (Tool Wear Failure) — chaque machine tire son propre seuil de rupture
+    # (Beta(4,2) sur [65, 99] : asymétrique vers le haut, la plupart des machines
+    # tiennent bien, certaines cassent dès 65-75 %, d'autres tiennent jusqu'à 95-99 %).
+    # Le hasard ne devient significatif qu'à l'approche de CE seuil personnel — pas
+    # d'un seuil universel — via une rampe lisse (pas de cassure nette à un wear donné).
+    twf_threshold_min = 65.0
+    twf_threshold_range = 34.0  # seuils personnels dans [65, 99]
+    twf_threshold_beta_a = 4.0
+    twf_threshold_beta_b = 2.0
+    twf_ramp_band = 12.0  # largeur (en points d'usure) de la rampe avant le seuil personnel
+    twf_ramp_exponent = 3.0
+    twf_hazard_coeff = 0.05
+
+    # HDF (Heat Dissipation Failure) — surchauffe soutenue (moyenne glissante ~4h),
+    # pas un pic instantané. Hasard nul sous le seuil, quadratique au-delà.
+    hdf_window_steps = 8  # 8 × 30 min = 4h
+    hdf_overheat_threshold = 38.0  # °C au-delà de l'ambiant en moyenne sur la fenêtre (≈ p99 — zone réellement anormale)
+    hdf_hazard_coeff = 0.0004
+
+    # OSF (Overstrain Failure) — surcharge mécanique : couple élevé combiné à une
+    # usure déjà significative. wear_norm**3 supprime naturellement le hasard à
+    # usure faible sans seuil dur explicite.
+    osf_hazard_coeff = 0.00038
+
+    # PWF (Power Failure) — instabilité électrique routinière hors coupure franche
+    # (le choc de redémarrage après blackout est géré séparément, cf. blackout_failure_sensitivity).
+    pwf_hazard_coeff = 0.000024
+
+    # RNF (Random Failure) — risque résiduel irréductible, par construction sans
+    # précurseur (miroir du RNF d'AI4I 2020).
+    rnf_hazard_base = 0.000018
+
+    # Dérive thermique additionnelle due au frottement d'un outil usé.
+    wear_heat_factor = 3.0  # °C additionnels max à usure = 100 %
+
+    # Parts de pannes visées par cause — cibles de calibration, pas une garantie stricte
+    # (la réalisation dépend des coefficients ci-dessus, à vérifier empiriquement).
+    failure_mode_shares = {"TWF": 0.40, "HDF": 0.20, "OSF": 0.15, "PWF": 0.20, "RNF": 0.05}
 
     # Thermique — inertie machine forte : 30 min ≈ 60 % du chemin vers T_cible
     coef_lissage_temp = 0.55
@@ -247,6 +294,17 @@ class MachineStateEvolver:
         machine_seed = self.config.global_seed + hash(machine_id) % 10000
         self.rng = np.random.default_rng(machine_seed)
 
+        # Fragilité individuelle (frailty model) — tirée une fois par machine,
+        # n'affecte que le hasard de panne TWF, pas la vitesse d'usure elle-même.
+        shape = self.config.frailty_shape
+        self.frailty = float(self.rng.gamma(shape, 1.0 / shape))
+
+        # Seuil de rupture personnel (TWF) — variabilité unité-à-unité de fabrication :
+        # certaines machines cassent dès 65-75 % d'usure, d'autres tiennent jusqu'à 95-99 %.
+        self.twf_threshold = self.config.twf_threshold_min + self.config.twf_threshold_range * self.rng.beta(
+            self.config.twf_threshold_beta_a, self.config.twf_threshold_beta_b
+        )
+
         self.num_samples = len(df_global)
         self.ambient_array = df_global["ambient_temperature"].values
         self.dust_array = df_global["dust_concentration"].values
@@ -305,6 +363,7 @@ class MachineStateEvolver:
         self.torque = np.zeros(self.num_samples)
         self.vibration = np.zeros(self.num_samples)
         self.failure = np.zeros(self.num_samples, dtype=int)
+        self.failure_mode = np.full(self.num_samples, "", dtype=object)
 
         self.tool_wear[0] = self.rng.uniform(*self.config.initial_wear_range)
         self.process_temperature[0] = self.ambient_array[0] + 5.0
@@ -340,11 +399,15 @@ class MachineStateEvolver:
         # 3. Température Machine
         temp_prev = self.process_temperature[idx - 1]
         electrical_heat = (voltage_deviation * 0.15) * self.params["voltage_sensitivity"]
+        # Frottement accru par l'usure : dérive thermique supplémentaire, corrélée à
+        # la vibration — donne deux indicateurs précurseurs conjoints pour TWF.
+        wear_heat = self.config.wear_heat_factor * (self.tool_wear[idx] / 100.0)
         target_temp = (
             self.ambient_array[idx]
             + (self.config.friction_temp_factor * (self.torque[idx] / 35.0))
             + self.params["temp_target_offset"]
             + electrical_heat
+            + wear_heat
         )
         alpha = self.config.coef_lissage_temp
         self.process_temperature[idx] = alpha * target_temp + (1 - alpha) * temp_prev
@@ -358,40 +421,46 @@ class MachineStateEvolver:
         noise = self.rng.normal(0, self.params["vibration_noise"])
         self.vibration[idx] = np.clip(base_vibration + wear_effect + noise, 0.05, 15.0)
 
-    def _calculate_failure_probability(self, idx: int) -> float:
-        """Évalue la probabilité de panne au pas actuel."""
+    def _calculate_failure_hazards(self, idx: int) -> dict:
+        """
+        Évalue le hasard de panne par cause au pas actuel (modèle à risques concurrents,
+        façon AI4I 2020 : TWF, HDF, OSF, PWF, RNF). Chaque cause a sa propre signature
+        précurseur ; aucune ne repose sur un seuil dur déterministe.
+        """
         wear = self.tool_wear[idx]
-        temp = self.process_temperature[idx]
-        ambient = self.ambient_array[idx]
+        wear_norm = wear / 100.0
+        torque = self.torque[idx]
         stability_pct = self.stability_array[idx] / 100.0
-        vibration = self.vibration[idx]
 
-        prob = 0.000005  # Risque résiduel de base
+        # TWF — rampe lisse autour du seuil de rupture personnel de la machine
+        # (self.twf_threshold, tiré une fois à l'initialisation) : pas de seuil
+        # universel, étalement réel du moment de panne entre machines fragiles et
+        # robustes. La fragilité (self.frailty) module l'intensité de la rampe.
+        band = self.config.twf_ramp_band
+        excess = max(0.0, (wear - (self.twf_threshold - band)) / band)
+        twf = self.config.twf_hazard_coeff * (excess**self.config.twf_ramp_exponent) * self.frailty * self.params["wear_multiplier"]
 
-        # 1a. Panne mécanique : zone pré-critique L (80 % - 85 %)
-        #     Les machines L cassent souvent avant d'atteindre le seuil universel.
-        if self.machine_type == "L" and 80.0 < wear <= self.config.critical_wear_threshold:
-            prob += 0.04 * np.exp((wear - 80.0) / 5.0)
+        # HDF — surchauffe soutenue sur une fenêtre glissante de ~4h, pas un pic
+        # instantané : la dissipation thermique insuffisante est un phénomène lent.
+        window = min(idx, self.config.hdf_window_steps)
+        overheat = self.process_temperature[idx - window : idx + 1] - self.ambient_array[idx - window : idx + 1]
+        sustained_overheat = max(0.0, float(overheat.mean()) - self.config.hdf_overheat_threshold)
+        hdf = self.config.hdf_hazard_coeff * sustained_overheat**2
 
-        # 1b. Panne mécanique : seuil critique universel (85 %)
-        if wear > self.config.critical_wear_threshold:
-            prob += 0.12 * np.exp((wear - self.config.critical_wear_threshold) / 5.0)
+        # OSF — surcharge mécanique : couple élevé combiné à une usure déjà
+        # significative. wear_norm**3 supprime naturellement le hasard à usure
+        # faible, sans seuil dur explicite.
+        osf = self.config.osf_hazard_coeff * (torque / 45.0) * wear_norm**3
 
-        # 1c. Panne par vibration excessive — spécifique L
-        #     Vibration > 3,5 mm/s indique un jeu mécanique dangereux (usure ≥ 80 %).
-        if self.machine_type == "L" and vibration > 3.5:
-            prob += 0.018 * (vibration - 3.5)
-
-        # 2. Panne thermique
-        if temp > ambient + 25.0:
-            prob += 0.000008 * np.exp((temp - ambient - 25.0) / 4.0)
-
-        # 3. Panne électrique par instabilité routinière du réseau
+        # PWF — instabilité électrique routinière hors coupure franche (le choc
+        # de redémarrage après blackout est géré séparément dans evolve_states).
         elec_sensitivity = self.params.get("ups_elec_sensitivity", self.params["voltage_sensitivity"])
-        if stability_pct < 0.85:
-            prob += 0.00005 * (1.0 - stability_pct) * elec_sensitivity
+        pwf = self.config.pwf_hazard_coeff * max(0.0, 1.0 - stability_pct) * elec_sensitivity
 
-        return min(prob, 1.0)
+        # RNF — risque résiduel irréductible, par construction sans précurseur.
+        rnf = self.config.rnf_hazard_base
+
+        return {"TWF": twf, "HDF": hdf, "OSF": osf, "PWF": pwf, "RNF": rnf}
 
     def _handle_downtime_phase(self, failure_idx: int) -> int:
         """
@@ -421,8 +490,12 @@ class MachineStateEvolver:
                 alpha_refroidissement * self.ambient_array[idx] + (1 - alpha_refroidissement) * self.process_temperature[idx - 1]
             )
 
-        # Remise à neuf de l'outil au dernier pas de maintenance
-        if end_downtime < self.num_samples:
+        # Remise à neuf de l'outil — seulement si la panne réparée est l'outil lui-même
+        # (TWF). Les autres causes (HDF, OSF, PWF, RNF) réparent un autre composant
+        # (refroidissement, électrique...) : l'usure de l'outil continue de s'accumuler
+        # sans être remise à zéro, sinon les pannes non-mécaniques interrompraient
+        # indéfiniment la montée en usure et TWF ne se déclencherait jamais.
+        if end_downtime < self.num_samples and self.failure_mode[failure_idx] == "TWF":
             self.tool_wear[end_downtime - 1] = 0.0
 
         return end_downtime
@@ -451,6 +524,7 @@ class MachineStateEvolver:
                     electric_shock_prob = 0.04 * self.params["blackout_failure_sensitivity"]
                     if self.rng.random() < electric_shock_prob:
                         self.failure[idx] = 1
+                        self.failure_mode[idx] = "PWF"
                         maintenance_end_idx = self._handle_downtime_phase(idx)
                 continue
 
@@ -471,9 +545,15 @@ class MachineStateEvolver:
             # D. Régime de fonctionnement normal
             self._update_physics(idx, restarted_from_blackout=restarted_from_blackout)
 
-            failure_prob = self._calculate_failure_probability(idx)
+            hazards = self._calculate_failure_hazards(idx)
+            total_hazard = sum(hazards.values())
+            failure_prob = min(total_hazard, 1.0)
             if self.rng.random() < failure_prob:
                 self.failure[idx] = 1
+                modes = list(hazards.keys())
+                weights = np.array(list(hazards.values()))
+                mode_probs = weights / total_hazard if total_hazard > 0 else np.full(len(modes), 1.0 / len(modes))
+                self.failure_mode[idx] = self.rng.choice(modes, p=mode_probs)
                 maintenance_end_idx = self._handle_downtime_phase(idx)
 
         return pd.DataFrame(
@@ -487,6 +567,7 @@ class MachineStateEvolver:
                 "process_temperature": self.process_temperature,
                 "vibration": self.vibration,
                 "target": self.failure,
+                "failure_mode": self.failure_mode,
             }
         )
 

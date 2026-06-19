@@ -147,11 +147,7 @@ def q_failures_by_type_cause_period(date_from: str, date_to: str) -> "pd.DataFra
     with duckdb.connect(str(DB_PATH), read_only=True) as conn:
         return conn.execute(
             f"""SELECT machine_type,
-                       CASE
-                         WHEN power_loss_indicator = 1 THEN 'Électrique'
-                         WHEN tool_wear > 82           THEN 'Mécanique'
-                         ELSE                               'Thermique'
-                       END AS cause,
+                       failure_mode AS cause,
                        COUNT(*) AS n
                 FROM {TABLE}
                 WHERE target = 1 AND timestamp BETWEEN ? AND ?
