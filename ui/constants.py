@@ -36,7 +36,7 @@ FEAT_COLS: list[str] = [
 # Pièces Type H : 250 000 XOF est le minimum OEM — peut atteindre 500 000 XOF haut de gamme.
 # Tissu Type H : 15 m semble conservateur à 35 m/h (inertie mécanique ~26 min).
 _TECH_RATE: int = 2_500  # XOF/h — taux horaire technicien (commun à tous types)
-_MAT_COST: int = 800     # XOF/m — coût de revient matière textile
+_MAT_COST: int = 800  # XOF/m — coût de revient matière textile
 
 # C_production : capacité × marge nette par mètre
 _PROD: dict = {
@@ -45,9 +45,9 @@ _PROD: dict = {
     "H": {"capacity_m_per_h": 35, "margin_xof_per_m": 2_000},  # 70 000 XOF/h d'arrêt
 }
 # C_technique : pièce de rechange (fixe par panne) + technicien (variable)
-_PARTS: dict = {"L": 45_000, "M": 90_000, "H": 250_000}   # XOF par panne
+_PARTS: dict = {"L": 45_000, "M": 90_000, "H": 250_000}  # XOF par panne
 # C_qualite : tissu gâché au crash × coût matière
-_WASTE: dict = {"L": 5, "M": 8, "H": 15}                   # mètres perdus
+_WASTE: dict = {"L": 5, "M": 8, "H": 15}  # mètres perdus
 
 # Coefficients précalculés
 _PROD_COEFF = {t: _PROD[t]["capacity_m_per_h"] * _PROD[t]["margin_xof_per_m"] for t in ("L", "M", "H")}
@@ -83,7 +83,7 @@ STEPS_MAP: dict[str, int] = {"24h": 48, "7j": 336, "30j": 1440}
 
 # ─── SEUILS ENVIRONNEMENTAUX ──────────────────────────────────────────────────
 HARMATTAN_THRESHOLD = 600  # µg/m³ — seuil extrême (non encore atteint)
-HARMATTAN_WARN = 300       # µg/m³ — alerte Harmattan fort
+HARMATTAN_WARN = 300  # µg/m³ — alerte Harmattan fort
 
 # ─── PALETTES ─────────────────────────────────────────────────────────────────
 _DARK = {

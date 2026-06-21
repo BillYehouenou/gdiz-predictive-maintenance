@@ -179,9 +179,7 @@ def q_machine_ts_full(machine_id: str, steps: int) -> "pd.DataFrame":
 @st.cache_data(ttl=300)
 def q_machine_list() -> list:
     with duckdb.connect(str(DB_PATH), read_only=True) as conn:
-        rows = conn.execute(
-            f"SELECT DISTINCT machine_id FROM {TABLE} ORDER BY machine_id"
-        ).fetchdf()
+        rows = conn.execute(f"SELECT DISTINCT machine_id FROM {TABLE} ORDER BY machine_id").fetchdf()
     return list(rows["machine_id"])
 
 
@@ -199,15 +197,23 @@ def q_machine_last(machine_id: str) -> dict:
                   AND timestamp = (SELECT MAX(timestamp) FROM {TABLE} WHERE machine_id = ?)""",
             [machine_id, machine_id],
         ).fetchone()
-        n_fail = conn.execute(
-            f"SELECT SUM(target) FROM {TABLE} WHERE machine_id = ?", [machine_id]
-        ).fetchone()[0]
+        n_fail = conn.execute(f"SELECT SUM(target) FROM {TABLE} WHERE machine_id = ?", [machine_id]).fetchone()[0]
     keys = [
-        "tool_wear", "process_temperature", "ambient_temperature",
-        "vibration", "activity_level", "voltage_stability",
-        "power_loss_indicator", "machine_type",
-        "dust_concentration", "humidity", "voltage_level",
-        "rotational_speed", "torque", "rain_flag", "benin_season",
+        "tool_wear",
+        "process_temperature",
+        "ambient_temperature",
+        "vibration",
+        "activity_level",
+        "voltage_stability",
+        "power_loss_indicator",
+        "machine_type",
+        "dust_concentration",
+        "humidity",
+        "voltage_level",
+        "rotational_speed",
+        "torque",
+        "rain_flag",
+        "benin_season",
     ]
     snap = dict(zip(keys, row))
     snap["n_failures"] = int(n_fail)
@@ -318,4 +324,5 @@ def q_cost_timeline(date_from: str, date_to: str) -> "pd.DataFrame":
 @st.cache_resource
 def get_predictor():
     from src.xpredict import Predictor
+
     return Predictor(use_mlflow=True)

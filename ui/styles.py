@@ -116,7 +116,11 @@ def apply_styles(C: dict, DARK: bool) -> None:
   [data-testid="stRadio"] label:has(input:checked) {{
     background: {rgba(C["blue"], 0.15) if DARK else "white"};
     color: {C["blue"]};
-    box-shadow: {"0 0 0 1px " + rgba(C["blue"], 0.35) + ", 0 1px 4px rgba(0,0,0,.4)" if DARK else "0 1px 4px rgba(0,0,0,.12), 0 0 0 1px " + rgba(C["blue"], 0.25)};
+    box-shadow: {
+            "0 0 0 1px " + rgba(C["blue"], 0.35) + ", 0 1px 4px rgba(0,0,0,.4)"
+            if DARK
+            else "0 1px 4px rgba(0,0,0,.12), 0 0 0 1px " + rgba(C["blue"], 0.25)
+        };
   }}
   [data-testid="stRadio"] input[type="radio"] {{
     display: none !important;

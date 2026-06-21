@@ -63,18 +63,20 @@ def _log_to_mlflow(
                 "alert_level": alert_level,
             },
         ):
-            mlflow.log_metrics({
-                "failure_probability": probability,
-                "prediction": float(prediction),
-                # Métriques capteurs clés
-                "tool_wear": float(features.get("tool_wear", 0)),
-                "vibration": float(features.get("vibration", 0)),
-                "process_temperature": float(features.get("process_temperature", 0)),
-                # Features temporelles — signal de dégradation
-                "tool_wear_delta_24h": float(features.get("tool_wear_delta_24h", 0)),
-                "vibration_max_24h": float(features.get("vibration_max_24h", 0)),
-                "process_temp_max_24h": float(features.get("process_temp_max_24h", 0)),
-            })
+            mlflow.log_metrics(
+                {
+                    "failure_probability": probability,
+                    "prediction": float(prediction),
+                    # Métriques capteurs clés
+                    "tool_wear": float(features.get("tool_wear", 0)),
+                    "vibration": float(features.get("vibration", 0)),
+                    "process_temperature": float(features.get("process_temperature", 0)),
+                    # Features temporelles — signal de dégradation
+                    "tool_wear_delta_24h": float(features.get("tool_wear_delta_24h", 0)),
+                    "vibration_max_24h": float(features.get("vibration_max_24h", 0)),
+                    "process_temp_max_24h": float(features.get("process_temp_max_24h", 0)),
+                }
+            )
     except Exception as e:
         logger.warning(f"MLflow monitoring log échoué silencieusement : {e}")
 

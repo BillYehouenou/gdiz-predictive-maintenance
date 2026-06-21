@@ -1,4 +1,5 @@
 from fastapi import APIRouter, FastAPI, HTTPException
+
 from app.schemas import MachineData, PredictionResponse
 from app.utils import process_prediction
 

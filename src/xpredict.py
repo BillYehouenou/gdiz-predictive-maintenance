@@ -41,9 +41,7 @@ class Predictor:
         if self.local_model_path.exists():
             logger.info(f"Chargement local : {self.local_model_path}")
             return joblib.load(self.local_model_path)
-        raise FileNotFoundError(
-            f"Aucun modèle trouvé : {self.local_model_path} ni MLflow."
-        )
+        raise FileNotFoundError(f"Aucun modèle trouvé : {self.local_model_path} ni MLflow.")
 
     def _load_threshold(self) -> float:
         if self.threshold_path.exists():
@@ -77,10 +75,12 @@ class Predictor:
         predictions = (raw_probabilities >= self.threshold).astype(int)
         normalized = np.array([self._normalize_probability(p) for p in raw_probabilities])
 
-        results = pd.DataFrame({
-            "prediction": predictions,
-            "failure_probability": normalized,
-        })
+        results = pd.DataFrame(
+            {
+                "prediction": predictions,
+                "failure_probability": normalized,
+            }
+        )
 
         logger.info("Prédictions terminées.")
         return results

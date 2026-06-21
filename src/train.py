@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import tempfile
+
 import joblib
 import matplotlib.pyplot as plt
 import mlflow
@@ -18,6 +19,7 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 from sklearn.pipeline import Pipeline
+
 from src.configloader import load_config
 from src.preprocessor import Preprocessor
 
@@ -46,17 +48,16 @@ class ModelPipeline:
         test = df[df["timestamp"] >= SPLIT_DATE]
         logger.info(f"Split temporel - Train: {len(train):,} lignes (< {SPLIT_DATE}) | Test: {len(test):,} lignes")
         return (
-            train[self.features_cols], train[self.target_col],
-            test[self.features_cols], test[self.target_col],
+            train[self.features_cols],
+            train[self.target_col],
+            test[self.features_cols],
+            test[self.target_col],
         )
 
     def _find_optimal_threshold(self, probas: np.ndarray, y_true: np.ndarray) -> float:
         """Seuil optimal sur F2-score (2 fois plus de poids au Recall qu'à la Précision)."""
         thresholds = np.arange(0.005, 0.50, 0.005)
-        f2_scores = [
-            fbeta_score(y_true, (probas >= t).astype(int), beta=2, zero_division=0)
-            for t in thresholds
-        ]
+        f2_scores = [fbeta_score(y_true, (probas >= t).astype(int), beta=2, zero_division=0) for t in thresholds]
         best_idx = int(np.argmax(f2_scores))
         best_t = float(thresholds[best_idx])
         logger.info(f"Seuil optimal F2 : {best_t:.3f} (F2={f2_scores[best_idx]:.4f})")
@@ -77,9 +78,7 @@ class ModelPipeline:
             lgbm = full_pipeline.named_steps["classifier"]
             importances = lgbm.feature_importances_.tolist()
             fi_dict = {str(i): float(v) for i, v in enumerate(importances)}
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".json", delete=False, encoding="utf-8"
-            ) as tmp:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as tmp:
                 json.dump(fi_dict, tmp)
                 mlflow.log_artifact(tmp.name, artifact_path="feature_importances")
         except AttributeError:
@@ -91,8 +90,8 @@ class ModelPipeline:
         logger.info("Début du pipeline d'entraînement...")
 
         X_train, y_train, X_test, y_test = self._temporal_split(train_df)
-        logger.info(f"Pannes train: {y_train.sum():,} / {len(y_train):,} ({y_train.mean()*100:.2f}%)")
-        logger.info(f"Pannes test:  {y_test.sum():,} / {len(y_test):,} ({y_test.mean()*100:.2f}%)")
+        logger.info(f"Pannes train: {y_train.sum():,} / {len(y_train):,} ({y_train.mean() * 100:.2f}%)")
+        logger.info(f"Pannes test:  {y_test.sum():,} / {len(y_test):,} ({y_test.mean() * 100:.2f}%)")
 
         with mlflow.start_run(run_name=f"{model_name}_Training"):
             preprocessor = Preprocessor()

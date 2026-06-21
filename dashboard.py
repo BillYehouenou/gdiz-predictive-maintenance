@@ -41,11 +41,13 @@ with col_toggle:
         st.rerun()
 
 # Onglets
-tab1, tab2, tab3 = st.tabs([
-    ":material/dashboard: Dashboard Général",
-    ":material/build: Vue Machine",
-    ":material/psychology: Modèle & Architecture",
-])
+tab1, tab2, tab3 = st.tabs(
+    [
+        ":material/dashboard: Dashboard Général",
+        ":material/build: Vue Machine",
+        ":material/psychology: Modèle & Architecture",
+    ]
+)
 with tab1:
     tab_general.render(C)
 

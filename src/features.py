@@ -1,11 +1,12 @@
 import logging
+
 import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-WINDOW_4H = 8            # 8 pas × 30 min = 4 h — accélération court terme
-WINDOW_24H = 48          # 48 pas × 30 min = 24 h
+WINDOW_4H = 8  # 8 pas × 30 min = 4 h — accélération court terme
+WINDOW_24H = 48  # 48 pas × 30 min = 24 h
 TEMPORAL_FEATURES = [
     "tool_wear_delta_24h",
     "tool_wear_delta_4h",
@@ -51,20 +52,14 @@ def enrich_training_df(df: pd.DataFrame) -> pd.DataFrame:
     # positive exploitable par le modèle au-delà de l'instant exact de la panne brute.
     df["target_h24"] = compute_horizon_target(df, horizon_hours=24)
     df["target_h48"] = compute_horizon_target(df, horizon_hours=48)
-    # Cible retenue pour l'entraînement : horizon 5 jours, causes prédictibles uniquement
-    # (cf. PREDICTABLE_FAILURE_MODES) — seule combinaison atteignant recall≥50% et précision≥15%.
+    # Cible retenue pour l'entraînement
     df["target_h120_predictable"] = compute_horizon_target(df, horizon_hours=120, failure_modes=PREDICTABLE_FAILURE_MODES)
 
-    logger.info(
-        f"Features temporelles calculées : {TEMPORAL_FEATURES} "
-        f"sur {df['machine_id'].nunique()} machines."
-    )
+    logger.info(f"Features temporelles calculées : {TEMPORAL_FEATURES} sur {df['machine_id'].nunique()} machines.")
     return df
 
 
-# TWF/HDF/OSF ont un précurseur physique (usure, surchauffe, surcharge) ; PWF (choc
-# électrique) et RNF (résiduel) sont par construction sans précurseur (cf. générateur).
-# Les inclure dans la cible dilue le signal et plafonne l'AUC (~0.68 vs ~0.84 sans eux).
+# Les autres causes de panne sont non prévisibles, par nature.
 PREDICTABLE_FAILURE_MODES = ("TWF", "HDF", "OSF")
 
 
@@ -74,7 +69,7 @@ def compute_horizon_target(df: pd.DataFrame, horizon_hours: int = 24, failure_mo
     une panne brute (target==1), sinon 0. Découplé de la génération physique :
     la panne réelle reste un événement rare et calibré, ce label élargit juste la
     fenêtre exploitable par le modèle pour apprendre le signal de dégradation qui
-    précède l'événement. Calculé par machine via un rolling-max inversé.
+    précède l'événement.
 
     `failure_modes` : si fourni, restreint la cible aux pannes dont la cause appartient
     à cette liste (ex. PREDICTABLE_FAILURE_MODES) — les autres causes ne contribuent pas

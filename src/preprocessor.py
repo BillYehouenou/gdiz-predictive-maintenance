@@ -7,9 +7,11 @@ from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
+
 from src.configloader import load_config
 
 logger = logging.getLogger(__name__)
+
 
 class Preprocessor(BaseEstimator, TransformerMixin):
     def __init__(self):

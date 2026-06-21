@@ -1,4 +1,5 @@
 import streamlit as st
+
 from ui.helpers import rgba
 
 
@@ -32,14 +33,14 @@ def _css(C: dict) -> str:
         font-size: .68rem;
         letter-spacing: .1em;
         text-transform: uppercase;
-        color: {C['faint']};
+        color: {C["faint"]};
         font-weight: 600;
         margin: 1.6rem 0 .6rem;
     }}
     .live-dot {{
         display: inline-block;
         width: 7px; height: 7px;
-        background: {C['green']};
+        background: {C["green"]};
         border-radius: 50%;
         animation: pulseDot 2s ease infinite;
         vertical-align: middle;
@@ -48,18 +49,18 @@ def _css(C: dict) -> str:
     .pipe-desc {{
         font-size: .85rem;
         line-height: 1.80;
-        color: {C['muted']};
+        color: {C["muted"]};
     }}
     .pipe-desc strong {{
-        color: {C['text']};
+        color: {C["text"]};
         font-weight: 600;
     }}
     .pipe-desc code {{
         font-size: .78rem;
-        background: {C['border']};
+        background: {C["border"]};
         border-radius: 4px;
         padding: .05rem .3rem;
-        color: {C['text']};
+        color: {C["text"]};
     }}
     .pipe-card {{
         position: relative;
@@ -101,7 +102,7 @@ def _css(C: dict) -> str:
 
 
 def _kpi_card(icon: str, label: str, val: str, sub: str, color: str, delay: float, C: dict) -> str:
-    bg = f"linear-gradient(135deg,{rgba(color,0.22)} 0%,{rgba(color,0.08)} 100%)"
+    bg = f"linear-gradient(135deg,{rgba(color, 0.22)} 0%,{rgba(color, 0.08)} 100%)"
     muted = C["muted"]
     label_color = rgba(color, 0.75)
     return (
@@ -148,10 +149,14 @@ def render(C: dict) -> None:
 
     # ── Rangée 1 : Contexte (Machines + Données) ──────────────────────────────
     row1 = [
-        ("https://img.icons8.com/?size=100&id=Ouhuf6HfyHeJ&format=png&color=FFFFFF",
-         "Machines", "30", "Textiles", C["green"]),
-        ("https://img.icons8.com/?size=100&id=KZHjwwenS7oK&format=png&color=000000",
-         "Données", "1.05M", "enrégistrements sur 2 ans", C["teal"]),
+        ("https://img.icons8.com/?size=100&id=Ouhuf6HfyHeJ&format=png&color=FFFFFF", "Machines", "30", "Textiles", C["green"]),
+        (
+            "https://img.icons8.com/?size=100&id=KZHjwwenS7oK&format=png&color=000000",
+            "Données",
+            "1.05M",
+            "enrégistrements sur 2 ans",
+            C["teal"],
+        ),
     ]
     c1, c2 = st.columns(2)
     for col, (icon, label, val, sub, color), delay in zip([c1, c2], row1, [0.0, 0.07]):
@@ -161,12 +166,27 @@ def render(C: dict) -> None:
 
     # ── Rangée 2 : Métriques (ROC-AUC + F2 + Seuil) ──────────────────────────
     row2 = [
-        ("https://img.icons8.com/?size=100&id=Yt084riMRP1m&format=png&color=FFFFFF",
-         "ROC-AUC", "0.843", "Split temporel 2024 → 2025", C["blue"]),
-        ("https://img.icons8.com/?size=100&id=0ZNXJnXqu3Lh&format=png&color=FFFFFF",
-         "F2-Score", "0.382", "Recall 56 % · Précision 17 %", C["orange"]),
-        ("https://img.icons8.com/?size=100&id=hvx78MXvVF91&format=png&color=000000",
-         "Seuil F2", "0.06", "Logit-normalisé à 50 %", C["red"]),
+        (
+            "https://img.icons8.com/?size=100&id=Yt084riMRP1m&format=png&color=FFFFFF",
+            "ROC-AUC",
+            "0.843",
+            "Split temporel 2024 → 2025",
+            C["blue"],
+        ),
+        (
+            "https://img.icons8.com/?size=100&id=0ZNXJnXqu3Lh&format=png&color=FFFFFF",
+            "F2-Score",
+            "0.382",
+            "Recall 56 % · Précision 17 %",
+            C["orange"],
+        ),
+        (
+            "https://img.icons8.com/?size=100&id=hvx78MXvVF91&format=png&color=000000",
+            "Seuil F2",
+            "0.06",
+            "Logit-normalisé à 50 %",
+            C["red"],
+        ),
     ]
     m1, m2, m3 = st.columns(3)
     for col, (icon, label, val, sub, color), delay in zip([m1, m2, m3], row2, [0.14, 0.21, 0.28]):
@@ -176,69 +196,76 @@ def render(C: dict) -> None:
     st.markdown("<p class='sec-label' style='margin-top:1.8rem;'>Pipeline</p>", unsafe_allow_html=True)
 
     STEPS = [
-        ("Données", C["teal"],
-         "Les données sont entièrement simulées pour reproduire fidèlement le parc textile de la "
-         "<strong>GDIZ</strong>, en s'inspirant du référentiel industriel AI4I 2020. Chaque machine évolue pas à "
-         "pas sur 2 ans (température, vibrations, usure) en tenant compte de la météo du Bénin et des coupures "
-         "électriques de la SBEE. Chaque machine a aussi son propre <strong>seuil de casse</strong> : certaines "
-         "tiennent jusqu'à 95-99 % d'usure, d'autres cassent dès 65-70 %, comme dans un vrai parc industriel "
-         "hétérogène plutôt qu'avec un seuil unique irréaliste. Une panne peut survenir pour "
-         "<strong>5 causes différentes</strong> : usure de l'outil, surchauffe, surcharge mécanique, panne "
-         "électrique ou panne purement aléatoire. Le tout est stocké dans une base de données ultra-rapide, "
-         "<strong>DuckDB</strong>, taillée pour l'analyse de gros volumes de séries temporelles."
+        (
+            "Données",
+            C["teal"],
+            "Les données sont entièrement simulées pour reproduire fidèlement le parc textile de la "
+            "<strong>GDIZ</strong>, en s'inspirant du référentiel industriel AI4I 2020. Chaque machine évolue pas à "
+            "pas sur 2 ans (température, vibrations, usure) en tenant compte de la météo du Bénin et des coupures "
+            "électriques de la SBEE. Chaque machine a aussi son propre <strong>seuil de casse</strong> : certaines "
+            "tiennent jusqu'à 95-99 % d'usure, d'autres cassent dès 65-70 %, comme dans un vrai parc industriel "
+            "hétérogène plutôt qu'avec un seuil unique irréaliste. Une panne peut survenir pour "
+            "<strong>5 causes différentes</strong> : usure de l'outil, surchauffe, surcharge mécanique, panne "
+            "électrique ou panne purement aléatoire. Le tout est stocké dans une base de données ultra-rapide, "
+            "<strong>DuckDB</strong>, taillée pour l'analyse de gros volumes de séries temporelles.",
         ),
-
-        ("Indicateurs", C["blue"],
-         "Pour repérer une panne avant qu'elle n'arrive, le système ne se contente pas de regarder l'instant "
-         "présent : une vibration élevée à un moment donné peut être normale ou anormale selon le contexte. Il "
-         "compare donc chaque mesure à son <strong>évolution récente</strong> sur deux fenêtres glissantes — "
-         "<strong>4 heures</strong> pour capter une accélération brutale (delta rapide d'usure ou de "
-         "température) et <strong>24 heures</strong> pour capter une tendance plus lente (moyenne, écart-type, "
-         "pic maximal). C'est cette dynamique dans le temps, plus que la valeur brute du moment, qui révèle une "
-         "machine en train de se dégrader progressivement."
+        (
+            "Indicateurs",
+            C["blue"],
+            "Pour repérer une panne avant qu'elle n'arrive, le système ne se contente pas de regarder l'instant "
+            "présent : une vibration élevée à un moment donné peut être normale ou anormale selon le contexte. Il "
+            "compare donc chaque mesure à son <strong>évolution récente</strong> sur deux fenêtres glissantes — "
+            "<strong>4 heures</strong> pour capter une accélération brutale (delta rapide d'usure ou de "
+            "température) et <strong>24 heures</strong> pour capter une tendance plus lente (moyenne, écart-type, "
+            "pic maximal). C'est cette dynamique dans le temps, plus que la valeur brute du moment, qui révèle une "
+            "machine en train de se dégrader progressivement.",
         ),
-
-        ("Préparation des données", C["orange"],
-         "Avant d'entraîner l'IA, les données brutes doivent être nettoyées et standardisées automatiquement : "
-         "les valeurs manquantes (capteurs défaillants, pertes de signal IoT) sont imputées, toutes les mesures "
-         "numériques sont mises à la même échelle (StandardScaler) pour qu'aucune variable ne soit favorisée "
-         "simplement parce qu'elle a de grandes valeurs, et les variables catégorielles comme le type de machine "
-         "sont converties en colonnes numériques (OneHotEncoder). Cette chaîne de préparation est figée dans un "
-         "artefact unique, pour garantir que le dashboard et l'API traitent toujours les données "
-         "<strong>exactement comme lors de l'entraînement</strong> — un point critique pour éviter tout écart "
-         "silencieux entre entraînement et production."
+        (
+            "Préparation des données",
+            C["orange"],
+            "Avant d'entraîner l'IA, les données brutes doivent être nettoyées et standardisées automatiquement : "
+            "les valeurs manquantes (capteurs défaillants, pertes de signal IoT) sont imputées, toutes les mesures "
+            "numériques sont mises à la même échelle (StandardScaler) pour qu'aucune variable ne soit favorisée "
+            "simplement parce qu'elle a de grandes valeurs, et les variables catégorielles comme le type de machine "
+            "sont converties en colonnes numériques (OneHotEncoder). Cette chaîne de préparation est figée dans un "
+            "artefact unique, pour garantir que le dashboard et l'API traitent toujours les données "
+            "<strong>exactement comme lors de l'entraînement</strong> — un point critique pour éviter tout écart "
+            "silencieux entre entraînement et production.",
         ),
-
-        ("ML", C["red"],
-         "Le modèle utilisé est <strong>LightGBM</strong>, un algorithme d'arbres de décision en gradient "
-         "boosting reconnu pour sa rapidité sur des données tabulaires. Il est entraîné sur l'année 2024 et "
-         "testé sur 2025, pour vérifier qu'il généralise bien dans le temps plutôt que d'apprendre le passé par "
-         "cœur. Il vise spécifiquement les pannes qui ont un véritable signal annonciateur — usure, surchauffe, "
-         "surcharge mécanique — sur un horizon de <strong>5 jours</strong> ; les pannes électriques ou "
-         "purement aléatoires sont volontairement exclues de la cible, car elles n'ont, par nature, rien à "
-         "apprendre, et les inclure aurait seulement dilué le signal utile. Résultat mesuré : plus d'une panne "
-         "prévisible sur deux est détectée (recall 56 %), avec près d'une alerte sur six réellement fondée "
-         "(précision 17 %)."
+        (
+            "ML",
+            C["red"],
+            "Le modèle utilisé est <strong>LightGBM</strong>, un algorithme d'arbres de décision en gradient "
+            "boosting reconnu pour sa rapidité sur des données tabulaires. Il est entraîné sur l'année 2024 et "
+            "testé sur 2025, pour vérifier qu'il généralise bien dans le temps plutôt que d'apprendre le passé par "
+            "cœur. Il vise spécifiquement les pannes qui ont un véritable signal annonciateur — usure, surchauffe, "
+            "surcharge mécanique — sur un horizon de <strong>5 jours</strong> ; les pannes électriques ou "
+            "purement aléatoires sont volontairement exclues de la cible, car elles n'ont, par nature, rien à "
+            "apprendre, et les inclure aurait seulement dilué le signal utile. Résultat mesuré : plus d'une panne "
+            "prévisible sur deux est détectée (recall 56 %), avec près d'une alerte sur six réellement fondée "
+            "(précision 17 %).",
         ),
-
-        ("Moteur de calcul", C["green"],
-         "Une fois entraîné, le modèle est exposé via une API web (<strong>FastAPI</strong>) ultra-rapide, "
-         "indépendante du dashboard. Dès qu'une mesure de machine est envoyée, ce service recalcule à la volée "
-         "les indicateurs temporels (4h/24h), applique exactement le même pipeline de préparation que celui "
-         "utilisé à l'entraînement, puis renvoie en quelques millisecondes la probabilité de panne et la "
-         "décision de maintenance. Le modèle est chargé depuis le registre <strong>MLflow</strong> ; en cas "
-         "d'indisponibilité de celui-ci, l'API bascule automatiquement sur une copie locale du modèle pour "
-         "garantir une continuité de service."
+        (
+            "Moteur de calcul",
+            C["green"],
+            "Une fois entraîné, le modèle est exposé via une API web (<strong>FastAPI</strong>) ultra-rapide, "
+            "indépendante du dashboard. Dès qu'une mesure de machine est envoyée, ce service recalcule à la volée "
+            "les indicateurs temporels (4h/24h), applique exactement le même pipeline de préparation que celui "
+            "utilisé à l'entraînement, puis renvoie en quelques millisecondes la probabilité de panne et la "
+            "décision de maintenance. Le modèle est chargé depuis le registre <strong>MLflow</strong> ; en cas "
+            "d'indisponibilité de celui-ci, l'API bascule automatiquement sur une copie locale du modèle pour "
+            "garantir une continuité de service.",
         ),
-
-        ("Interface", C["blue"],
-         "Le dashboard final donne une vue d'ensemble du parc des 30 machines avec leurs alertes en temps réel, "
-         "un suivi historique détaillé par machine et des indicateurs de coût liés aux pannes (production "
-         "perdue, pièces, matière gâchée). Le risque affiché pour une machine correspond toujours à la "
-         "probabilité de panne prévisible <strong>dans les 5 prochains jours</strong> ; le sélecteur 24h/7j/30j "
-         "ne change que la période d'historique consultée pour repérer le pic de risque, jamais l'horizon de "
-         "prédiction lui-même. L'affichage reste instantané car <strong>Streamlit</strong> interroge directement "
-         "<strong>DuckDB</strong> avec des requêtes optimisées en colonnes."
+        (
+            "Interface",
+            C["blue"],
+            "Le dashboard final donne une vue d'ensemble du parc des 30 machines avec leurs alertes en temps réel, "
+            "un suivi historique détaillé par machine et des indicateurs de coût liés aux pannes (production "
+            "perdue, pièces, matière gâchée). Le risque affiché pour une machine correspond toujours à la "
+            "probabilité de panne prévisible <strong>dans les 5 prochains jours</strong> ; le sélecteur 24h/7j/30j "
+            "ne change que la période d'historique consultée pour repérer le pic de risque, jamais l'horizon de "
+            "prédiction lui-même. L'affichage reste instantané car <strong>Streamlit</strong> interroge directement "
+            "<strong>DuckDB</strong> avec des requêtes optimisées en colonnes.",
         ),
     ]
 

@@ -60,7 +60,8 @@ def render(C: dict) -> None:
     st.markdown("<br>", unsafe_allow_html=True)
 
     st.markdown(
-        f"<p style='color:{C['muted']};font-size:1.3rem;font-weight:660;letter-spacing:0;margin:0;'>Pannes par type de machine · {sel_period}</p>",
+        f"<p style='color:{C['muted']};font-size:1.3rem;font-weight:660;"
+        f"letter-spacing:0;margin:0;'>Pannes par type de machine · {sel_period}</p>",
         unsafe_allow_html=True,
     )
     df_fail = q_failures_by_type_cause_period(date_from, date_to)
@@ -107,12 +108,13 @@ def render(C: dict) -> None:
         xaxis=dict(**plot_axis(C), title=""),
         yaxis=dict(**plot_axis(C), title="Pannes"),
     )
-    st.plotly_chart(fig_bar, width='stretch', config={"displayModeBar": False})
+    st.plotly_chart(fig_bar, width="stretch", config={"displayModeBar": False})
 
     st.markdown("<br>", unsafe_allow_html=True)
 
     st.markdown(
-        f"<p style='color:{C['muted']};font-size:1.3rem;font-weight:660;letter-spacing:0;margin:0;'>Coût des pannes · {sel_period}</p>",
+        f"<p style='color:{C['muted']};font-size:1.3rem;font-weight:660;"
+        f"letter-spacing:0;margin:0;'>Coût des pannes · {sel_period}</p>",
         unsafe_allow_html=True,
     )
     df_timeline = q_cost_timeline(date_from, date_to)
@@ -121,20 +123,22 @@ def render(C: dict) -> None:
         st.caption("Aucune panne sur la période.")
     else:
         fig_cost = go.Figure()
-        fig_cost.add_trace(go.Scatter(
-            x=df_timeline["period"],
-            y=df_timeline["cost"],
-            name="Coût",
-            mode="lines+markers",
-            line=dict(color=C["red"], width=2, shape="spline"),
-            marker=dict(size=6, color=C["red"]),
-            fill="tozeroy",
-            fillcolor=rgba(C["red"], 0.08),
-            hovertemplate="%{x|%b %Y}<br>%{y:,.0f} FCFA<extra></extra>",
-        ))
+        fig_cost.add_trace(
+            go.Scatter(
+                x=df_timeline["period"],
+                y=df_timeline["cost"],
+                name="Coût",
+                mode="lines+markers",
+                line=dict(color=C["red"], width=2, shape="spline"),
+                marker=dict(size=6, color=C["red"]),
+                fill="tozeroy",
+                fillcolor=rgba(C["red"], 0.08),
+                hovertemplate="%{x|%b %Y}<br>%{y:,.0f} FCFA<extra></extra>",
+            )
+        )
         fig_cost.update_layout(
             **plot_layout(C, height=260, plot_bgcolor="rgba(0,0,0,0)", showlegend=False),
             xaxis=dict(**plot_axis(C)),
             yaxis=dict(**plot_axis(C), title="Coût"),
         )
-        st.plotly_chart(fig_cost, width='stretch', config={"displayModeBar": False})
+        st.plotly_chart(fig_cost, width="stretch", config={"displayModeBar": False})

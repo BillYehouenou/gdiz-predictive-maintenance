@@ -1,7 +1,9 @@
 import pathlib
+
 import yaml
 
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
+
 
 def load_config(config_name: str = "config/config.yaml"):
     """Charge le fichier de configuration YAML."""

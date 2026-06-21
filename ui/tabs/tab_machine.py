@@ -59,12 +59,12 @@ def render(C: dict) -> None:
 
     # Métriques agrégées sur la fenêtre sélectionnée
     has_ts = len(df_ts) > 0
-    wear_max    = float(df_ts["tool_wear"].max())          if has_ts else snap["tool_wear"]
-    temp_max    = float(df_ts["process_temperature"].max()) if has_ts else snap["process_temperature"]
-    vibr_max    = float(df_ts["vibration"].max())          if has_ts else snap["vibration"]
-    vstab_min   = float(df_ts["voltage_stability"].min())  if has_ts else snap["voltage_stability"]
-    torque_max  = float(df_ts["torque"].max())             if has_ts else snap["torque"]
-    n_fail_period = int(df_ts["target"].sum())             if has_ts else 0
+    wear_max = float(df_ts["tool_wear"].max()) if has_ts else snap["tool_wear"]
+    temp_max = float(df_ts["process_temperature"].max()) if has_ts else snap["process_temperature"]
+    vibr_max = float(df_ts["vibration"].max()) if has_ts else snap["vibration"]
+    vstab_min = float(df_ts["voltage_stability"].min()) if has_ts else snap["voltage_stability"]
+    torque_max = float(df_ts["torque"].max()) if has_ts else snap["torque"]
+    n_fail_period = int(df_ts["target"].sum()) if has_ts else 0
 
     # Prédictions sur la série complète (enrichie temporellement)
     peak_prob: float = 0.0
@@ -112,7 +112,8 @@ def render(C: dict) -> None:
                 border:1px solid {p_color}35;
                 height:100%;box-sizing:border-box;'>
               <div style='font-size:.75rem;color:{C["faint"]};letter-spacing:.04em;'>RISQUE DE PANNE · ≤ 5 JOURS</div>
-              <div style='font-size:2.6rem;font-weight:700;color:{p_color};line-height:1.15;margin:.2rem 0;'>{disp_prob * 100:.1f}%</div>
+              <div style='font-size:2.6rem;font-weight:700;color:{p_color};
+                line-height:1.15;margin:.2rem 0;'>{disp_prob * 100:.1f}%</div>
               <div style='font-size:.85rem;color:{p_color};'>{p_label}</div>
               <div style='font-size:.68rem;color:{C["faint"]};margin-top:.3rem;'>pic sur les {_h} · {_peak_date}</div>
               <div style='font-size:.68rem;color:{C["faint"]};margin-top:.2rem;'>{_calib_note}</div>
@@ -148,27 +149,31 @@ def render(C: dict) -> None:
         fig = go.Figure()
 
         # Probabilité de panne — lissée avec spline
-        fig.add_trace(go.Scatter(
-            x=df_pred["timestamp"],
-            y=df_pred["failure_probability"] * 100,
-            name="Risque",
-            line=dict(color=C["red"], width=1.8, shape="spline"),
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=df_pred["timestamp"],
+                y=df_pred["failure_probability"] * 100,
+                name="Risque",
+                line=dict(color=C["red"], width=1.8, shape="spline"),
+            )
+        )
 
         # Marqueurs de pannes constatées
         failures = df_pred[df_pred["target"] == 1]
         if len(failures) > 0:
-            fig.add_trace(go.Scatter(
-                x=failures["timestamp"],
-                y=failures["failure_probability"] * 100,
-                mode="markers",
-                name="Panne constatée",
-                marker=dict(color=C["red"], size=9, symbol="x-thin", line=dict(width=2, color=C["red"])),
-            ))
+            fig.add_trace(
+                go.Scatter(
+                    x=failures["timestamp"],
+                    y=failures["failure_probability"] * 100,
+                    mode="markers",
+                    name="Panne constatée",
+                    marker=dict(color=C["red"], size=9, symbol="x-thin", line=dict(width=2, color=C["red"])),
+                )
+            )
 
         fig.update_layout(
             **plot_layout(C, height=300, plot_bgcolor="rgba(0,0,0,0)", showlegend=False),
             xaxis=dict(**plot_axis(C)),
             yaxis=dict(**plot_axis(C), title="Risque", range=[0, y_max]),
         )
-        st.plotly_chart(fig, width='stretch', config={"displayModeBar": False})
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})

@@ -1,6 +1,7 @@
 """Entrypoint d'entraînement — uv run python scripts/run_training.py"""
 
 from lightgbm import LGBMClassifier
+
 from src.dataloader import DataLoader
 from src.train import ModelPipeline
 
@@ -8,8 +9,7 @@ if __name__ == "__main__":
     dl = DataLoader()
     df = dl.load_raw_data()
 
-    # Calibré pour target_h120_predictable (cf. memory project_ml_stack) : sans
-    # class_weight (le rééquilibrage "balanced" dégradait le F2 sur ce label),
+    # Calibré pour target_h120_predictable : sans class_weight (le rééquilibrage "balanced" dégradait le F2 sur ce label),
     # peu de feuilles + forte régularisation pour éviter l'overfit sur un signal rare.
     model = LGBMClassifier(
         n_estimators=150,

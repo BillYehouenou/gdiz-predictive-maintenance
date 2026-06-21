@@ -32,35 +32,23 @@ class SyntheticDataConfig:
     # Horizon temporel
     start_date = datetime(2024, 1, 1)
     duration_days = 730  # 2 ans — capture 2 cycles Harmattan + saisons des pluies
-    interval_minutes = 30  # Pas de 30 min : budget calcul × 6, réalisme thermique accru
+    interval_minutes = 30  # Pas de 30 min
 
     # Machines
     nb_machines = 30
     machine_ids = [f"GDIZ_TEX_M_{i:02d}" for i in range(1, nb_machines + 1)]
     machine_type_quality = ["L", "M", "H"]
 
-    # Usure — calibré pour ~4-8 pannes / machine / 2 ans (moyenne empirique : 6.6).
-    # Raisonnement : 0.0022 (base 5 min) × 6 = 0.013 théorique, mais les facteurs
-    # multiplicatifs poussière/tension (Harmattan : dust_factor ≈ 1.6-2.0,
-    # voltage_factor ≈ 1.3) portent l'incrément effectif moyen à ~0.008-0.010/pas.
-    # La valeur de base doit donc rester à 0.005 pour rester dans la plage cible.
+    # Usure — calibré pour ~4-8 pannes / machine / 2 ans (moyenne empirique : 6.6)
     base_wear_increment = 0.005
     initial_wear_range = (10, 70)
-    # Indicatif seulement (dashboard) — n'est plus un déclencheur dur dans la physique :
-    # le hasard de panne TWF est désormais un modèle de survie continu (cf. twf_weibull_*).
-    critical_wear_threshold = 85
 
-    # Fragilité individuelle (frailty model) — variabilité unité-à-unité de fabrication.
-    # Gamma(shape, 1/shape) → moyenne 1, CV = 1/sqrt(shape). shape=2.5 → CV ≈ 63 % :
-    # une machine fragile (frailty ≈ 2) peut casser dès ~70 % d'usure, une robuste
-    # (frailty ≈ 0.4) peut tenir jusqu'à 95-99 % sans casser sur l'horizon de 2 ans.
+    # Fragilité individuelle de chaque machine — variabilité unité-à-unité de fabrication
     frailty_shape = 2.5
 
     # TWF (Tool Wear Failure) — chaque machine tire son propre seuil de rupture
-    # (Beta(4,2) sur [65, 99] : asymétrique vers le haut, la plupart des machines
-    # tiennent bien, certaines cassent dès 65-75 %, d'autres tiennent jusqu'à 95-99 %).
-    # Le hasard ne devient significatif qu'à l'approche de CE seuil personnel — pas
-    # d'un seuil universel — via une rampe lisse (pas de cassure nette à un wear donné).
+    # La plupart des machines tiennent bien, certaines cassent dès 65-75 %, d'autres tiennent jusqu'à 95-99 %
+    # Le hasard ne devient significatif qu'à l'approche de CE seuil personnel — pas d'un seuil universel — via une rampe lisse
     twf_threshold_min = 65.0
     twf_threshold_range = 34.0  # seuils personnels dans [65, 99]
     twf_threshold_beta_a = 4.0
@@ -69,30 +57,27 @@ class SyntheticDataConfig:
     twf_ramp_exponent = 3.0
     twf_hazard_coeff = 0.05
 
-    # HDF (Heat Dissipation Failure) — surchauffe soutenue (moyenne glissante ~4h),
-    # pas un pic instantané. Hasard nul sous le seuil, quadratique au-delà.
+    # HDF (Heat Dissipation Failure) — surchauffe soutenue (moyenne glissante ~4h), pas un pic instantané
+    # Hasard nul sous le seuil, quadratique au-delà
     hdf_window_steps = 8  # 8 × 30 min = 4h
-    hdf_overheat_threshold = 38.0  # °C au-delà de l'ambiant en moyenne sur la fenêtre (≈ p99 — zone réellement anormale)
+    hdf_overheat_threshold = 38.0  # °C au-delà de l'ambiant en moyenne sur la fenêtre choisie
     hdf_hazard_coeff = 0.0004
 
-    # OSF (Overstrain Failure) — surcharge mécanique : couple élevé combiné à une
-    # usure déjà significative. wear_norm**3 supprime naturellement le hasard à
-    # usure faible sans seuil dur explicite.
+    # OSF (Overstrain Failure) — surcharge mécanique : couple élevé combiné à une usure déjà significative.
     osf_hazard_coeff = 0.00038
 
     # PWF (Power Failure) — instabilité électrique routinière hors coupure franche
-    # (le choc de redémarrage après blackout est géré séparément, cf. blackout_failure_sensitivity).
+    # (le choc de redémarrage après blackout est géré séparément, cf. blackout_failure_sensitivity)
     pwf_hazard_coeff = 0.000024
 
-    # RNF (Random Failure) — risque résiduel irréductible, par construction sans
-    # précurseur (miroir du RNF d'AI4I 2020).
+    # RNF (Random Failure) — risque résiduel irréductible, par construction sans précurseur (miroir du RNF d'AI4I 2020)
     rnf_hazard_base = 0.000018
 
-    # Dérive thermique additionnelle due au frottement d'un outil usé.
+    # Dérive thermique additionnelle due au frottement d'un outil usé
     wear_heat_factor = 3.0  # °C additionnels max à usure = 100 %
 
     # Parts de pannes visées par cause — cibles de calibration, pas une garantie stricte
-    # (la réalisation dépend des coefficients ci-dessus, à vérifier empiriquement).
+    # (la réalisation dépend des coefficients ci-dessus, à vérifier empiriquement)
     failure_mode_shares = {"TWF": 0.40, "HDF": 0.20, "OSF": 0.15, "PWF": 0.20, "RNF": 0.05}
 
     # Thermique — inertie machine forte : 30 min ≈ 60 % du chemin vers T_cible
@@ -284,7 +269,14 @@ class ExogenousContextGenerator:
 class MachineStateEvolver:
     """Gère l'évolution d'état chronologique d'une machine (Dépendance physique N-1)."""
 
-    def __init__(self, machine_id: str, machine_type: str, df_global: pd.DataFrame, config: SyntheticDataConfig = None, override_params: dict = None):
+    def __init__(
+        self,
+        machine_id: str,
+        machine_type: str,
+        df_global: pd.DataFrame,
+        config: SyntheticDataConfig = None,
+        override_params: dict = None,
+    ):
         self.machine_id = machine_id
         self.machine_type = machine_type
         self.df_global = df_global
@@ -438,7 +430,9 @@ class MachineStateEvolver:
         # robustes. La fragilité (self.frailty) module l'intensité de la rampe.
         band = self.config.twf_ramp_band
         excess = max(0.0, (wear - (self.twf_threshold - band)) / band)
-        twf = self.config.twf_hazard_coeff * (excess**self.config.twf_ramp_exponent) * self.frailty * self.params["wear_multiplier"]
+        twf = (
+            self.config.twf_hazard_coeff * (excess**self.config.twf_ramp_exponent) * self.frailty * self.params["wear_multiplier"]
+        )
 
         # HDF — surchauffe soutenue sur une fenêtre glissante de ~4h, pas un pic
         # instantané : la dissipation thermique insuffisante est un phénomène lent.
@@ -508,7 +502,7 @@ class MachineStateEvolver:
             if idx < maintenance_end_idx:
                 continue
 
-            # B. Interception des délestages et coupures de courant
+            # Interception des délestages et coupures de courant
             if self.power_loss_array[idx] == 1:
                 self.rotational_speed[idx] = 0.0
                 self.torque[idx] = 0.0
@@ -530,7 +524,7 @@ class MachineStateEvolver:
 
             restarted_from_blackout = self.power_loss_array[idx - 1] == 1
 
-            # C. Arrêts planifiés (week-end, activité nulle)
+            # Arrêts planifiés (week-end, activité nulle)
             if self.activity_level_array[idx] == 0.0:
                 self.rotational_speed[idx] = 0.0
                 self.torque[idx] = 0.0
@@ -542,7 +536,7 @@ class MachineStateEvolver:
                 self.process_temperature[idx] = alpha * self.ambient_array[idx] + (1 - alpha) * self.process_temperature[idx - 1]
                 continue
 
-            # D. Régime de fonctionnement normal
+            # Régime de fonctionnement normal
             self._update_physics(idx, restarted_from_blackout=restarted_from_blackout)
 
             hazards = self._calculate_failure_hazards(idx)
