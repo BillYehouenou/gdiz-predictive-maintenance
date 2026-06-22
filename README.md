@@ -20,7 +20,9 @@ src/features.py  (rolling temporel)  src/preprocessor.py  (OneHotEncoder + Colum
         │                                     │
         └─────────────────┬───────────────────┘
                           │
-              src/train.py  +  MLflow Registry
+              src/train.py  +  MLflow Registry (alias @champion)
+                          │     ↳ promotion gatée : la nouvelle version ne remplace le
+                          │       @champion que si elle l'égale ou le dépasse sur F2
                           │
               models/model_pipeline.pkl + models/optimal_threshold.json
                           │
@@ -40,7 +42,7 @@ Prérequis : Python 3.11+, uv
 ```bash
 # Clone et installe les dépendances
 git clone <url-du-repo>
-cd mlops-predictive-maintenance
+cd gdiz-predictive-maintenance
 uv sync --frozen
 
 # Génère le dataset synthétique (une seule fois)
@@ -59,10 +61,10 @@ make serve ; make mlflow-ui
 
 ## Déploiement Docker
 
-La stack Compose orchestre les trois services dans des conteneurs — serveur MLflow, API FastAPI et dashboard Streamlit — avec un séquençage par health-gate.
+La stack Compose orchestre trois services dans des conteneurs — avec un séquençage par health-gate et exécution en utilisateur non-root :
 
 ```bash
-# Placer les artefacts pré-entraînés dans models/ et les données dans data/ avant le build.[]
+# Placer les artefacts pré-entraînés dans models/ et les données dans data/ avant le build.
 docker compose up --build -d # Démarre les services en arrière-plan
 docker compose down # Arrête et supprime les conteneurs
 ```
@@ -73,18 +75,21 @@ L'image Docker ne contient ni données d'entraînement ni artefacts de modèle.
 ## Qualité du code
 
 ```bash
-make lint     # ruff check + vérification du formatage
-make test     # pytest avec couverture des scripts et endpoints FastAPI
-make check    # lint + tests — gate CI avant merge
+make lint         # ruff check + format --check + mypy (src/, app/)
+make test         # pytest avec couverture (≈68 % sur src/ + app/)
+make check        # lint + tests — gate CI avant merge
+make check-drift  # compare la distribution des features en prod à l'entraînement (KS-test)
 ```
 
-Les tests couvrent : chargement du modèle, contrat de sortie des prédictions, robustesse aux colonnes manquantes, détection de surchauffe et tous les endpoints FastAPI.
+Les tests couvrent : chargement du modèle, contrat de sortie des prédictions, robustesse aux colonnes manquantes, détection de surchauffe, tous les endpoints FastAPI, le split temporel et le seuil F2 d'entraînement, la gate de promotion `@champion` et le chargement des données brutes.
+
+*GitHub Actions* : lint + mypy - tests avec génération de données et entraînement à la volée (mis en cache entre les runs) - build Docker S'exécute sur chaque push/PR vers la branche main.
 
 
 ## Structure du projet
 
 ```
-mlops-predictive-maintenance/
+gdiz-predictive-maintenance/
 ├── app/                    # Application FastAPI
 │   ├── main.py             # Routes : /health, /api/v1/predict
 │   ├── schemas.py          # Modèles Pydantic entrée/sortie
@@ -93,15 +98,16 @@ mlops-predictive-maintenance/
 ├── dashboard.py            # Point d'entrée Streamlit
 ├── scripts/
 │   ├── generate_synthetic_data.py
-│   └── run_training.py
+│   ├── run_training.py
+│   └── check_drift.py      # Détection de drift (KS-test) — features prod vs entraînement
 ├── src/                    # Bibliothèque ML principale
 │   ├── configloader.py
 │   ├── dataloader.py
 │   ├── features.py         # Feature engineering temporel (entraînement + inférence)
 │   ├── preprocessor.py     # Wrapper sklearn ColumnTransformer
-│   ├── train.py            # Pipeline d'entraînement MLflow complet
+│   ├── train.py            # Pipeline d'entraînement MLflow + gate de promotion @champion
 │   └── xpredict.py         # Predictor avec normalisation logit
-├── tests/                  # Suite pytest 
+├── tests/                  # Suite pytest
 ├── ui/                     # Modules UI Streamlit
 │   ├── constants.py        # Palettes, constantes coûts métier, maps de périodes
 │   ├── helpers.py          # Helpers mise en page graphiques, utilitaires de formatage

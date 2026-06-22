@@ -18,7 +18,7 @@ DEFAULT_THRESHOLD = 0.5
 
 
 class Predictor:
-    def __init__(self, use_mlflow: bool = True, model_name: str = None):
+    def __init__(self, use_mlflow: bool = True, model_name: str | None = None):
         self.use_mlflow = use_mlflow
         config = load_config()
         tracking_uri = os.getenv("MLFLOW_TRACKING_URI", config["mlflow"]["tracking_uri"])
@@ -32,7 +32,7 @@ class Predictor:
     def _load_model(self):
         if self.use_mlflow:
             try:
-                model_uri = f"models:/{self.model_name}/latest"
+                model_uri = f"models:/{self.model_name}@champion"
                 logger.info(f"Chargement depuis MLflow : {model_uri}")
                 return mlflow.sklearn.load_model(model_uri)
             except Exception as e:

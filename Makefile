@@ -2,9 +2,9 @@
 PROJECT_ROOT := $(shell pwd)
 PYTHONPATH   := $(PROJECT_ROOT)
 UV_RUN       := PYTHONPATH=$(PYTHONPATH) uv run
-PORT         ?= 8502
+PORT         ?= 8501
 
-.PHONY: help install install-dev generate-data train pipeline \
+.PHONY: help install install-dev generate-data train pipeline check-drift \
         check lint format test \
         serve dashboard mlflow-ui \
         docker-up docker-down \
@@ -33,10 +33,14 @@ train:  # Entraîne le modèle LightGBM et enregistre l'expérience MLflow
 
 pipeline: generate-data train  # Régénère les données puis entraîne le modèle (CI complet)
 
+check-drift:  # Compare la distribution des features en production à celle de l'entraînement (KS-test)
+	$(UV_RUN) python scripts/check_drift.py
+
 # Qualité du code 
-lint:  # vérifie le style du code (ruff)
+lint:  # vérifie le style et les types (ruff + mypy)
 	$(UV_RUN) ruff check .
 	$(UV_RUN) ruff format --check .
+	$(UV_RUN) mypy src app
 
 format:  # formate le code automatiquement (ruff)
 	$(UV_RUN) ruff format .
@@ -51,7 +55,7 @@ check: lint test  # lint + tests — gate CI avant merge
 serve:  # Démarre l'API FastAPI en mode développement (port 8000)
 	$(UV_RUN) uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-dashboard:  # Démarre le dashboard Streamlit (port $(PORT), surchargeable avec PORT=8503)
+dashboard:  # Démarre le dashboard Streamlit (port $(PORT), surchargeable avec PORT=8502)
 	$(UV_RUN) streamlit run dashboard.py --server.port $(PORT)
 
 mlflow-ui:  # Ouvre l'UI MLflow en lecture (port 5000)

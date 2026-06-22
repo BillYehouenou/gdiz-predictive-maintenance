@@ -1,5 +1,5 @@
 [project]
-name = "mlops-predictive-maintenance"
+name = "gdiz-predictive-maintenance"
 version = "0.1.0"
 description = "Plateforme MLOps de maintenance prédictive pour les machines textiles de la GDIZ Bénin"
 readme = "README.md"
@@ -17,12 +17,14 @@ dependencies = [
     "scikit-learn>=1.8.0",
     "streamlit>=1.35.0",
     "uvicorn>=0.46.0",
+    "scipy>=1.17.1",
 ]
 
 [dependency-groups]
 dev = [
     "httpx>=0.28.0",
     "matplotlib>=3.10.9",
+    "mypy>=2.1.0",
     "pytest>=9.0.3",
     "pytest-cov>=6.0.0",
     "ruff>=0.11.0",
@@ -39,3 +41,7 @@ select = ["E", "F", "I"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.mypy]
+ignore_missing_imports = true
+explicit_package_bases = true

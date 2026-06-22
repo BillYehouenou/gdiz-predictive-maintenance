@@ -32,6 +32,9 @@ jobs:
       - name: Linting (ruff check)
         run: uv run ruff check .
 
+      - name: Vérification des types (mypy)
+        run: uv run mypy src app
+
   test:
     name: Tests & Coverage
     runs-on: ubuntu-latest
@@ -46,6 +49,26 @@ jobs:
 
       - name: Installer les dépendances (prod + dev)
         run: uv sync --frozen --group dev
+
+      - name: Cache des artefacts du pipeline ML (données + modèle)
+        id: cache-pipeline
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/raw
+            models
+            mlflow.db
+            mlruns
+          key: pipeline-${{ hashFiles('scripts/generate_synthetic_data.py', 'scripts/run_training.py', 'src/**/*.py', 'config/config.yaml') }}
+
+      - name: Générer les données et entraîner le modèle (si le cache ne correspond pas)
+        if: steps.cache-pipeline.outputs.cache-hit != 'true'
+        env:
+          MLFLOW_TRACKING_URI: sqlite:///mlflow.db
+          PYTHONPATH: .
+        run: |
+          uv run python scripts/generate_synthetic_data.py
+          uv run python scripts/run_training.py
 
       - name: Lancer les tests avec couverture
         env:

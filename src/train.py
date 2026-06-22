@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 
 SPLIT_DATE = "2025-01-01"
 THRESHOLD_PATH = "models/optimal_threshold.json"
+CHAMPION_ALIAS = "champion"
+PROMOTION_METRIC = "f2_score"
 
 
 class ModelPipeline:
@@ -37,6 +39,7 @@ class ModelPipeline:
         self.features_cols = self.config["dataset"]["features"]
         tracking_uri = os.getenv("MLFLOW_TRACKING_URI", self.config["mlflow"]["tracking_uri"])
         mlflow.set_tracking_uri(tracking_uri)
+        self.client = mlflow.MlflowClient()
 
     def _temporal_split(self, df: pd.DataFrame):
         """Split temporel : train sur 2024, test sur 2025. Évite le data leakage."""
@@ -84,6 +87,32 @@ class ModelPipeline:
         except AttributeError:
             logger.warning("feature_importances_ non disponible pour ce modèle.")
 
+    def _promote_if_better(self, model_name: str, new_version: str, new_score: float) -> bool:
+        """
+        Gate de promotion : la nouvelle version ne devient '@champion' que si elle égale
+        ou dépasse le champion actuel sur PROMOTION_METRIC. Sans champion existant
+        (premier entraînement), la promotion est automatique. Évite qu'un ré-entraînement
+        dégradé ne remplace silencieusement le modèle servi en production.
+        """
+        try:
+            champion = self.client.get_model_version_by_alias(model_name, CHAMPION_ALIAS)
+            champion_score = self.client.get_run(champion.run_id).data.metrics.get(PROMOTION_METRIC, -1.0)
+        except Exception:
+            champion, champion_score = None, -1.0
+
+        if new_score >= champion_score:
+            self.client.set_registered_model_alias(model_name, CHAMPION_ALIAS, new_version)
+            logger.info(
+                f"Version {new_version} promue @{CHAMPION_ALIAS} ({PROMOTION_METRIC}={new_score:.4f} >= {champion_score:.4f})"
+            )
+            return True
+
+        logger.warning(
+            f"Version {new_version} ({PROMOTION_METRIC}={new_score:.4f}) n'a pas dépassé le champion actuel "
+            f"(version {champion.version}, {PROMOTION_METRIC}={champion_score:.4f}) — champion conservé."
+        )
+        return False
+
     def run_training(self, model, train_df: pd.DataFrame, model_name: str, hyperparameters: dict):
         """Pipeline d'entraînement complet : split temporel - fit - métriques - seuil F2 - MLflow."""
         mlflow.set_experiment(self.config["mlflow"]["experiment_name"])
@@ -128,19 +157,23 @@ class ModelPipeline:
             self._log_confusion_matrix(y_test.values, y_pred)
             self._log_feature_importances(full_pipeline)
 
-            mlflow.sklearn.log_model(
+            model_info = mlflow.sklearn.log_model(
                 sk_model=full_pipeline,
                 name="model_pipeline",
                 registered_model_name=model_name,
             )
 
-            os.makedirs("models", exist_ok=True)
-            joblib.dump(full_pipeline, "models/model_pipeline.pkl")
-            with open(THRESHOLD_PATH, "w") as f:
-                json.dump({"threshold": optimal_threshold}, f)
+            promoted = self._promote_if_better(model_name, model_info.registered_model_version, metrics[PROMOTION_METRIC])
 
-            logger.info("Pipeline sauvegardé : models/model_pipeline.pkl")
-            logger.info(f"Seuil optimal sauvegardé : {THRESHOLD_PATH}")
+            if promoted:
+                os.makedirs("models", exist_ok=True)
+                joblib.dump(full_pipeline, "models/model_pipeline.pkl")
+                with open(THRESHOLD_PATH, "w") as f:
+                    json.dump({"threshold": optimal_threshold}, f)
+                logger.info("Pipeline sauvegardé : models/model_pipeline.pkl")
+                logger.info(f"Seuil optimal sauvegardé : {THRESHOLD_PATH}")
+            else:
+                logger.info("Fallback local non mis à jour (version non promue).")
 
             for name, val in metrics.items():
                 print(f"{name}: {val:.4f}")

@@ -1,7 +1,11 @@
+import logging
+
 from fastapi import APIRouter, FastAPI, HTTPException
 
 from app.schemas import MachineData, PredictionResponse
 from app.utils import process_prediction
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="GDIZ Maintenance Prédictive API",
@@ -24,8 +28,9 @@ def predict(data: MachineData):
     try:
         result = process_prediction(data.model_dump())
         return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("Erreur lors du traitement de la prédiction")
+        raise HTTPException(status_code=500, detail="Erreur interne lors de la prédiction.")
 
 
 app.include_router(router)

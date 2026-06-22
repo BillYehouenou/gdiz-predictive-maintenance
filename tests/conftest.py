@@ -28,7 +28,7 @@ def machine_normale():
             "voltage_stability": [82.0],
             "rain_flag": [1],
             "power_loss_indicator": [0],
-            "benin_season": [2],
+            "benin_season": [0],
             "machine_type": ["H"],
             # Features temporelles : machine stable, aucune variation sur 24h
             "tool_wear_delta_24h": [0.5],
