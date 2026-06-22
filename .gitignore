@@ -2,6 +2,7 @@
 .venv/
 __pycache__/
 .env
+.mypy_cache/
 
 # Caches d'outils de test et qualité de code
 .pytest_cache/

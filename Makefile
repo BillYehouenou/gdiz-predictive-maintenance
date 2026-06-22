@@ -79,4 +79,5 @@ clean-hard: clean  # Supprime aussi les artefacts générés (modèles, MLflow, 
 	rm -f mlflow.db
 	rm -rf mlruns
 	rm -f data/raw/*.parquet
+	rm -f data/raw/*.db
 	@echo "Artefacts supprimés — relancer 'make pipeline' pour régénérer"
