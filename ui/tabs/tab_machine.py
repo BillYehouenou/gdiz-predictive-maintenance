@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.features import FENETRE_24H, enrichir_serie_inference
+from src.features import FENETRE_120H, enrichir_serie_inference
 from ui.constants import FEAT_COLS, STEPS_MAP
 from ui.helpers import axe_graphique, disposition_graphique
 from ui.queries import obtenir_predicteur, q_dernier_releve_machine, q_liste_machines, q_serie_complete_machine
@@ -16,10 +16,10 @@ def _predire_serie(predicteur, df_serie_tampon: pd.DataFrame, display_steps: int
     """
     Enrichit temporellement puis prédit sur toute la série, puis ne garde que les
     `display_steps` dernières lignes. `df_serie_tampon` doit contenir display_steps +
-    FENETRE_24H lignes : sans ce tampon, les features glissantes 24h des premières
-    lignes de la fenêtre affichée seraient calculées avec un historique tronqué
-    (ex. usure_outil_delta_24h=0 par défaut faute de point 24h en arrière disponible),
-    ce qui fausse la probabilité affichée selon la fenêtre choisie (24h/7j/30j).
+    FENETRE_120H lignes : sans ce tampon, les features glissantes (jusqu'à 120h) des
+    premières lignes de la fenêtre affichée seraient calculées avec un historique
+    tronqué (ex. usure_outil_delta_24h=0 par défaut faute de point 24h en arrière
+    disponible), ce qui fausse la probabilité affichée selon la fenêtre choisie (24h/7j/30j).
     """
     df_enriched = enrichir_serie_inference(df_serie_tampon)
     feat_df = df_enriched[[k for k in FEAT_COLS if k in df_enriched.columns]].dropna()
@@ -75,9 +75,9 @@ def afficher(C: dict) -> None:
 
     try:
         predicteur = obtenir_predicteur()
-        # +FENETRE_24H lignes de tampon : sans elles, les features glissantes 24h des
-        # premières lignes de la fenêtre affichée seraient tronquées (cf. _predire_serie).
-        df_serie_tampon = q_serie_complete_machine(id_selectionne, steps + FENETRE_24H)
+        # +FENETRE_120H lignes de tampon : sans elles, les features glissantes (jusqu'à
+        # 120h) des premières lignes de la fenêtre affichée seraient tronquées (cf. _predire_serie).
+        df_serie_tampon = q_serie_complete_machine(id_selectionne, steps + FENETRE_120H)
         df_predictions = _predire_serie(predicteur, df_serie_tampon, steps)
         if len(df_predictions) > 0:
             peak_idx = int(df_predictions["probabilite_panne"].idxmax())

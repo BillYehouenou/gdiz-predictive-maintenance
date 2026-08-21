@@ -24,7 +24,11 @@ predicteur = Predicteur(utiliser_mlflow=True)
 
 
 def _recuperer_historique_machine(id_machine: str) -> pd.DataFrame:
-    """Charge les 48 dernières lignes d'une machine depuis DuckDB (ordre ASC)."""
+    """
+    Charge les 240 dernières lignes d'une machine depuis DuckDB (ordre ASC, 120h) —
+    élargi depuis 48/24h pour alimenter les fenêtres 72h/120h de src/features.py
+    (auparavant hors de portée du chemin API, cf. docs/model-decisions.md).
+    """
     try:
         with duckdb.connect(str(_DB_PATH), read_only=True) as conn:
             df = conn.execute(
@@ -32,7 +36,7 @@ def _recuperer_historique_machine(id_machine: str) -> pd.DataFrame:
                            couple, temperature_ambiante
                     FROM {_TABLE}
                     WHERE id_machine = ?
-                    ORDER BY timestamp DESC LIMIT 48""",
+                    ORDER BY timestamp DESC LIMIT 240""",
                 [id_machine],
             ).fetchdf()
         return df.iloc[::-1].reset_index(drop=True)
@@ -97,25 +101,38 @@ def traiter_prediction(dict_donnees_machine: dict) -> dict:
         features = enrichir_point_inference(features, history_df)
     else:
         # Pas d'historique disponible - valeurs neutres (pas d'accélération détectée)
-        vibr = float(features.get("vibration", 0.0))
-        temp = float(features.get("temperature_process", 0.0))
-        ambient = float(features.get("temperature_ambiante", 0.0))
-        dust = float(features.get("concentration_poussiere", 0.0))
+        vibration = float(features.get("vibration", 0.0))
+        temperature = float(features.get("temperature_process", 0.0))
+        ambiante = float(features.get("temperature_ambiante", 0.0))
+        poussiere = float(features.get("concentration_poussiere", 0.0))
         couple = float(features.get("couple", 0.0))
+        ecart_thermique = temperature - ambiante
         features["usure_outil_delta_24h"] = 0.0
         features["usure_outil_delta_4h"] = 0.0
-        features["vibration_max_24h"] = vibr
-        features["vibration_moyenne_24h"] = vibr
+        features["vibration_max_24h"] = vibration
+        features["vibration_moyenne_24h"] = vibration
         features["vibration_ecart_type_24h"] = 0.0
         features["vibration_delta_4h"] = 0.0
-        features["temperature_process_max_24h"] = temp
-        features["temperature_process_moyenne_24h"] = temp
+        features["vibration_moyenne_72h"] = vibration
+        features["vibration_ecart_type_72h"] = 0.0
+        features["vibration_moyenne_120h"] = vibration
+        features["temperature_process_max_24h"] = temperature
+        features["temperature_process_moyenne_24h"] = temperature
         features["temperature_process_delta_4h"] = 0.0
-        features["ecart_thermique"] = temp - ambient
-        features["ecart_thermique_max_24h"] = temp - ambient
-        features["poussiere_moyenne_24h"] = dust
-        features["poussiere_max_24h"] = dust
+        features["temperature_process_moyenne_72h"] = temperature
+        features["temperature_process_moyenne_120h"] = temperature
+        features["ecart_thermique"] = ecart_thermique
+        features["ecart_thermique_max_24h"] = ecart_thermique
+        features["ecart_thermique_moyenne_72h"] = ecart_thermique
+        features["ecart_thermique_moyenne_120h"] = ecart_thermique
+        features["pente_ecart_thermique_72h"] = 0.0
+        features["pente_vibration_72h"] = 0.0
+        features["poussiere_moyenne_24h"] = poussiere
+        features["poussiere_max_24h"] = poussiere
+        features["poussiere_moyenne_72h"] = poussiere
+        features["poussiere_moyenne_120h"] = poussiere
         features["couple_max_24h"] = couple
+        features["ratio_vibration_couple"] = vibration / max(couple, 1.0)
 
     df = pd.DataFrame([features])
     results = predicteur.predire(df)

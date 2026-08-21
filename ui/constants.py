@@ -17,7 +17,9 @@ FEAT_COLS: list[str] = [
     "indicateur_coupure",
     "niveau_tension",
     "stabilite_tension",
-    # Features temporelles — calculées par enrichir_serie_inference()
+    # Features temporelles — calculées par enrichir_serie_inference(), doit rester
+    # synchronisé avec config/config.yaml::jeu_donnees.features (une divergence ici
+    # envoie un jeu de features incomplet au modèle, cf. docs/model-decisions.md).
     "usure_outil_delta_24h",
     "usure_outil_delta_4h",
     "vibration_max_24h",
@@ -27,6 +29,11 @@ FEAT_COLS: list[str] = [
     "temperature_process_max_24h",
     "temperature_process_moyenne_24h",
     "temperature_process_delta_4h",
+    "ecart_thermique",
+    "ecart_thermique_max_24h",
+    "poussiere_moyenne_24h",
+    "poussiere_max_24h",
+    "couple_max_24h",
 ]
 
 # ─── COÛTS DE MAINTENANCE — constantes métier GDIZ Bénin ─────────────────────

@@ -14,6 +14,7 @@ Document vivant, même esprit que `docs/data-generation.md` et `docs/experiments
 - [Pourquoi HDF/OSF sont moins bien détectés que TWF, et ce qui a été tenté](#pourquoi-hdfosf-sont-moins-bien-détectés-que-twf-et-ce-qui-a-été-tenté)
 - [Ré-audit de la variable cible et de l'architecture — trois hypothèses testées, trois échecs](#ré-audit-de-la-variable-cible-et-de-larchitecture--trois-hypothèses-testées-trois-échecs)
 - [Étage 2 : diagnostic de cause (point 14)](#étage-2--diagnostic-de-cause-point-14)
+- [Fenêtres 72h/120h, pentes et ratio — trois idées testées, aucune retenue](#fenêtres-72h120h-pentes-et-ratio--trois-idées-testées-aucune-retenue)
 
 ---
 
@@ -202,3 +203,33 @@ L'accuracy test (64,4 %) est dans l'ordre de grandeur cité par la roadmap ("~70
 2. **OSF quasi non diagnostiqué en validation** (5 % de recall — le classifieur ne le reconnaît presque jamais) — la même rareté d'exemples qui limite la détection (hypothèse 1 ci-dessus) limite aussi le diagnostic.
 
 **Décision** : gardé comme script disponible et testé (`scripts/run_cause_classifier.py`), **pas intégré au dashboard/API**. L'intégrer maintenant afficherait une "cause probable" fiable une fois sur deux au mieux, et quasiment jamais pour OSF — ce serait pire que ne rien afficher. Point 33 (dashboard, phase ultérieure) est le bon moment pour décider comment présenter ce diagnostic avec ses limites, une fois qu'il aura gagné en fiabilité (plus de données) ou qu'une présentation honnête de l'incertitude aura été conçue.
+
+---
+
+## Fenêtres 72h/120h, pentes et ratio — trois idées testées, aucune retenue
+
+Trois pistes de feature engineering ont été testées pour tenter d'améliorer la détection OSF/HDF au-delà du plateau documenté ci-dessus (OSF 53,3 %, HDF 71,4 %) : moyennes/écarts-types glissants à 72h et 120h (en plus du 24h déjà en place), pentes (vitesse d'accumulation) et un ratio vibration/couple censé isoler l'usure mécanique de la charge de production. Les trois ont été implémentées dans les 3 chemins de calcul habituels (`enrichir_df_entrainement`, `enrichir_serie_inference`, `enrichir_point_inference` — ce dernier a nécessité d'élargir l'historique chargé par l'API de 48 à 240 lignes, `app/utils.py::_recuperer_historique_machine`), puis mesurées avant d'être activées dans `config/config.yaml`.
+
+**Résultat global (12 nouvelles features actives, seuil choisi sur validation)** :
+
+| Configuration | Recall événementiel (test) | FA/machine/jour | TWF | HDF | OSF |
+|---|---|---|---|---|---|
+| **Champion actuel (14 features temporelles)** | **80,9 %** | 0,211 | 100 % | 71,4 % | **53,3 %** |
+| + 12 features (72h/120h + pentes + ratio) | 77,4 % | 0,140 | 100 % | 71,4 % | 40,0 % |
+
+Le gate de promotion (`_promouvoir_si_meilleur`) a refusé cette version — correctement, la baisse est réelle et mesurée sur le test, pas un artefact de seuil.
+
+**Diagnostic — importances de features** : les moyennes 72h/120h (`poussiere_moyenne_120h`, `vibration_moyenne_120h`, `vibration_ecart_type_72h`) prennent les 3 premières places d'importance après `usure_outil`, au prix de `couple_max_24h` — le levier qui avait mesurablement amélioré OSF dans la section précédente (+10 pts) — dont l'importance chute de 152 à 75. Interprétation : ces nouvelles moyennes sont des versions plus lisses (donc plus faciles à découper pour l'arbre) du signal de dégradation général déjà couvert par les fenêtres 24h existantes — elles n'apportent pas d'information nouvelle sur OSF spécifiquement, mais consomment du budget de split que LightGBM aurait sinon alloué à `couple_max_24h`. Cohérent avec la conclusion déjà établie dans le ré-audit ci-dessus : **OSF est limité par la rareté des exemples (23-30 pannes), pas par un manque de features** — ajouter des features corrélées à un signal déjà présent dilue plutôt qu'il n'aide, quand le modèle n'a pas assez d'exemples positifs pour apprendre à les pondérer correctement.
+
+**Ablation — isoler chaque idée** (retire les 9 moyennes 72h/120h, ne garde que pentes/ratio, sur la config 14+ratio+pentes) :
+
+| Configuration | Recall événementiel (test) | OSF | Note |
+|---|---|---|---|
+| 14 features + ratio + pentes (sans les moyennes 72h/120h) | 80,0 % | 43,3 % | proche du champion en global, OSF toujours en retrait |
+| 14 features + pentes seules (sans ratio) | 77,4 % | — | pas d'amélioration en retirant le ratio |
+
+Le ratio vibration/couple ressort avec une **importance de 0 dans toutes les configurations testées** — LightGBM (modèle à base d'arbres) n'en a pas besoin : un arbre peut déjà apprendre la même interaction ("vibration élevée ET couple faible") via deux splits successifs sur les variables séparées, sans qu'un ratio pré-calculé n'apporte d'information supplémentaire. C'est une limite connue des ratios pour les modèles à base d'arbres (utiles surtout pour les modèles linéaires) — l'intuition physique derrière l'idée reste valide, mais LightGBM n'en tire aucun bénéfice mesurable.
+
+`pente_vibration_72h` (vitesse d'accumulation du broutement) est la seule des 12 nouvelles features à ressortir avec une importance notable (108, dans le top 10) dans la config "ratio + pentes" — mais son effet net sur le recall global reste dans le bruit de mesure de ce projet (46 pannes en validation, 115 en test — cf. `docs/experiments.md`), pas un gain confirmé.
+
+**Décision** : `config/config.yaml` reste sur les 14 features temporelles déjà validées — aucune des trois idées testées n'a battu le champion actuel sur le recall événementiel. Le code des 12 nouvelles features reste disponible dans `src/features.py` (`VARIABLES_TEMPORELLES`, fenêtres `FENETRE_72H`/`FENETRE_120H`) et fonctionnel de bout en bout (dashboard, API avec historique élargi à 120h) — testé, mesuré, gardé pour une ré-évaluation future si le volume de données OSF augmente, mais pas activé par défaut. Même logique que les horizons différenciés par mode (section "Horizons différenciés") : un résultat négatif mesuré vaut mieux qu'un ajout non vérifié.
