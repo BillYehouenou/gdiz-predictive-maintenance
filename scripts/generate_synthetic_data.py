@@ -86,8 +86,29 @@ class SyntheticDataConfig:
     friction_temp_factor = 25.0
 
     # Électrique et environnement
-    nominal_voltage = 230.0
+    # 220V = norme béninoise (réseau CEB/SBEE), pas les 230V harmonisés européens.
+    nominal_voltage = 220.0
     voltage_variation_range = 0.15
+
+    # Température atelier de référence par mois (°C), ancrée mi-mois puis interpolée
+    # (voir generate_ambient_temperature) — calendrier bimodal réel du Sud-Bénin :
+    # pic chaud fév-mars, creux fin juillet-août (petite saison sèche, remontée
+    # d'eau froide atlantique), léger réchauffement sept-oct, Harmattan nov-mars.
+    # Cf. docs/data-generation.md pour le détail et les sources.
+    monthly_base_temp = {
+        1: 32.5,
+        2: 34.0,
+        3: 34.0,
+        4: 32.0,
+        5: 30.5,
+        6: 29.5,
+        7: 28.5,
+        8: 27.5,
+        9: 29.0,
+        10: 30.0,
+        11: 31.5,
+        12: 32.0,
+    }
 
     # Erreurs capteurs IoT
     missing_data_ratio = 0.02
@@ -136,29 +157,72 @@ class ExogenousContextGenerator:
         return np.clip(activity, 0.0, 1.0)
 
     def generate_benin_seasons(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
-        """Détermine la saison selon le calendrier du Sud-Bénin."""
+        """
+        Calendrier bimodal réel du Sud-Bénin (climat guinéen côtier) : deux saisons des
+        pluies et deux saisons sèches, pas le cycle unimodal du Bénin septentrional.
+            0 = grande saison des pluies    (mi-mars → mi-juillet)
+            1 = petite saison sèche         (mi-juillet → août) — la plus fraîche de l'année
+            2 = petite saison des pluies    (septembre → octobre)
+            3 = grande saison sèche/Harmattan (novembre → mi-mars)
+        Cf. docs/data-generation.md.
+        """
         months = timestamps.month.values
-        seasons = np.ones(len(timestamps), dtype=int)
-        rainy_months = [4, 5, 6, 7, 10]
-        seasons[np.isin(months, rainy_months)] = 0
+        days = timestamps.day.values
+        seasons = np.full(len(timestamps), 3, dtype=int)  # défaut : grande saison sèche
+
+        is_grande_pluies = np.isin(months, [4, 5, 6]) | ((months == 3) & (days >= 15)) | ((months == 7) & (days < 15))
+        is_petite_seche = ((months == 7) & (days >= 15)) | (months == 8)
+        is_petite_pluies = np.isin(months, [9, 10])
+
+        seasons[is_grande_pluies] = 0
+        seasons[is_petite_seche] = 1
+        seasons[is_petite_pluies] = 2
         return seasons
+
+    def _monthly_anchor_temperature(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
+        """
+        Interpolation linéaire circulaire entre 12 ancrages mi-mois (config.monthly_base_temp) :
+        remplace l'ancien saut en escalier (jusqu'à 4°C) au changement de mois par une
+        transition continue, sans supposer une forme sinusoïdale simple (le cycle annuel
+        du Sud-Bénin est bimodal, pas une sinusoïde unique).
+        """
+        anchors = self.config.monthly_base_temp
+        mid_month_doy = np.array([15, 45, 74, 105, 135, 166, 196, 227, 258, 288, 319, 349], dtype=float)
+        anchor_temps = np.array([anchors[m] for m in range(1, 13)])
+        # Périodicité : on prolonge d'un point avant janvier et un après décembre
+        doy_ext = np.concatenate([[mid_month_doy[-1] - 365.0], mid_month_doy, [mid_month_doy[0] + 365.0]])
+        temp_ext = np.concatenate([[anchor_temps[-1]], anchor_temps, [anchor_temps[0]]])
+        doy = timestamps.dayofyear.values.astype(float)
+        return np.interp(doy, doy_ext, temp_ext)
 
     def generate_ambient_temperature(self, timestamps: pd.DatetimeIndex, seasons: np.ndarray) -> np.ndarray:
         """
-        Température de l'atelier combinant normales saisonnières et cycle jour/nuit.
+        Température de l'atelier combinant normale saisonnière lissée et cycle jour/nuit.
         Régulation industrielle : si T_brute > 38°C, la ventilation dissipe 70 % de l'excès.
         """
         hours = timestamps.hour.values
 
         daily_variation = 4.5 * np.sin(2 * np.pi * (hours - 8) / 24)
-        base_temp = np.where(seasons == 1, 33.5, 29.5)
-        noise = np.where(seasons == 1, np.random.normal(0, 1.0, len(timestamps)), np.random.normal(0, 1.8, len(timestamps)))
+        base_temp = self._monthly_anchor_temperature(timestamps)
+        # Air plus stable (moins de bruit) en saison sèche (1, 3) qu'en saison des pluies (0, 2)
+        is_dry_ish = np.isin(seasons, [1, 3])
+        noise = np.where(is_dry_ish, np.random.normal(0, 1.0, len(timestamps)), np.random.normal(0, 1.8, len(timestamps)))
 
         ambient_temp = base_temp + daily_variation + noise
 
         # Régulation/ventilation industrielle : dissipe 70 % de la chaleur excédentaire > 38°C
         ambient_temp = np.where(ambient_temp > 38.0, 38.0 + 0.30 * (ambient_temp - 38.0), ambient_temp)
         return np.clip(ambient_temp, 23.0, 42.0)
+
+    # (p_start, p_stop) par saison — cf. generate_benin_seasons pour le code des 4 saisons.
+    # La petite saison des pluies (2) est en moyenne moins intense que la grande (0) ;
+    # la petite saison sèche (1) n'est pas aussi aride que l'Harmattan (3).
+    RAIN_TRANSITION_PROBS = {
+        0: (0.12, 0.40),  # grande saison des pluies
+        1: (0.02, 0.65),  # petite saison sèche
+        2: (0.08, 0.45),  # petite saison des pluies
+        3: (0.006, 0.75),  # grande saison sèche / Harmattan
+    }
 
     def generate_rain_events(self, seasons: np.ndarray) -> np.ndarray:
         """
@@ -169,10 +233,7 @@ class ExogenousContextGenerator:
         rain_flag = np.zeros(num_samples, dtype=int)
 
         for i in range(1, num_samples):
-            if seasons[i] == 0:  # Saison des pluies
-                p_start, p_stop = 0.12, 0.40
-            else:  # Saison sèche / Harmattan
-                p_start, p_stop = 0.006, 0.75
+            p_start, p_stop = self.RAIN_TRANSITION_PROBS[int(seasons[i])]
 
             if rain_flag[i - 1] == 1:
                 rain_flag[i] = 1 if np.random.rand() > p_stop else 0
@@ -192,9 +253,10 @@ class ExogenousContextGenerator:
         num_samples = len(seasons)
         months = timestamps.month.values
         is_harmattan = np.isin(months, [12, 1])
+        is_dry_ish = np.isin(seasons, [1, 3])  # petite + grande saison sèche
 
-        shape = np.select(condlist=[is_harmattan, seasons == 1], choicelist=[5.0, 2.5], default=1.5)
-        scale = np.select(condlist=[is_harmattan, seasons == 1], choicelist=[30.0, 12.0], default=6.0)
+        shape = np.select(condlist=[is_harmattan, is_dry_ish], choicelist=[5.0, 2.5], default=1.5)
+        scale = np.select(condlist=[is_harmattan, is_dry_ish], choicelist=[30.0, 12.0], default=6.0)
 
         dust = np.random.gamma(shape, scale, num_samples)
         dust = np.where(rain_flag == 1, dust * 0.15, dust)
@@ -216,7 +278,10 @@ class ExogenousContextGenerator:
         """
         Simule des délestages SBEE et coupures de secteur.
         Probabilités recalibrées pour un pas de 30 min.
-        Les coupures durent en moyenne ~50 min (continuation = 0.40).
+        Réseau volontairement clément (hypothèse : alimentation dédiée GDIZ, cf.
+        docs/data-generation.md) mais légèrement durci par rapport à la version
+        précédente : coupures en moyenne ~67 min (continuation = 0.55), toujours
+        loin des 10-15h que peut atteindre une coupure SBEE non dédiée.
         """
         hours = timestamps.hour.values
         num_samples = len(timestamps)
@@ -227,9 +292,9 @@ class ExogenousContextGenerator:
 
         power_loss = (np.random.random(num_samples) < failure_probability).astype(int)
 
-        # Persistance réduite : avec des pas de 30 min, E[durée] ≈ 1.7 pas ≈ 50 min
+        # E[durée] = 1/(1-p) pas ≈ 2.2 pas ≈ 67 min (contre ~50 min avant durcissement)
         for i in range(1, num_samples):
-            if power_loss[i - 1] == 1 and np.random.random() < 0.40:
+            if power_loss[i - 1] == 1 and np.random.random() < 0.55:
                 power_loss[i] = 1
 
         return power_loss

@@ -24,7 +24,16 @@ class MachineData(BaseModel):
     voltage_stability: float = Field(..., description="Stabilité de la tension (%)", examples=[75.0])
     rain_flag: int = Field(..., ge=0, le=1, description="Indicateur de pluie (0/1)", examples=[0])
     power_loss_indicator: int = Field(..., ge=0, le=1, description="Délestage SBEE (0/1)", examples=[0])
-    benin_season: int = Field(..., ge=0, le=4, description="Saison béninoise (0=Saison pluvieuse, 1=Saison sèche)", examples=[1])
+    benin_season: int = Field(
+        ...,
+        ge=0,
+        le=3,
+        description=(
+            "Saison béninoise : 0=grande saison des pluies, 1=petite saison sèche, "
+            "2=petite saison des pluies, 3=grande saison sèche/Harmattan"
+        ),
+        examples=[1],
+    )
     machine_type: str = Field(..., description="Qualité de machine (L, M, H)", examples=["M"])
 
 

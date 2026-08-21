@@ -28,7 +28,7 @@ def machine_normale():
             "voltage_stability": [82.0],
             "rain_flag": [1],
             "power_loss_indicator": [0],
-            "benin_season": [0],
+            "benin_season": [0],  # grande saison des pluies
             "machine_type": ["H"],
             # Features temporelles : machine stable, aucune variation sur 24h
             "tool_wear_delta_24h": [0.5],
@@ -62,7 +62,7 @@ def machine_en_surchauffe():
             "voltage_stability": [18.0],
             "rain_flag": [0],
             "power_loss_indicator": [1],
-            "benin_season": [1],
+            "benin_season": [3],  # grande saison sèche / Harmattan
             "machine_type": ["L"],
             # Features temporelles : machine en dégradation rapide sur les 24h précédentes
             "tool_wear_delta_24h": [15.0],
