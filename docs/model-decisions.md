@@ -11,6 +11,7 @@ Document vivant, même esprit que `docs/data-generation.md` et `docs/experiments
 - [Incident : rupture de compatibilité du modèle en production](#incident--rupture-de-compatibilité-du-modèle-en-production)
 - [Horizons différenciés par mode de panne — hypothèse testée et invalidée](#horizons-différenciés-par-mode-de-panne--hypothèse-testée-et-invalidée)
 - [PWF/RNF non prédictibles — confirmé empiriquement](#pwfrnf-non-prédictibles--confirmé-empiriquement)
+- [Pourquoi HDF/OSF sont moins bien détectés que TWF, et ce qui a été tenté](#pourquoi-hdfosf-sont-moins-bien-détectés-que-twf-et-ce-qui-a-été-tenté)
 
 ---
 
@@ -92,3 +93,51 @@ Vérifié sur le dataset final (50 machines, générateur v2) que PWF et RNF n'o
 | tool_wear | 1,089 | 1,155 |
 
 Ratios proches de 1,0 pour la plupart des capteurs (contre 2 à 4x pour TWF/HDF/OSF, cf. sections précédentes) — confirme la décision déjà actée d'exclure PWF/RNF de `PREDICTABLE_FAILURE_MODES`. Le léger excès sur `tool_wear` (1,09-1,16) n'est pas un vrai précurseur : c'est un effet de population — les machines plus usées ont simplement plus d'occasions de subir n'importe quelle panne, pas spécifiquement PWF/RNF à ce moment précis.
+
+---
+
+## Pourquoi HDF/OSF sont moins bien détectés que TWF, et ce qui a été tenté
+
+**Le constat de départ** (cf. `docs/experiments.md`, section "État actuel") : recall événementiel par mode, sur le champion d'alors — TWF 100 %, HDF 68 %, OSF 47 %. Le recall global (79 %) était tiré vers le haut par TWF, qui représente la moitié des pannes du test.
+
+**Diagnostic — importances de features** : `tool_wear` domine à lui seul (524, plus du double de la 2ᵉ feature), alors que `torque` (le vrai moteur du hasard OSF dans le générateur) ne pèse que 9. Hypothèse : le modèle utilise `tool_wear` comme signal générique "quelque chose ne va pas" pour toutes les causes (une machine plus près de n'importe quelle panne a *en général* plus d'usure accumulée, par pur effet de calendrier), plutôt que d'apprendre le vrai signal spécifique à OSF.
+
+**Vérification par signal auto-référencé** (moyenne par tranche de temps-avant-panne, comparée à une référence lointaine de la même population — méthode déjà utilisée pour PWF/RNF ci-dessus, pour éviter le biais de population) :
+
+| Mode | Signal | Fenêtre où le signal apparaît | Amplitude relative |
+|---|---|---|---|
+| OSF | `torque` | dans les 24h précédant la panne seulement | +52 % vs référence lointaine (24,66 → 37,5) |
+| OSF | `tool_wear` | présent mais faible sur tout l'horizon | +2,6 % seulement |
+| HDF | `delta_temp` | dans les 24-48h précédant la panne | +64 % vs référence lointaine |
+
+Conclusion : le signal OSF existe et est fort (+52 %), mais il est **court** (24h, pas plus — cohérent avec le point 15 déjà invalidé pour un horizon d'entraînement différencié) et **bruité** (couple instantané, qui varie à chaque pas avec l'activité). Le modèle n'avait accès qu'à cette version bruyante, jamais lissée.
+
+**Ce qui a été tenté et mesuré** (comparaison sur validation avant tout ajout au code, cf. méthodologie habituelle) :
+
+| Ajout testé | Recall validation | OSF (test) | HDF (test) | Retenu ? |
+|---|---|---|---|---|
+| (aucun, référence) | 0,717 | 47 % | 68 % | — |
+| `torque_max_24h` seul | 0,739 | 57 % | 71 % | ✅ |
+| `torque_max_12h` (fenêtre plus courte) | 0,761 | 53 % | 71 % | ❌ (FA test à 0,234, au-delà du budget) |
+| `torque_x_wear` (interaction) | — | — | — | ❌ (pas dans le top 15 des importances, aucun apport mesuré) |
+| `delta_temp_mean_4h` (vraie fenêtre du générateur) | 0,761 | 53 % | 79 % | ❌ (retenu concurrent ci-dessous à la place) |
+| `delta_temp_max_24h` | 0,761 | 53 % | 75 % | ✅ |
+| Les deux ensemble (`torque_mean_24h` + `max_24h`) | 0,696 | 47 % | 64 % | ❌ (redondance, dilue le signal) |
+
+**Retenu** : `torque_max_24h` et `delta_temp_max_24h` — cohérents avec le patron déjà établi ailleurs dans le code (`vibration_max_24h`, `process_temp_max_24h`, `dust_max_24h` existent déjà, pas besoin d'inventer une nouvelle convention de fenêtre). Implémentés dans les 4 chemins habituels (entraînement, dashboard, API avec/sans historique) — l'API a nécessité d'ajouter `torque` et `ambient_temperature` à la requête d'historique DuckDB (`app/utils.py::_get_machine_history`), qui ne les chargeait pas avant.
+
+**Résultat mesuré, pipeline réel (calibré, seuil 0,12)** :
+
+| Mode | Avant | Après | Δ |
+|---|---|---|---|
+| Recall global | 79,1 % | **80,9 %** | +1,8 pt |
+| TWF | 100 % | 100 % | — |
+| HDF | 71,4 % | 71,4 % | — (le gain mesuré en isolation ne s'est pas confirmé une fois combiné à la calibration — cf. note ci-dessous) |
+| OSF | 46,7 % | **53,3 %** | +6,6 pts |
+
+**Écart entre le test isolé et le pipeline réel, signalé plutôt qu'ignoré** : `delta_temp_max_24h` seul montrait +7 pts sur HDF dans un test hors pipeline (modèle brut, pas calibré, seuil choisi différemment) ; une fois passé par la calibration isotonique et le seuil réellement retenu, ce gain HDF ne s'est pas matérialisé — HDF reste à 71,4 %. Pas d'explication tranchée ici (interaction entre la nouvelle feature et la courbe de calibration, possiblement) ; noté comme tel plutôt que de prétendre à un gain qui ne s'observe pas dans les chiffres qui comptent réellement (le pipeline de production, pas un script de test isolé).
+
+**Ce qui reste un vrai point faible** : OSF, à 53 %, capture un peu plus d'une panne sur deux — mieux qu'avant, mais loin d'être résolu. Le signal physique existe (torque +52 % dans les 24h précédentes) mais reste intrinsèquement court et partiellement confondu avec le bruit d'activité normale. Deux pistes non tentées, discutées mais pas implémentées :
+
+1. **Modifier le générateur** pour rendre le précurseur OSF plus long/moins bruité — par exemple une composante de charge "structurelle" qui monte progressivement avant l'OSF (au lieu du couple purement instantané piloté par l'activité), à la manière de la rampe terminale ajoutée pour TWF au point 8. Non fait ici : ça change la physique du générateur, donc oblige à revalider tout le travail de calibration des parts de pannes (`docs/data-generation.md`), potentiellement tout le pipeline de calibration isotonique et les budgets de FA en aval — un chantier bien plus large que l'ajout de deux features, à traiter comme son propre sujet plutôt que noyé dans celui-ci.
+2. **Étage de classification dédié par cause** (point 14 de la roadmap, pas encore traité) — un classifieur séparé entraîné spécifiquement sur la population pré-panne, où OSF ne serait plus noyé dans un label binaire partagé avec TWF/HDF. Cohérent avec la logique déjà utilisée pour PWF/RNF (les exclure du label plutôt que diluer le signal) mais pour OSF il faudrait le garder au premier étage (toujours prédictible) et l'isoler seulement au second étage (diagnostic de cause).

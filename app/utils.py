@@ -28,7 +28,8 @@ def _get_machine_history(machine_id: str) -> pd.DataFrame:
     try:
         with duckdb.connect(str(_DB_PATH), read_only=True) as conn:
             df = conn.execute(
-                f"""SELECT tool_wear, vibration, process_temperature, dust_concentration
+                f"""SELECT tool_wear, vibration, process_temperature, dust_concentration,
+                           torque, ambient_temperature
                     FROM {_TABLE}
                     WHERE machine_id = ?
                     ORDER BY timestamp DESC LIMIT 48""",
@@ -100,6 +101,7 @@ def process_prediction(machine_data_dict: dict) -> dict:
         temp = float(features.get("process_temperature", 0.0))
         ambient = float(features.get("ambient_temperature", 0.0))
         dust = float(features.get("dust_concentration", 0.0))
+        torque = float(features.get("torque", 0.0))
         features["tool_wear_delta_24h"] = 0.0
         features["tool_wear_delta_4h"] = 0.0
         features["vibration_max_24h"] = vibr
@@ -110,8 +112,10 @@ def process_prediction(machine_data_dict: dict) -> dict:
         features["process_temp_mean_24h"] = temp
         features["process_temp_delta_4h"] = 0.0
         features["delta_temp"] = temp - ambient
+        features["delta_temp_max_24h"] = temp - ambient
         features["dust_mean_24h"] = dust
         features["dust_max_24h"] = dust
+        features["torque_max_24h"] = torque
 
     df = pd.DataFrame([features])
     results = predictor.predict(df)

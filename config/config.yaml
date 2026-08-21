@@ -35,8 +35,10 @@ dataset:
     - 'process_temp_mean_24h'
     - 'process_temp_delta_4h'
     - 'delta_temp'
+    - 'delta_temp_max_24h'
     - 'dust_mean_24h'
     - 'dust_max_24h'
+    - 'torque_max_24h'
 
 # Paramètres de tracking des expériences mlflow
 mlflow:

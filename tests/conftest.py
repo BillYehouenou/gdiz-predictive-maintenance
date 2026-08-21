@@ -41,8 +41,10 @@ def machine_normale():
             "process_temp_mean_24h": [40.0],
             "process_temp_delta_4h": [0.5],
             "delta_temp": [14.0],
+            "delta_temp_max_24h": [15.0],
             "dust_mean_24h": [42.0],
             "dust_max_24h": [50.0],
+            "torque_max_24h": [32.0],
         }
     )
 
@@ -78,7 +80,9 @@ def machine_en_surchauffe():
             "process_temp_mean_24h": [85.0],
             "process_temp_delta_4h": [6.0],
             "delta_temp": [48.0],
+            "delta_temp_max_24h": [50.0],
             "dust_mean_24h": [350.0],
             "dust_max_24h": [410.0],
+            "torque_max_24h": [88.0],
         }
     )
