@@ -140,3 +140,31 @@ Point 23 : le modèle LightGBM doit battre une règle triviale et une régressio
 Le modèle bat les deux baselines sur le recall événementiel (+4,3 points), au prix d'un taux de fausses alertes un peu plus élevé (les deux baselines restent en dessous du budget de 0,20 sans l'épuiser — elles plafonnent en recall avant d'atteindre la limite de FA autorisée, signe qu'usure et régression linéaire séparent moins bien les cas limites que LightGBM). Coïncidence notable : la règle triviale et la régression logistique attrapent exactement les mêmes 86 pannes — `tool_wear` seul explique une bonne partie du signal linéairement exploitable, la régression logistique ne fait pas mieux qu'un seuil brut sur cette tâche.
 
 Marge réelle mais pas écrasante : confirme que LightGBM apporte une valeur mesurable (pas un choix de modèle arbitraire), sans prétendre à une supériorité spectaculaire que les chiffres ne montrent pas.
+
+---
+
+## État actuel — résultat final et détection par mode de panne
+
+Chiffres du champion actuel (LightGBM calibré, seuil 0,12), mesurés sur le test 2025 :
+
+| Métrique | Valeur |
+|---|---|
+| Recall événementiel | 79,1 % (91/115 pannes attrapées) |
+| Fausses alertes | 0,201 / machine / jour |
+| Préavis médian (pannes attrapées) | **14 h** |
+| Préavis moyen | 16 h |
+| Répartition du préavis | 40 % < 12h · 49 % entre 12-24h · 9 % entre 24-72h · 2 % > 72h |
+
+**Correction d'un chiffre déjà publié** : la section "Résultat final sur le test" plus haut annonçait un préavis médian de 62h — mesuré à l'ancien seuil (0,085), avant calibration et avant le fix du délai de réarmement. Au seuil actuellement en service (0,12), le préavis réel est bien plus court : **14h médian, pas 62h**. Le chiffre précédent n'était pas faux pour la configuration où il a été mesuré, mais il ne décrit plus le système tel qu'il tourne aujourd'hui — je le signale explicitement plutôt que de le laisser traîner comme s'il était toujours d'actualité.
+
+**Le recall global masque un écart important entre modes de panne** :
+
+| Mode | Recall événementiel | Pannes attrapées | Préavis médian |
+|---|---|---|---|
+| TWF (usure outil) | **100 %** | 57/57 | 14h |
+| HDF (surchauffe) | 71,4 % | 20/28 | 16h |
+| OSF (surcharge mécanique) | **46,7 %** | 14/30 | 16h |
+
+TWF est détecté quasi parfaitement — cohérent avec la rampe terminale de dégradation (point 8) qui donne un signal vibratoire explicite et croissant. HDF est correct sans être excellent. **OSF reste le point faible : moins d'une panne sur deux est attrapée.** Le recall global de 79 % est tiré vers le haut par TWF (57 pannes sur 115, presque la moitié du total) ; sans lui, la moyenne pondérée HDF+OSF tomberait autour de 59 %.
+
+**Verdict honnête** : le système est réellement utile — il bat les baselines, le taux de fausses alertes reste défendable, et il attrape 4 pannes sur 5. Mais deux réserves concrètes à ne pas passer sous silence si ces chiffres sont présentés à l'équipe terrain : (1) le préavis typique est de l'ordre de la demi-journée, pas de plusieurs jours — insuffisant si une intervention OSF nécessite de commander une pièce à l'avance ; (2) OSF, un mode de panne sur cinq environ, n'est correctement anticipé qu'une fois sur deux. Piste pour une itération future (hors scope ici, à instruire séparément) : un signal précurseur OSF plus riche que couple+usure (l'hazard générateur combine déjà usure outil et roulements depuis le point 11 — le modèle n'a peut-être pas assez de features spécifiques à la surcharge mécanique pour en tirer parti).
