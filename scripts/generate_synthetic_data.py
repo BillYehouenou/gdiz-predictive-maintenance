@@ -9,6 +9,7 @@ Architecture hybride:
 Framework académique: AI4I 2020 adapté à l'écosystème textile de la GDIZ.
 """
 
+import hashlib
 import logging
 import pathlib
 from datetime import datetime
@@ -283,7 +284,11 @@ class MachineStateEvolver:
         self.config = config or SyntheticDataConfig()
 
         # RNG isolé par machine — évite toute pollution croisée des flux aléatoires
-        machine_seed = self.config.global_seed + hash(machine_id) % 10000
+        # Hash déterministe (md5) plutôt que hash() builtin : hash() est salé
+        # aléatoirement par process (PYTHONHASHSEED) sauf s'il est fixé explicitement,
+        # ce qui casserait la reproductibilité entre deux exécutions.
+        machine_hash = int(hashlib.md5(machine_id.encode("utf-8")).hexdigest(), 16) % 10000
+        machine_seed = self.config.global_seed + machine_hash
         self.rng = np.random.default_rng(machine_seed)
 
         # Fragilité individuelle (frailty model) — tirée une fois par machine,
@@ -605,7 +610,10 @@ class DataAggregator:
         random_sub_cols = np.random.randint(0, len(sensor_cols), size=num_missing)
 
         # Extraction explicite en float → injection NaN → réassignation propre
-        sensor_data = df_copy[sensor_cols].to_numpy(dtype=float)
+        # copy=True : sous pandas 3.x (copy-on-write par défaut), to_numpy() sans
+        # copie explicite peut renvoyer un tableau read-only et faire échouer
+        # l'affectation ci-dessous.
+        sensor_data = df_copy[sensor_cols].to_numpy(dtype=float, copy=True)
         sensor_data[random_rows, random_sub_cols] = np.nan
         df_copy[sensor_cols] = sensor_data
 
@@ -653,10 +661,13 @@ class DataAggregator:
 class SyntheticDatasetOrchestrator:
     """Pilote suprême du pipeline d'ingénierie des données synthétiques."""
 
-    def __init__(self, random_seed: int = 24):
+    def __init__(self, random_seed: int | None = None):
         self.config = SyntheticDataConfig()
-        self.config.global_seed = random_seed
-        np.random.seed(random_seed)
+        if random_seed is not None:
+            self.config.global_seed = random_seed
+        # Pas de np.random.seed() ici : ExogenousContextGenerator.__init__ reseed
+        # déjà avec self.config.global_seed juste après — l'appel ici était redondant
+        # et source de confusion sur la source de vérité du seed.
 
     def generate(self) -> pd.DataFrame:
         exo_gen = ExogenousContextGenerator(self.config)

@@ -1,7 +1,9 @@
 # Variables d'environnement
 PROJECT_ROOT := $(shell pwd)
 PYTHONPATH   := $(PROJECT_ROOT)
-UV_RUN       := PYTHONPATH=$(PYTHONPATH) uv run
+# PYTHONHASHSEED fixé : défense en profondeur pour la reproductibilité de la
+# génération de données (cf. scripts/generate_synthetic_data.py, hash md5 déterministe).
+UV_RUN       := PYTHONHASHSEED=0 PYTHONPATH=$(PYTHONPATH) uv run
 PORT         ?= 8501
 
 .PHONY: help install install-dev generate-data train pipeline check-drift \
