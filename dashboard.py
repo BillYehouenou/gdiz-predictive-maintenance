@@ -6,7 +6,7 @@ Usage : streamlit run dashboard.py
 import streamlit as st
 
 from ui.constants import _DARK, _LIGHT
-from ui.styles import apply_styles
+from ui.styles import appliquer_styles
 from ui.tabs import tab_about, tab_general, tab_machine
 
 # Configuration de la page
@@ -23,7 +23,7 @@ if "theme" not in st.session_state:
 DARK: bool = st.session_state.theme == "dark"
 C = _DARK if DARK else _LIGHT
 
-apply_styles(C, DARK)
+appliquer_styles(C, DARK)
 
 # Entête
 col_title, col_toggle = st.columns([10, 2])
@@ -49,10 +49,10 @@ tab1, tab2, tab3 = st.tabs(
     ]
 )
 with tab1:
-    tab_general.render(C)
+    tab_general.afficher(C)
 
 with tab2:
-    tab_machine.render(C)
+    tab_machine.afficher(C)
 
 with tab3:
-    tab_about.render(C)
+    tab_about.afficher(C)

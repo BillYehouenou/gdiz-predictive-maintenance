@@ -101,7 +101,7 @@ def _css(C: dict) -> str:
     """
 
 
-def _kpi_card(icon: str, label: str, val: str, sub: str, color: str, delay: float, C: dict) -> str:
+def _carte_kpi(icon: str, label: str, val: str, sub: str, color: str, delay: float, C: dict) -> str:
     bg = f"linear-gradient(135deg,{rgba(color, 0.22)} 0%,{rgba(color, 0.08)} 100%)"
     muted = C["muted"]
     label_color = rgba(color, 0.75)
@@ -119,7 +119,7 @@ def _kpi_card(icon: str, label: str, val: str, sub: str, color: str, delay: floa
     )
 
 
-def _pipe_card(idx: int, color: str, title: str, desc: str, C: dict) -> str:
+def _carte_etape(idx: int, color: str, title: str, desc: str, C: dict) -> str:
     bg = f"linear-gradient(160deg,{rgba(color, 0.10)} 0%,{rgba(color, 0.03)} 55%,transparent 100%)"
     # Le nom de classe varie avec idx (pipe-anim-0, pipe-anim-1, ...) pour forcer le
     # navigateur à rejouer l'animation à chaque changement d'étape — une animation CSS
@@ -132,7 +132,7 @@ def _pipe_card(idx: int, color: str, title: str, desc: str, C: dict) -> str:
     )
 
 
-def render(C: dict) -> None:
+def afficher(C: dict) -> None:
     st.markdown(_css(C), unsafe_allow_html=True)
 
     # ── Hero ──────────────────────────────────────────────────────────────────
@@ -160,7 +160,7 @@ def render(C: dict) -> None:
     ]
     c1, c2 = st.columns(2)
     for col, (icon, label, val, sub, color), delay in zip([c1, c2], row1, [0.0, 0.07]):
-        col.markdown(_kpi_card(icon, label, val, sub, color, delay, C), unsafe_allow_html=True)
+        col.markdown(_carte_kpi(icon, label, val, sub, color, delay, C), unsafe_allow_html=True)
 
     st.markdown("<div style='margin:.5rem 0;'></div>", unsafe_allow_html=True)
 
@@ -190,7 +190,7 @@ def render(C: dict) -> None:
     ]
     m1, m2, m3 = st.columns(3)
     for col, (icon, label, val, sub, color), delay in zip([m1, m2, m3], row2, [0.14, 0.21, 0.28]):
-        col.markdown(_kpi_card(icon, label, val, sub, color, delay, C), unsafe_allow_html=True)
+        col.markdown(_carte_kpi(icon, label, val, sub, color, delay, C), unsafe_allow_html=True)
 
     # ── Pipeline interactif ────────────────────────────────────────────────────
     st.markdown("<p class='sec-label' style='margin-top:1.8rem;'>Pipeline</p>", unsafe_allow_html=True)
@@ -283,6 +283,6 @@ def render(C: dict) -> None:
     title, color, desc = STEPS[idx]
 
     st.markdown(
-        _pipe_card(idx, color, title, desc, C),
+        _carte_etape(idx, color, title, desc, C),
         unsafe_allow_html=True,
     )

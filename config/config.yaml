@@ -1,47 +1,47 @@
 # Configuration des chemins
-paths:
-  raw_data_path: "data/raw"
-  processed_data_path: "data/processed"
-  model_path: "models"
+chemins:
+  chemin_donnees_brutes: "data/raw"
+  chemin_donnees_traitees: "data/processed"
+  chemin_modele: "models"
 
-# Informations sur le dataset
-dataset:
+# Informations sur le jeu_donnees
+jeu_donnees:
   name: 'gdiz_dataset.parquet'
-  target_column: 'target_h120_predictable'
+  colonne_cible: 'cible_h120_predictible'
   features:
-    - 'benin_season'
-    - 'machine_type'
-    - 'ambient_temperature'
-    - 'process_temperature'
-    - 'rotational_speed'
-    - 'torque'
-    - 'tool_wear'
-    - 'activity_level'
+    - 'saison_benin'
+    - 'type_machine'
+    - 'temperature_ambiante'
+    - 'temperature_process'
+    - 'vitesse_rotation'
+    - 'couple'
+    - 'usure_outil'
+    - 'niveau_activite'
     - 'vibration'
-    - 'humidity'
-    - 'dust_concentration'
-    - 'rain_flag'
-    - 'power_loss_indicator'
-    - 'voltage_level'
-    - 'voltage_stability'
+    - 'humidite'
+    - 'concentration_poussiere'
+    - 'indicateur_pluie'
+    - 'indicateur_coupure'
+    - 'niveau_tension'
+    - 'stabilite_tension'
     # Features temporelles — calculées par src/features.py
-    - 'tool_wear_delta_24h'
-    - 'tool_wear_delta_4h'
+    - 'usure_outil_delta_24h'
+    - 'usure_outil_delta_4h'
     - 'vibration_max_24h'
-    - 'vibration_mean_24h'
-    - 'vibration_std_24h'
+    - 'vibration_moyenne_24h'
+    - 'vibration_ecart_type_24h'
     - 'vibration_delta_4h'
-    - 'process_temp_max_24h'
-    - 'process_temp_mean_24h'
-    - 'process_temp_delta_4h'
-    - 'delta_temp'
-    - 'delta_temp_max_24h'
-    - 'dust_mean_24h'
-    - 'dust_max_24h'
-    - 'torque_max_24h'
+    - 'temperature_process_max_24h'
+    - 'temperature_process_moyenne_24h'
+    - 'temperature_process_delta_4h'
+    - 'ecart_thermique'
+    - 'ecart_thermique_max_24h'
+    - 'poussiere_moyenne_24h'
+    - 'poussiere_max_24h'
+    - 'couple_max_24h'
 
 # Paramètres de tracking des expériences mlflow
 mlflow:
-  experiment_name: "GDIZ_Predictive_Maintenance"
-  tracking_uri: "sqlite:///mlflow.db"
-  model_name: "LGBM_Predictive_Maintenance"
+  nom_experience: "GDIZ_Predictive_Maintenance"
+  uri_suivi: "sqlite:///mlflow.db"
+  nom_modele: "LGBM_Predictive_Maintenance"

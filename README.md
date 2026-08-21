@@ -16,7 +16,7 @@ La cible n'est pas "panne à cet instant précis" mais "cette machine est-elle d
 scripts/generate_synthetic_data.py   - Données IoT synthétiques (framework AI4I 2020, adapté GDIZ)
         │
         │
-data/raw/gdiz_maintenance.db         - DuckDB : 1,75M lignes, indexé sur (machine_id, timestamp)
+data/raw/gdiz_maintenance.db         - DuckDB : 1,75M lignes, indexé sur (id_machine, timestamp)
         │
 src/features.py  (rolling temporel)  src/preprocessor.py  (imputation + catégorielles natives LightGBM)
         │                                     │
@@ -29,7 +29,7 @@ src/features.py  (rolling temporel)  src/preprocessor.py  (imputation + catégor
                           │       @champion que si elle l'égale ou le dépasse sur le
                           │       recall événementiel (jamais un F1/F2 par pas de temps)
                           │
-              models/model_pipeline.pkl + models/optimal_threshold.json
+              models/model_pipeline.pkl + models/seuil_optimal.json
                           │
           ┌───────────────┴───────────────┐
           │                               │
@@ -37,7 +37,7 @@ src/features.py  (rolling temporel)  src/preprocessor.py  (imputation + catégor
   POST /api/v1/predict           ui/tabs/{general, machine, about}
 ```
 
-*Frontière de décision :* `predict_proba()` renvoie des probabilités calibrées (isotonique, ajustée sur la validation — plus de recentrage logit ad hoc). Le seuil de décision est optimisé pour maximiser le recall événementiel sous un budget de fausses alertes (0,2/machine/jour), pas fixé à 50 % — sa valeur réelle change à chaque ré-entraînement (`models/optimal_threshold.json`, ~0,12 au dernier entraînement). Les bandes de risque du dashboard et du monitoring MLflow sont dérivées de ce seuil dynamiquement, pas codées en dur.
+*Frontière de décision :* `predict_proba()` renvoie des probabilités calibrées (isotonique, ajustée sur la validation — plus de recentrage logit ad hoc). Le seuil de décision est optimisé pour maximiser le recall événementiel sous un budget de fausses alertes (0,2/machine/jour), pas fixé à 50 % — sa valeur réelle change à chaque ré-entraînement (`models/seuil_optimal.json`, ~0,12 au dernier entraînement). Les bandes de risque du dashboard et du monitoring MLflow sont dérivées de ce seuil dynamiquement, pas codées en dur.
 
 
 ## Installation 
@@ -118,7 +118,7 @@ gdiz-predictive-maintenance/
 │   ├── features.py         # Feature engineering temporel (entraînement + inférence)
 │   ├── preprocessor.py     # Imputation + encodage catégoriel natif LightGBM
 │   ├── train.py            # Split 3 voies + calibration isotonique + gate de promotion @champion
-│   └── xpredict.py         # Predictor — probabilités calibrées, pas de recentrage ad hoc
+│   └── xpredict.py         # Predicteur — probabilités calibrées, pas de recentrage ad hoc
 ├── tests/                  # Suite pytest
 ├── ui/                     # Modules UI Streamlit
 │   ├── constants.py        # Palettes, constantes coûts métier, maps de périodes

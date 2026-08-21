@@ -8,55 +8,55 @@ import mlflow.sklearn
 import numpy as np
 import pandas as pd
 
-from src.configloader import load_config
+from src.configloader import charger_config
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_THRESHOLD = 0.5
+SEUIL_DEFAUT = 0.5
 
 
-class Predictor:
-    def __init__(self, use_mlflow: bool = True, model_name: str | None = None):
-        self.use_mlflow = use_mlflow
-        config = load_config()
-        tracking_uri = os.getenv("MLFLOW_TRACKING_URI", config["mlflow"]["tracking_uri"])
-        mlflow.set_tracking_uri(tracking_uri)
-        self.model_name = model_name or config["mlflow"]["model_name"]
-        self.local_model_path = PROJECT_ROOT / "models" / "model_pipeline.pkl"
-        self.threshold_path = PROJECT_ROOT / "models" / "optimal_threshold.json"
-        self.pipeline = self._load_model()
-        self.threshold = self._load_threshold()
+class Predicteur:
+    def __init__(self, utiliser_mlflow: bool = True, nom_modele: str | None = None):
+        self.utiliser_mlflow = utiliser_mlflow
+        config = charger_config()
+        uri_suivi = os.getenv("MLFLOW_TRACKING_URI", config["mlflow"]["uri_suivi"])
+        mlflow.set_tracking_uri(uri_suivi)
+        self.nom_modele = nom_modele or config["mlflow"]["nom_modele"]
+        self.chemin_modele_local = PROJECT_ROOT / "models" / "model_pipeline.pkl"
+        self.chemin_seuil = PROJECT_ROOT / "models" / "seuil_optimal.json"
+        self.pipeline = self._charger_modele()
+        self.threshold = self._charger_seuil()
 
-    def _load_model(self):
-        if self.use_mlflow:
+    def _charger_modele(self):
+        if self.utiliser_mlflow:
             try:
-                model_uri = f"models:/{self.model_name}@champion"
+                model_uri = f"models:/{self.nom_modele}@champion"
                 logger.info(f"Chargement depuis MLflow : {model_uri}")
                 return mlflow.sklearn.load_model(model_uri)
             except Exception as e:
                 logger.warning(f"MLflow indisponible ({e}). Repli sur fichier local.")
 
-        if self.local_model_path.exists():
-            logger.info(f"Chargement local : {self.local_model_path}")
-            return joblib.load(self.local_model_path)
-        raise FileNotFoundError(f"Aucun modèle trouvé : {self.local_model_path} ni MLflow.")
+        if self.chemin_modele_local.exists():
+            logger.info(f"Chargement local : {self.chemin_modele_local}")
+            return joblib.load(self.chemin_modele_local)
+        raise FileNotFoundError(f"Aucun modèle trouvé : {self.chemin_modele_local} ni MLflow.")
 
-    def _load_threshold(self) -> float:
-        if self.threshold_path.exists():
-            with open(self.threshold_path) as f:
+    def _charger_seuil(self) -> float:
+        if self.chemin_seuil.exists():
+            with open(self.chemin_seuil) as f:
                 t = json.load(f)["threshold"]
             logger.info(f"Seuil de décision chargé : {t:.4f}")
             return float(t)
-        logger.warning(f"Seuil non trouvé dans {self.threshold_path} — utilisation du seuil par défaut 0.5")
-        return DEFAULT_THRESHOLD
+        logger.warning(f"Seuil non trouvé dans {self.chemin_seuil} — utilisation du seuil par défaut 0.5")
+        return SEUIL_DEFAUT
 
-    def predict(self, data: pd.DataFrame) -> pd.DataFrame:
+    def predire(self, data: pd.DataFrame) -> pd.DataFrame:
         """
         Le pipeline chargé produit déjà des probabilités calibrées (calibration
         isotonique ajustée en entraînement sur la validation, cf. src/train.py) —
-        pas de recentrage logit ad hoc ici : `failure_probability` est directement
+        pas de recentrage logit ad hoc ici : `probabilite_panne` est directement
         interprétable, `prediction` est la décision au seuil optimal (choisi pour
         respecter le budget de fausses alertes, pas nécessairement proche de 0,5 —
         les pannes restent un événement rare).
@@ -72,7 +72,7 @@ class Predictor:
         results = pd.DataFrame(
             {
                 "prediction": predictions,
-                "failure_probability": probabilities,
+                "probabilite_panne": probabilities,
             }
         )
 

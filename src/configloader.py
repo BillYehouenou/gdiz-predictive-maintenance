@@ -5,7 +5,7 @@ import yaml
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
-def load_config(config_name: str = "config/config.yaml"):
+def charger_config(config_name: str = "config/config.yaml"):
     """Charge le fichier de configuration YAML."""
     config_path = PROJECT_ROOT / config_name
 
@@ -16,5 +16,5 @@ def load_config(config_name: str = "config/config.yaml"):
         config = yaml.safe_load(f)
 
     # On rend les chemins de la config absolus dynamiquement pour que data_loader ne se perde jamais
-    config["paths"]["raw_data_path"] = str(PROJECT_ROOT / config["paths"]["raw_data_path"])
+    config["chemins"]["chemin_donnees_brutes"] = str(PROJECT_ROOT / config["chemins"]["chemin_donnees_brutes"])
     return config

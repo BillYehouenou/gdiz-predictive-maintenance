@@ -1,9 +1,9 @@
 import pandas as pd
 
-from src.features import compute_failure_cause_label
+from src.features import calculer_label_cause_panne
 
 
-def test_compute_failure_cause_label_assigns_next_failure_mode_within_horizon():
+def test_calculer_label_cause_panne_assigne_prochain_mode_panne_dans_horizon():
     """
     Étage 2 (diagnostic de cause) : chaque ligne doit porter la cause de la PROCHAINE
     panne prédictible si elle est dans l'horizon, None sinon — vérifié à la main sur
@@ -12,14 +12,14 @@ def test_compute_failure_cause_label_assigns_next_failure_mode_within_horizon():
     n = 20
     df = pd.DataFrame(
         {
-            "machine_id": ["M1"] * n,
+            "id_machine": ["M1"] * n,
             "timestamp": pd.date_range("2025-01-01", periods=n, freq="30min"),
-            "target": [0] * 10 + [1] + [0] * 5 + [1] + [0] * 3,
-            "failure_mode": [""] * 10 + ["HDF"] + [""] * 5 + ["OSF"] + [""] * 3,
+            "panne": [0] * 10 + [1] + [0] * 5 + [1] + [0] * 3,
+            "mode_panne": [""] * 10 + ["HDF"] + [""] * 5 + ["OSF"] + [""] * 3,
         }
     )
 
-    label = compute_failure_cause_label(df, horizon_hours=3, failure_modes=("TWF", "HDF", "OSF"))  # horizon_steps=6
+    label = calculer_label_cause_panne(df, heures_horizon=3, modes_panne=("TWF", "HDF", "OSF"))  # pas_horizon=6
 
     # Fenêtre HDF : 6 pas avant l'index 10 (inclus) -> indices 4-10
     assert label.iloc[3] is None
@@ -30,17 +30,17 @@ def test_compute_failure_cause_label_assigns_next_failure_mode_within_horizon():
     assert label.iloc[17:].isna().all()
 
 
-def test_compute_failure_cause_label_ignores_non_predictable_modes():
+def test_calculer_label_cause_panne_ignore_modes_non_predictibles():
     n = 15
     df = pd.DataFrame(
         {
-            "machine_id": ["M1"] * n,
+            "id_machine": ["M1"] * n,
             "timestamp": pd.date_range("2025-01-01", periods=n, freq="30min"),
-            "target": [0] * 10 + [1] + [0] * 4,
-            "failure_mode": [""] * 10 + ["PWF"] + [""] * 4,
+            "panne": [0] * 10 + [1] + [0] * 4,
+            "mode_panne": [""] * 10 + ["PWF"] + [""] * 4,
         }
     )
 
-    label = compute_failure_cause_label(df, horizon_hours=3, failure_modes=("TWF", "HDF", "OSF"))
+    label = calculer_label_cause_panne(df, heures_horizon=3, modes_panne=("TWF", "HDF", "OSF"))
 
     assert label.isna().all()

@@ -2,14 +2,14 @@
 
 from lightgbm import LGBMClassifier
 
-from src.dataloader import DataLoader
-from src.train import ModelPipeline
+from src.dataloader import ChargeurDonnees
+from src.train import PipelineModele
 
 if __name__ == "__main__":
-    dl = DataLoader()
-    df = dl.load_raw_data()
+    chargeur = ChargeurDonnees()
+    df = chargeur.charger_donnees_brutes()
 
-    # Calibré pour target_h120_predictable : sans class_weight (le rééquilibrage "balanced" dégradait le F2 sur ce label),
+    # Calibré pour cible_h120_predictible : sans class_weight (le rééquilibrage "balanced" dégradait le F2 sur ce label),
     # peu de feuilles + forte régularisation pour éviter l'overfit sur un signal rare.
     model = LGBMClassifier(
         n_estimators=150,
@@ -25,8 +25,8 @@ if __name__ == "__main__":
         verbose=-1,
     )
 
-    hyperparams = {
-        "model_type": "LGBMClassifier",
+    hyperparametres = {
+        "type_modele": "LGBMClassifier",
         "n_estimators": 150,
         "learning_rate": 0.1,
         "num_leaves": 15,
@@ -35,8 +35,8 @@ if __name__ == "__main__":
         "colsample_bytree": 0.7,
         "reg_alpha": 0.3,
         "reg_lambda": 0.3,
-        "split_strategy": "temporal",
+        "strategie_split": "temporal",
     }
 
-    mp = ModelPipeline()
-    mp.run_training(model, df, "LGBM_Predictive_Maintenance", hyperparams)
+    pipeline = PipelineModele()
+    pipeline.lancer_entrainement(model, df, "LGBM_Predictive_Maintenance", hyperparametres)

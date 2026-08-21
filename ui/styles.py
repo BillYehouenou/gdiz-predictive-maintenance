@@ -3,7 +3,7 @@ import streamlit as st
 from ui.helpers import rgba
 
 
-def apply_styles(C: dict, DARK: bool) -> None:
+def appliquer_styles(C: dict, DARK: bool) -> None:
     _shadow = "0 1px 4px rgba(0,0,0,.35)" if DARK else "0 1px 3px rgba(0,0,0,.08)"
     _toggle_glow_on = "rgba(79,195,247,.55)" if DARK else "rgba(79,195,247,.45)"
     _toggle_glow_off = "rgba(253,193,53,.55)" if DARK else "rgba(251,140,0,.45)"

@@ -2,7 +2,7 @@
 Détection de drift — uv run python scripts/check_drift.py
 
 Compare la distribution des features reçues en production (loggées dans MLflow
-via app/utils.py::_log_to_mlflow, expérience GDIZ_Monitoring_Predictions) à celle
+via app/utils.py::_loguer_mlflow, expérience GDIZ_Monitoring_Predictions) à celle
 du jeu d'entraînement, via un test de Kolmogorov-Smirnov par feature.
 
 Une p-value faible (< 0.05) signifie que les deux distributions sont statistiquement
@@ -17,72 +17,72 @@ import mlflow
 import pandas as pd
 from scipy.stats import ks_2samp
 
-from src.dataloader import DataLoader
-from src.train import SPLIT_DATE
+from src.dataloader import ChargeurDonnees
+from src.train import DATE_COUPURE
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-EXPERIMENT_NAME = "GDIZ_Monitoring_Predictions"
-DRIFT_FEATURES = [
-    "tool_wear",
+NOM_EXPERIENCE = "GDIZ_Monitoring_Predictions"
+VARIABLES_DERIVE = [
+    "usure_outil",
     "vibration",
-    "process_temperature",
-    "tool_wear_delta_24h",
+    "temperature_process",
+    "usure_outil_delta_24h",
     "vibration_max_24h",
-    "process_temp_max_24h",
+    "temperature_process_max_24h",
 ]
-SIGNIFICANCE_LEVEL = 0.05
+SEUIL_SIGNIFICATIVITE = 0.05
 
 
-def _load_reference_distribution() -> pd.DataFrame:
-    """Sous-ensemble d'entraînement (avant SPLIT_DATE) — référence vue par le modèle."""
-    df = DataLoader().load_raw_data()
+def _charger_distribution_reference() -> pd.DataFrame:
+    """Sous-ensemble d'entraînement (avant DATE_COUPURE) — référence vue par le modèle."""
+    df = ChargeurDonnees().charger_donnees_brutes()
     df["timestamp"] = pd.to_datetime(df["timestamp"])
-    return df[df["timestamp"] < SPLIT_DATE][DRIFT_FEATURES]
+    return df[df["timestamp"] < DATE_COUPURE][VARIABLES_DERIVE]
 
 
-def _load_production_distribution() -> pd.DataFrame:
+def _charger_distribution_production() -> pd.DataFrame:
     """Features des prédictions récentes, loggées comme métriques MLflow."""
-    experiment = mlflow.get_experiment_by_name(EXPERIMENT_NAME)
-    if experiment is None:
-        return pd.DataFrame(columns=DRIFT_FEATURES)
-    runs = mlflow.search_runs(experiment_ids=[experiment.experiment_id], max_results=5000)
-    cols = {f: f"metrics.{f}" for f in DRIFT_FEATURES if f"metrics.{f}" in runs.columns}
-    return runs[list(cols.values())].rename(columns={v: k for k, v in cols.items()})
+    experience = mlflow.get_experiment_by_name(NOM_EXPERIENCE)
+    if experience is None:
+        return pd.DataFrame(columns=VARIABLES_DERIVE)
+    runs = mlflow.search_runs(experiment_ids=[experience.experiment_id], max_results=5000)
+    colonnes = {v: f"metrics.{v}" for v in VARIABLES_DERIVE if f"metrics.{v}" in runs.columns}
+    return runs[list(colonnes.values())].rename(columns={v: k for k, v in colonnes.items()})
 
 
-def check_drift() -> list[dict]:
-    reference = _load_reference_distribution()
-    production = _load_production_distribution()
+def verifier_derive() -> list[dict]:
+    reference = _charger_distribution_reference()
+    production = _charger_distribution_production()
 
     if production.empty:
         logger.warning("Aucune prédiction loggée dans MLflow — rien à comparer.")
         return []
 
-    results = []
-    for feature in DRIFT_FEATURES:
-        if feature not in production.columns or production[feature].dropna().empty:
+    resultats = []
+    for variable in VARIABLES_DERIVE:
+        if variable not in production.columns or production[variable].dropna().empty:
             continue
-        statistic, p_value = ks_2samp(reference[feature].dropna(), production[feature].dropna())
-        results.append(
+        statistique, p_value = ks_2samp(reference[variable].dropna(), production[variable].dropna())
+        resultats.append(
             {
-                "feature": feature,
-                "ks_statistic": round(float(statistic), 4),
+                "variable": variable,
+                "statistique_ks": round(float(statistique), 4),
                 "p_value": round(float(p_value), 4),
-                "drift_detecte": p_value < SIGNIFICANCE_LEVEL,
+                "drift_detecte": p_value < SEUIL_SIGNIFICATIVITE,
             }
         )
-    return results
+    return resultats
 
 
 if __name__ == "__main__":
-    report = check_drift()
-    if not report:
+    rapport = verifier_derive()
+    if not rapport:
         print("Pas assez de données pour évaluer le drift.")
     else:
-        print(f"\n{'Feature':<25}{'KS':>10}{'p-value':>12}{'Drift':>10}")
+        print(f"\n{'Variable':<25}{'KS':>10}{'p-value':>12}{'Drift':>10}")
         print("-" * 57)
-        for row in report:
-            flag = "OUI ⚠️" if row["drift_detecte"] else "non"
-            print(f"{row['feature']:<25}{row['ks_statistic']:>10}{row['p_value']:>12}{flag:>10}")
+        for ligne in rapport:
+            drapeau = "OUI ⚠️" if ligne["drift_detecte"] else "non"
+            print(f"{ligne['variable']:<25}{ligne['statistique_ks']:>10}{ligne['p_value']:>12}{drapeau:>10}")

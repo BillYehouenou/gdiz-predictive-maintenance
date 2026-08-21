@@ -3,30 +3,30 @@ import pathlib
 
 import pandas as pd
 
-from src.configloader import load_config
-from src.features import enrich_training_df
+from src.configloader import charger_config
+from src.features import enrichir_df_entrainement
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
-class DataLoader:
+class ChargeurDonnees:
     def __init__(self):
-        self.config = load_config()
-        self.raw_path = pathlib.Path(self.config["paths"]["raw_data_path"])
+        self.config = charger_config()
+        self.chemin_brut = pathlib.Path(self.config["chemins"]["chemin_donnees_brutes"])
 
-    def load_raw_data(self) -> pd.DataFrame:
+    def charger_donnees_brutes(self) -> pd.DataFrame:
         """Charge le parquet brut, calcule les features temporelles, retourne le DataFrame enrichi."""
-        filename = self.config["dataset"]["name"]
-        file_full_path = self.raw_path / filename
+        filename = self.config["jeu_donnees"]["name"]
+        chemin_fichier_complet = self.chemin_brut / filename
 
-        if not file_full_path.exists():
-            raise FileNotFoundError(f"Fichier introuvable : {file_full_path}")
+        if not chemin_fichier_complet.exists():
+            raise FileNotFoundError(f"Fichier introuvable : {chemin_fichier_complet}")
 
         if filename.endswith(".csv"):
-            df = pd.read_csv(file_full_path)
+            df = pd.read_csv(chemin_fichier_complet)
         elif filename.endswith(".parquet"):
-            df = pd.read_parquet(file_full_path)
+            df = pd.read_parquet(chemin_fichier_complet)
         else:
             raise ValueError(f"Format non supporté : {filename}")
 
@@ -35,6 +35,6 @@ class DataLoader:
             return df
 
         logger.info(f"Données brutes chargées : {df.shape[0]:,} lignes, {df.shape[1]} colonnes.")
-        df = enrich_training_df(df)
+        df = enrichir_df_entrainement(df)
         logger.info(f"Dataset enrichi avec features temporelles → {df.shape[1]} colonnes totales.")
         return df

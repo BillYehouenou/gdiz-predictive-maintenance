@@ -14,33 +14,33 @@ from lightgbm import LGBMClassifier
 from sklearn.metrics import accuracy_score, classification_report
 from sklearn.pipeline import Pipeline
 
-from src.configloader import load_config
-from src.dataloader import DataLoader
-from src.features import PREDICTABLE_FAILURE_MODES, compute_failure_cause_label
-from src.preprocessor import Preprocessor
-from src.train import SPLIT_DATE, VALIDATION_SPLIT_DATE
+from src.configloader import charger_config
+from src.dataloader import ChargeurDonnees
+from src.features import MODES_PANNE_PREDICTIBLES, calculer_label_cause_panne
+from src.preprocessor import Preprocesseur
+from src.train import DATE_COUPURE, DATE_COUPURE_VALIDATION
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
 def main():
-    config = load_config()
-    features_cols = config["dataset"]["features"]
+    config = charger_config()
+    colonnes_features = config["jeu_donnees"]["features"]
 
-    df = DataLoader().load_raw_data()
+    df = ChargeurDonnees().charger_donnees_brutes()
     df["timestamp"] = pd.to_datetime(df["timestamp"])
-    df["cause_label"] = compute_failure_cause_label(df, horizon_hours=120, failure_modes=PREDICTABLE_FAILURE_MODES)
+    df["label_cause"] = calculer_label_cause_panne(df, heures_horizon=120, modes_panne=MODES_PANNE_PREDICTIBLES)
 
     # Entraîné et évalué UNIQUEMENT sur la population pré-panne (là où l'étage 1
     # alerterait déjà) — pas sur les machines saines, qui n'ont pas de cause à prédire.
-    pre_failure = df[df["cause_label"].notna()].copy()
+    pre_panne = df[df["label_cause"].notna()].copy()
 
-    train = pre_failure[pre_failure["timestamp"] < VALIDATION_SPLIT_DATE]
-    val = pre_failure[(pre_failure["timestamp"] >= VALIDATION_SPLIT_DATE) & (pre_failure["timestamp"] < SPLIT_DATE)]
-    test = pre_failure[pre_failure["timestamp"] >= SPLIT_DATE]
-    logger.info(f"Lignes pré-panne — train: {len(train):,} | validation: {len(val):,} | test: {len(test):,}")
-    logger.info(f"Répartition des causes (train): {train['cause_label'].value_counts().to_dict()}")
+    train = pre_panne[pre_panne["timestamp"] < DATE_COUPURE_VALIDATION]
+    validation = pre_panne[(pre_panne["timestamp"] >= DATE_COUPURE_VALIDATION) & (pre_panne["timestamp"] < DATE_COUPURE)]
+    test = pre_panne[pre_panne["timestamp"] >= DATE_COUPURE]
+    logger.info(f"Lignes pré-panne — train: {len(train):,} | validation: {len(validation):,} | test: {len(test):,}")
+    logger.info(f"Répartition des causes (train): {train['label_cause'].value_counts().to_dict()}")
 
     model = LGBMClassifier(
         n_estimators=150,
@@ -52,15 +52,15 @@ def main():
         n_jobs=-1,
         verbose=-1,
     )
-    pipeline = Pipeline(steps=[("preprocessor", Preprocessor()), ("classifier", model)])
-    pipeline.fit(train[features_cols], train["cause_label"])
+    pipeline = Pipeline(steps=[("preprocessor", Preprocesseur()), ("classifier", model)])
+    pipeline.fit(train[colonnes_features], train["label_cause"])
 
-    for name, split in [("validation", val), ("test", test)]:
-        y_true = split["cause_label"]
-        y_pred = pipeline.predict(split[features_cols])
-        acc = accuracy_score(y_true, y_pred)
-        logger.info(f"--- {name} : accuracy={acc:.1%} ---")
-        print(classification_report(y_true, y_pred, zero_division=0))
+    for nom, sous_ensemble in [("validation", validation), ("test", test)]:
+        y_true = sous_ensemble["label_cause"]
+        y_predit = pipeline.predict(sous_ensemble[colonnes_features])
+        acc = accuracy_score(y_true, y_predit)
+        logger.info(f"--- {nom} : accuracy={acc:.1%} ---")
+        print(classification_report(y_true, y_predit, zero_division=0))
 
 
 if __name__ == "__main__":

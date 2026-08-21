@@ -4,44 +4,44 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.features import WINDOW_24H, enrich_inference_series
+from src.features import FENETRE_24H, enrichir_serie_inference
 from ui.constants import FEAT_COLS, STEPS_MAP
-from ui.helpers import plot_axis, plot_layout
-from ui.queries import get_predictor, q_machine_last, q_machine_list, q_machine_ts_full
+from ui.helpers import axe_graphique, disposition_graphique
+from ui.queries import obtenir_predicteur, q_dernier_releve_machine, q_liste_machines, q_serie_complete_machine
 
 logger = logging.getLogger(__name__)
 
 
-def _predict_series(predictor, df_ts_buffered: pd.DataFrame, display_steps: int) -> pd.DataFrame:
+def _predire_serie(predicteur, df_serie_tampon: pd.DataFrame, display_steps: int) -> pd.DataFrame:
     """
     Enrichit temporellement puis prédit sur toute la série, puis ne garde que les
-    `display_steps` dernières lignes. `df_ts_buffered` doit contenir display_steps +
-    WINDOW_24H lignes : sans ce tampon, les features glissantes 24h des premières
+    `display_steps` dernières lignes. `df_serie_tampon` doit contenir display_steps +
+    FENETRE_24H lignes : sans ce tampon, les features glissantes 24h des premières
     lignes de la fenêtre affichée seraient calculées avec un historique tronqué
-    (ex. tool_wear_delta_24h=0 par défaut faute de point 24h en arrière disponible),
+    (ex. usure_outil_delta_24h=0 par défaut faute de point 24h en arrière disponible),
     ce qui fausse la probabilité affichée selon la fenêtre choisie (24h/7j/30j).
     """
-    df_enriched = enrich_inference_series(df_ts_buffered)
+    df_enriched = enrichir_serie_inference(df_serie_tampon)
     feat_df = df_enriched[[k for k in FEAT_COLS if k in df_enriched.columns]].dropna()
     if len(feat_df) == 0:
         return pd.DataFrame()
-    preds = predictor.predict(feat_df)
-    out = df_enriched.loc[feat_df.index, ["timestamp", "tool_wear", "vibration", "target"]].copy()
-    out["failure_probability"] = preds["failure_probability"].values
+    preds = predicteur.predire(feat_df)
+    out = df_enriched.loc[feat_df.index, ["timestamp", "usure_outil", "vibration", "panne"]].copy()
+    out["probabilite_panne"] = preds["probabilite_panne"].values
     out["prediction"] = preds["prediction"].values
     return out.reset_index(drop=True).tail(display_steps).reset_index(drop=True)
 
 
-def render(C: dict) -> None:
-    machines = q_machine_list()
+def afficher(C: dict) -> None:
+    machines = q_liste_machines()
     m_labels = [f"Machine #{mid[-2:]}" for mid in machines]
 
     top_l, top_r = st.columns([3, 1])
     with top_l:
-        sel_idx = st.selectbox("Sélectionner une machine", range(len(m_labels)), format_func=lambda i: m_labels[i])
+        index_selectionne = st.selectbox("Sélectionner une machine", range(len(m_labels)), format_func=lambda i: m_labels[i])
     with top_r:
         st.markdown("<div style='margin-top:1.6rem;'>", unsafe_allow_html=True)
-        sel_horizon = st.segmented_control(
+        horizon_selectionne = st.segmented_control(
             "Horizon",
             options=list(STEPS_MAP.keys()),
             default="30j",
@@ -49,61 +49,61 @@ def render(C: dict) -> None:
         )
         st.markdown("</div>", unsafe_allow_html=True)
 
-    if sel_horizon is None:
-        sel_horizon = "30j"
-    steps = STEPS_MAP[sel_horizon]
-    sel_id = machines[sel_idx]
+    if horizon_selectionne is None:
+        horizon_selectionne = "30j"
+    steps = STEPS_MAP[horizon_selectionne]
+    id_selectionne = machines[index_selectionne]
 
-    snap = q_machine_last(sel_id)
-    df_ts = q_machine_ts_full(sel_id, steps)
+    snap = q_dernier_releve_machine(id_selectionne)
+    df_serie = q_serie_complete_machine(id_selectionne, steps)
 
     # Métriques agrégées sur la fenêtre sélectionnée
-    has_ts = len(df_ts) > 0
-    wear_max = float(df_ts["tool_wear"].max()) if has_ts else snap["tool_wear"]
-    temp_max = float(df_ts["process_temperature"].max()) if has_ts else snap["process_temperature"]
-    vibr_max = float(df_ts["vibration"].max()) if has_ts else snap["vibration"]
-    vstab_min = float(df_ts["voltage_stability"].min()) if has_ts else snap["voltage_stability"]
-    torque_max = float(df_ts["torque"].max()) if has_ts else snap["torque"]
-    n_fail_period = int(df_ts["target"].sum()) if has_ts else 0
+    has_ts = len(df_serie) > 0
+    wear_max = float(df_serie["usure_outil"].max()) if has_ts else snap["usure_outil"]
+    temp_max = float(df_serie["temperature_process"].max()) if has_ts else snap["temperature_process"]
+    vibr_max = float(df_serie["vibration"].max()) if has_ts else snap["vibration"]
+    vstab_min = float(df_serie["stabilite_tension"].min()) if has_ts else snap["stabilite_tension"]
+    torque_max = float(df_serie["couple"].max()) if has_ts else snap["couple"]
+    n_fail_period = int(df_serie["panne"].sum()) if has_ts else 0
 
     # Prédictions sur la série complète (enrichie temporellement)
-    peak_prob: float = 0.0
-    peak_ts = None
-    current_prob: float | None = None
-    df_pred = pd.DataFrame()
-    predictor = None
+    probabilite_pic: float = 0.0
+    horodatage_pic = None
+    probabilite_actuelle: float | None = None
+    df_predictions = pd.DataFrame()
+    predicteur = None
 
     try:
-        predictor = get_predictor()
-        # +WINDOW_24H lignes de tampon : sans elles, les features glissantes 24h des
-        # premières lignes de la fenêtre affichée seraient tronquées (cf. _predict_series).
-        df_ts_buffered = q_machine_ts_full(sel_id, steps + WINDOW_24H)
-        df_pred = _predict_series(predictor, df_ts_buffered, steps)
-        if len(df_pred) > 0:
-            peak_idx = int(df_pred["failure_probability"].idxmax())
-            peak_prob = float(df_pred.loc[peak_idx, "failure_probability"])
-            peak_ts = df_pred.loc[peak_idx, "timestamp"]
-            current_prob = float(df_pred.iloc[-1]["failure_probability"])
+        predicteur = obtenir_predicteur()
+        # +FENETRE_24H lignes de tampon : sans elles, les features glissantes 24h des
+        # premières lignes de la fenêtre affichée seraient tronquées (cf. _predire_serie).
+        df_serie_tampon = q_serie_complete_machine(id_selectionne, steps + FENETRE_24H)
+        df_predictions = _predire_serie(predicteur, df_serie_tampon, steps)
+        if len(df_predictions) > 0:
+            peak_idx = int(df_predictions["probabilite_panne"].idxmax())
+            probabilite_pic = float(df_predictions.loc[peak_idx, "probabilite_panne"])
+            horodatage_pic = df_predictions.loc[peak_idx, "timestamp"]
+            probabilite_actuelle = float(df_predictions.iloc[-1]["probabilite_panne"])
     except Exception as e:
-        logger.warning(f"Prédiction indisponible pour {sel_id} : {e}")
+        logger.warning(f"Prédiction indisponible pour {id_selectionne} : {e}")
 
     # Risque pic = métrique principale pour la maintenance
     # Seuils dérivés du seuil de décision réel du modèle (probabilités calibrées,
     # cf. docs/model-decisions.md) plutôt que des bornes fixes 0,35/0,50 : avec un
     # seuil optimal typiquement bas (pannes rares, ~3 % de base), des bornes fixes
     # afficheraient "Normal" pour une machine que le modèle alerte réellement.
-    disp_prob = peak_prob
-    threshold = predictor.threshold if predictor is not None else 0.5
-    if disp_prob < threshold:
+    probabilite_affichee = probabilite_pic
+    threshold = predicteur.threshold if predicteur is not None else 0.5
+    if probabilite_affichee < threshold:
         p_color, p_label = C["green"], "Normal"
-    elif disp_prob < threshold * 3:
+    elif probabilite_affichee < threshold * 3:
         p_color, p_label = C["orange"], "Surveillance"
     else:
         p_color, p_label = C["red"], "Risque élevé"
 
-    _peak_date = f"pic le {pd.Timestamp(peak_ts).strftime('%d/%m %H:%M')}" if peak_ts is not None else ""
-    _calib_note = "Modèle non disponible" if current_prob is None else "LightGBM · Probabilités calibrées (isotonique)"
-    _h = sel_horizon
+    _peak_date = f"pic le {pd.Timestamp(horodatage_pic).strftime('%d/%m %H:%M')}" if horodatage_pic is not None else ""
+    _calib_note = "Modèle non disponible" if probabilite_actuelle is None else "LightGBM · Probabilités calibrées (isotonique)"
+    _h = horizon_selectionne
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -119,7 +119,7 @@ def render(C: dict) -> None:
                 height:100%;box-sizing:border-box;'>
               <div style='font-size:.75rem;color:{C["faint"]};letter-spacing:.04em;'>RISQUE DE PANNE · ≤ 5 JOURS</div>
               <div style='font-size:2.6rem;font-weight:700;color:{p_color};
-                line-height:1.15;margin:.2rem 0;'>{disp_prob * 100:.1f}%</div>
+                line-height:1.15;margin:.2rem 0;'>{probabilite_affichee * 100:.1f}%</div>
               <div style='font-size:.85rem;color:{p_color};'>{p_label}</div>
               <div style='font-size:.68rem;color:{C["faint"]};margin-top:.3rem;'>pic sur les {_h} · {_peak_date}</div>
               <div style='font-size:.68rem;color:{C["faint"]};margin-top:.2rem;'>{_calib_note}</div>
@@ -129,7 +129,7 @@ def render(C: dict) -> None:
 
     with col_m1:
         st.metric(f"Usure max · {_h}", f"{wear_max:.1f} %", help="Maximum d'usure outil observé sur la période")
-        st.metric("Type machine", snap["machine_type"])
+        st.metric("Type machine", snap["type_machine"])
         st.metric(f"Couple max · {_h}", f"{torque_max:.1f} Nm", help="Couple maximal — indicateur de surcharge mécanique")
 
     with col_m2:
@@ -143,13 +143,13 @@ def render(C: dict) -> None:
     st.markdown("<br>", unsafe_allow_html=True)
 
     # Graphique : courbe de risque sur la fenêtre
-    if len(df_pred) > 0:
+    if len(df_predictions) > 0:
         st.markdown(
             f"<p style='color:{C['muted']};font-size:1.3rem;font-weight:660;letter-spacing:0;margin:0;'>Courbe de risque</p>",
             unsafe_allow_html=True,
         )
 
-        prob_max_pct = max(float(df_pred["failure_probability"].max()) * 100, 1.0)
+        prob_max_pct = max(float(df_predictions["probabilite_panne"].max()) * 100, 1.0)
         y_max = min(prob_max_pct * 1.40, 106)
 
         fig = go.Figure()
@@ -157,20 +157,20 @@ def render(C: dict) -> None:
         # Probabilité de panne — lissée avec spline
         fig.add_trace(
             go.Scatter(
-                x=df_pred["timestamp"],
-                y=df_pred["failure_probability"] * 100,
+                x=df_predictions["timestamp"],
+                y=df_predictions["probabilite_panne"] * 100,
                 name="Risque",
                 line=dict(color=C["red"], width=1.8, shape="spline"),
             )
         )
 
         # Marqueurs de pannes constatées
-        failures = df_pred[df_pred["target"] == 1]
+        failures = df_predictions[df_predictions["panne"] == 1]
         if len(failures) > 0:
             fig.add_trace(
                 go.Scatter(
                     x=failures["timestamp"],
-                    y=failures["failure_probability"] * 100,
+                    y=failures["probabilite_panne"] * 100,
                     mode="markers",
                     name="Panne constatée",
                     marker=dict(color=C["red"], size=9, symbol="x-thin", line=dict(width=2, color=C["red"])),
@@ -178,8 +178,8 @@ def render(C: dict) -> None:
             )
 
         fig.update_layout(
-            **plot_layout(C, height=300, plot_bgcolor="rgba(0,0,0,0)", showlegend=False),
-            xaxis=dict(**plot_axis(C)),
-            yaxis=dict(**plot_axis(C), title="Risque", range=[0, y_max]),
+            **disposition_graphique(C, height=300, plot_bgcolor="rgba(0,0,0,0)", showlegend=False),
+            xaxis=dict(**axe_graphique(C)),
+            yaxis=dict(**axe_graphique(C), title="Risque", range=[0, y_max]),
         )
         st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})

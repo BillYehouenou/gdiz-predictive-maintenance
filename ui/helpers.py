@@ -1,4 +1,4 @@
-def plot_layout(C: dict, **kw) -> dict:
+def disposition_graphique(C: dict, **kw) -> dict:
     base = dict(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor=C["plot_bg"],
@@ -16,7 +16,7 @@ def plot_layout(C: dict, **kw) -> dict:
     return base
 
 
-def plot_axis(C: dict, **kw) -> dict:
+def axe_graphique(C: dict, **kw) -> dict:
     base = dict(
         gridcolor=C["grid"],
         linecolor=C["border"],
@@ -35,18 +35,18 @@ def rgba(hex_color: str, alpha: float) -> str:
     return f"rgba({r},{g},{b},{alpha})"
 
 
-def fmt_fcfa(amount: float) -> str:
+def formater_fcfa(amount: float) -> str:
     if amount >= 1_000_000:
         return f"{amount / 1_000_000:.1f} M FCFA"
     return f"{amount / 1_000:.0f} k FCFA"
 
 
-def cost_delta_html(C: dict, delta: float, prev_label: str) -> str:
+def html_delta_cout(C: dict, delta: float, prev_label: str) -> str:
     if delta > 0:
         col, sym = C["red"], "▲"
     else:
         col, sym = C["green"], "▼"
     return (
         f"<div style='font-size:.72rem;color:{col};margin-top:-.15rem;line-height:0.9;'>"
-        f"{sym} {fmt_fcfa(abs(delta))} vs {prev_label}</div>"
+        f"{sym} {formater_fcfa(abs(delta))} vs {prev_label}</div>"
     )

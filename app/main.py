@@ -2,8 +2,8 @@ import logging
 
 from fastapi import APIRouter, FastAPI, HTTPException
 
-from app.schemas import MachineData, PredictionResponse
-from app.utils import process_prediction
+from app.schemas import DonneesMachine, ReponsePrediction
+from app.utils import traiter_prediction
 
 logger = logging.getLogger(__name__)
 
@@ -17,16 +17,16 @@ router = APIRouter(prefix="/api/v1")
 
 
 @app.get("/health")
-def health():
+def sante():
     """Vérifie que l'API répond correctement."""
     return {"status": "healthy"}
 
 
-@router.post("/predict", response_model=PredictionResponse)
-def predict(data: MachineData):
+@router.post("/predict", response_model=ReponsePrediction)
+def predire(data: DonneesMachine):
     """Reçoit les données machine, valide le format et renvoie la prédiction."""
     try:
-        result = process_prediction(data.model_dump())
+        result = traiter_prediction(data.model_dump())
         return result
     except Exception:
         logger.exception("Erreur lors du traitement de la prédiction")

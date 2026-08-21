@@ -2,62 +2,62 @@ import pandas as pd
 import pytest
 
 import src.dataloader as dataloader_module
-from src.dataloader import DataLoader
+from src.dataloader import ChargeurDonnees
 
 
 @pytest.fixture
 def configured_loader(tmp_path, monkeypatch):
-    """DataLoader pointant vers un répertoire temporaire, sans toucher à la config réelle du projet."""
+    """ChargeurDonnees pointant vers un répertoire temporaire, sans toucher à la config réelle du projet."""
     fake_config = {
-        "paths": {"raw_data_path": str(tmp_path)},
-        "dataset": {"name": "dataset.parquet", "target_column": "target_h120_predictable", "features": []},
+        "chemins": {"chemin_donnees_brutes": str(tmp_path)},
+        "jeu_donnees": {"name": "jeu_donnees.parquet", "colonne_cible": "cible_h120_predictible", "features": []},
     }
-    monkeypatch.setattr(dataloader_module, "load_config", lambda: fake_config)
-    return DataLoader()
+    monkeypatch.setattr(dataloader_module, "charger_config", lambda: fake_config)
+    return ChargeurDonnees()
 
 
-def test_load_raw_data_missing_file(configured_loader):
+def test_charger_donnees_brutes_fichier_manquant(configured_loader):
     with pytest.raises(FileNotFoundError):
-        configured_loader.load_raw_data()
+        configured_loader.charger_donnees_brutes()
 
 
-def test_load_raw_data_unsupported_format(tmp_path, configured_loader):
-    configured_loader.config["dataset"]["name"] = "dataset.txt"
-    (tmp_path / "dataset.txt").write_text("contenu non supporté")
+def test_charger_donnees_brutes_format_non_supporte(tmp_path, configured_loader):
+    configured_loader.config["jeu_donnees"]["name"] = "jeu_donnees.txt"
+    (tmp_path / "jeu_donnees.txt").write_text("contenu non supporté")
     with pytest.raises(ValueError, match="Format non supporté"):
-        configured_loader.load_raw_data()
+        configured_loader.charger_donnees_brutes()
 
 
-def test_load_raw_data_empty_returns_without_enrichment(tmp_path, configured_loader):
-    pd.DataFrame().to_parquet(tmp_path / "dataset.parquet")
-    df = configured_loader.load_raw_data()
+def test_charger_donnees_brutes_vide_retourne_sans_enrichissement(tmp_path, configured_loader):
+    pd.DataFrame().to_parquet(tmp_path / "jeu_donnees.parquet")
+    df = configured_loader.charger_donnees_brutes()
     assert df.empty
 
 
-def test_load_raw_data_parquet_enrichit_features_temporelles(tmp_path, configured_loader):
-    """Vérifie que load_raw_data() applique bien enrich_training_df (colonnes temporelles ajoutées)."""
+def test_charger_donnees_brutes_parquet_enrichit_features_temporelles(tmp_path, configured_loader):
+    """Vérifie que charger_donnees_brutes() applique bien enrichir_df_entrainement (colonnes temporelles ajoutées)."""
     raw = pd.DataFrame(
         {
-            "machine_id": ["M1", "M1", "M1"],
+            "id_machine": ["M1", "M1", "M1"],
             "timestamp": pd.date_range("2024-01-01", periods=3, freq="30min"),
-            "tool_wear": [10.0, 12.0, 14.0],
+            "usure_outil": [10.0, 12.0, 14.0],
             "vibration": [1.0, 1.1, 1.2],
-            "process_temperature": [40.0, 41.0, 42.0],
-            "ambient_temperature": [26.0, 26.5, 27.0],
-            "dust_concentration": [30.0, 32.0, 35.0],
-            "torque": [20.0, 22.0, 21.0],
-            "target": [0, 0, 0],
-            "failure_mode": [None, None, None],
+            "temperature_process": [40.0, 41.0, 42.0],
+            "temperature_ambiante": [26.0, 26.5, 27.0],
+            "concentration_poussiere": [30.0, 32.0, 35.0],
+            "couple": [20.0, 22.0, 21.0],
+            "panne": [0, 0, 0],
+            "mode_panne": [None, None, None],
         }
     )
-    raw.to_parquet(tmp_path / "dataset.parquet")
+    raw.to_parquet(tmp_path / "jeu_donnees.parquet")
 
-    df = configured_loader.load_raw_data()
+    df = configured_loader.charger_donnees_brutes()
 
-    assert "tool_wear_delta_24h" in df.columns
+    assert "usure_outil_delta_24h" in df.columns
     assert "vibration_max_24h" in df.columns
-    assert "delta_temp" in df.columns
-    assert "delta_temp_max_24h" in df.columns
-    assert "dust_mean_24h" in df.columns
-    assert "torque_max_24h" in df.columns
+    assert "ecart_thermique" in df.columns
+    assert "ecart_thermique_max_24h" in df.columns
+    assert "poussiere_moyenne_24h" in df.columns
+    assert "couple_max_24h" in df.columns
     assert len(df) == 3

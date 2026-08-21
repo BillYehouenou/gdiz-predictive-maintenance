@@ -13,82 +13,84 @@ import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 
-from src.configloader import load_config
-from src.dataloader import DataLoader
-from src.evaluation import find_threshold_for_fa_budget
-from src.preprocessor import Preprocessor
+from src.configloader import charger_config
+from src.dataloader import ChargeurDonnees
+from src.evaluation import trouver_seuil_pour_budget_fa
+from src.preprocessor import Preprocesseur
 from src.train import (
-    EVENT_HORIZON_STEPS,
-    FALSE_ALARM_BUDGET_PER_MACHINE_DAY,
-    SPLIT_DATE,
-    VALIDATION_SPLIT_DATE,
+    BUDGET_FAUSSES_ALERTES_PAR_MACHINE_JOUR,
+    DATE_COUPURE,
+    DATE_COUPURE_VALIDATION,
+    PAS_HORIZON_EVENEMENT,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-RULE_THRESHOLD_GRID = np.arange(5.0, 100.0, 1.0)  # sur l'échelle brute de tool_wear (%), pas une probabilité
-LR_THRESHOLD_GRID = np.arange(0.005, 0.95, 0.005)
+GRILLE_SEUILS_REGLE = np.arange(5.0, 100.0, 1.0)  # sur l'échelle brute de usure_outil (%), pas une probabilité
+GRILLE_SEUILS_RL = np.arange(0.005, 0.95, 0.005)
 
 
-def _split(df: pd.DataFrame, features_cols: list[str], target_col: str):
+def _split(df: pd.DataFrame, colonnes_features: list[str], colonne_cible: str):
     df = df.copy()
     df["timestamp"] = pd.to_datetime(df["timestamp"])
-    train = df[df["timestamp"] < VALIDATION_SPLIT_DATE]
-    val = df[(df["timestamp"] >= VALIDATION_SPLIT_DATE) & (df["timestamp"] < SPLIT_DATE)]
-    test = df[df["timestamp"] >= SPLIT_DATE]
-    meta_cols = ["machine_id", "timestamp", "target", "failure_mode"]
+    train = df[df["timestamp"] < DATE_COUPURE_VALIDATION]
+    val = df[(df["timestamp"] >= DATE_COUPURE_VALIDATION) & (df["timestamp"] < DATE_COUPURE)]
+    test = df[df["timestamp"] >= DATE_COUPURE]
+    colonnes_meta = ["id_machine", "timestamp", "panne", "mode_panne"]
     return (
-        train[features_cols],
-        train[target_col],
-        val[features_cols],
-        val[target_col],
-        val[meta_cols],
-        test[features_cols],
-        test[target_col],
-        test[meta_cols],
+        train[colonnes_features],
+        train[colonne_cible],
+        val[colonnes_features],
+        val[colonne_cible],
+        val[colonnes_meta],
+        test[colonnes_features],
+        test[colonne_cible],
+        test[colonnes_meta],
     )
 
 
-def evaluate_baseline(name: str, probas_val, probas_test, val_meta, test_meta, threshold_grid):
-    threshold, val_metrics = find_threshold_for_fa_budget(
-        val_meta, probas_val, threshold_grid, EVENT_HORIZON_STEPS, FALSE_ALARM_BUDGET_PER_MACHINE_DAY
+def evaluer_baseline(nom: str, probas_validation, probas_test, meta_validation, meta_test, grille_seuils):
+    seuil, metriques_validation = trouver_seuil_pour_budget_fa(
+        meta_validation, probas_validation, grille_seuils, PAS_HORIZON_EVENEMENT, BUDGET_FAUSSES_ALERTES_PAR_MACHINE_JOUR
     )
-    from src.evaluation import event_based_metrics
+    from src.evaluation import metriques_evenementielles
 
-    test_metrics = event_based_metrics(test_meta, probas_test, threshold, EVENT_HORIZON_STEPS)
+    metriques_test = metriques_evenementielles(meta_test, probas_test, seuil, PAS_HORIZON_EVENEMENT)
     logger.info(
-        f"{name} — seuil={threshold:.3f} | validation recall_event={val_metrics['recall_event']:.3f} | "
-        f"TEST recall_event={test_metrics['recall_event']:.3f} FA/machine/jour="
-        f"{test_metrics['false_alarm_rate_per_machine_day']:.3f} "
-        f"({test_metrics['n_caught']}/{test_metrics['n_failures']} pannes attrapées)"
+        f"{nom} — seuil={seuil:.3f} | validation recall_evenementiel={metriques_validation['recall_evenementiel']:.3f} | "
+        f"TEST recall_evenementiel={metriques_test['recall_evenementiel']:.3f} FA/machine/jour="
+        f"{metriques_test['taux_fausses_alertes_par_machine_jour']:.3f} "
+        f"({metriques_test['nb_attrapees']}/{metriques_test['nb_pannes']} pannes attrapées)"
     )
-    return test_metrics
+    return metriques_test
 
 
 def main():
-    config = load_config()
-    features_cols = config["dataset"]["features"]
-    target_col = config["dataset"]["target_column"]
+    config = charger_config()
+    colonnes_features = config["jeu_donnees"]["features"]
+    colonne_cible = config["jeu_donnees"]["colonne_cible"]
 
-    df = DataLoader().load_raw_data()
-    X_train, y_train, X_val, y_val, val_meta, X_test, y_test, test_meta = _split(df, features_cols, target_col)
+    df = ChargeurDonnees().charger_donnees_brutes()
+    X_train, y_train, X_val, y_val, meta_validation, X_test, y_test, meta_test = _split(df, colonnes_features, colonne_cible)
 
     # 1. Règle triviale : usure > seuil. Pas d'apprentissage, juste un balayage de
-    # seuil sur tool_wear directement (même infrastructure d'évaluation que le modèle).
-    probas_val_rule = X_val["tool_wear"].to_numpy()
-    probas_test_rule = X_test["tool_wear"].to_numpy()
-    evaluate_baseline("Règle (tool_wear > seuil)", probas_val_rule, probas_test_rule, val_meta, test_meta, RULE_THRESHOLD_GRID)
+    # seuil sur usure_outil directement (même infrastructure d'évaluation que le modèle).
+    probas_val_regle = X_val["usure_outil"].to_numpy()
+    probas_test_regle = X_test["usure_outil"].to_numpy()
+    evaluer_baseline(
+        "Règle (usure_outil > seuil)", probas_val_regle, probas_test_regle, meta_validation, meta_test, GRILLE_SEUILS_REGLE
+    )
 
     # 2. Régression logistique : même preprocessing que le modèle principal, pas
     # d'ingénierie spécifique — le point de comparaison le plus juste.
-    lr_pipeline = Pipeline(
-        steps=[("preprocessor", Preprocessor()), ("classifier", LogisticRegression(max_iter=3000, class_weight="balanced"))]
+    pipeline_rl = Pipeline(
+        steps=[("preprocessor", Preprocesseur()), ("classifier", LogisticRegression(max_iter=3000, class_weight="balanced"))]
     )
-    lr_pipeline.fit(X_train, y_train)
-    probas_val_lr = lr_pipeline.predict_proba(X_val)[:, 1]
-    probas_test_lr = lr_pipeline.predict_proba(X_test)[:, 1]
-    evaluate_baseline("Régression logistique", probas_val_lr, probas_test_lr, val_meta, test_meta, LR_THRESHOLD_GRID)
+    pipeline_rl.fit(X_train, y_train)
+    probas_val_rl = pipeline_rl.predict_proba(X_val)[:, 1]
+    probas_test_rl = pipeline_rl.predict_proba(X_test)[:, 1]
+    evaluer_baseline("Régression logistique", probas_val_rl, probas_test_rl, meta_validation, meta_test, GRILLE_SEUILS_RL)
 
     logger.info("Comparer ces résultats à ceux du modèle LightGBM (`make train`) — chiffres à jour dans docs/experiments.md.")
 

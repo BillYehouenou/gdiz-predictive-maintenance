@@ -1,5 +1,5 @@
 """
-Module de génération de dataset synthétique pour la maintenance prédictive textile.
+Module de génération de jeu_donnees synthétique pour la maintenance prédictive textile.
 
 Architecture hybride:
 - Étape A: Contexte exogène global (variables macro-environnementales)
@@ -25,86 +25,86 @@ logger = logging.getLogger(__name__)
 # Configuration globale
 
 
-class SyntheticDataConfig:
+class ConfigDonneesSynthetiques:
     """Configuration centralisée pour la génération de données synthétiques."""
 
-    global_seed = 42
+    graine_globale = 42
 
     # Horizon temporel
-    start_date = datetime(2024, 1, 1)
-    duration_days = 730  # 2 ans — capture 2 cycles Harmattan + saisons des pluies
-    interval_minutes = 30  # Pas de 30 min
+    date_debut = datetime(2024, 1, 1)
+    duree_jours = 730  # 2 ans — capture 2 cycles Harmattan + saisons des pluies
+    intervalle_minutes = 30  # Pas de 30 min
 
     # Machines — 50 : au-delà, gain marginal sur la fiabilité des métriques de test
     # pour un coût ~x2 en temps/RAM (30 machines → marge ±11,5 pts sur le recall
     # événementiel mesuré sur le jeu de test ; 50 → ±8,7 pts ; 100 → ±6,2 pts).
     # Cf. docs/data-generation.md.
     nb_machines = 50
-    machine_ids = [f"GDIZ_TEX_M_{i:02d}" for i in range(1, nb_machines + 1)]
-    machine_type_quality = ["L", "M", "H"]
+    ids_machines = [f"GDIZ_TEX_M_{i:02d}" for i in range(1, nb_machines + 1)]
+    qualite_type_machine = ["L", "M", "H"]
 
     # Usure — calibré pour ~4-8 pannes / machine / 2 ans (moyenne empirique : 6.6)
-    base_wear_increment = 0.005
-    initial_wear_range = (10, 70)
+    increment_usure_base = 0.005
+    plage_usure_initiale = (10, 70)
 
     # Fragilité individuelle de chaque machine — variabilité unité-à-unité de fabrication
-    frailty_shape = 2.5
+    forme_fragilite = 2.5
 
     # TWF (Tool Wear Failure) — chaque machine tire son propre seuil de rupture
     # La plupart des machines tiennent bien, certaines cassent dès 65-75 %, d'autres tiennent jusqu'à 95-99 %
     # Le hasard ne devient significatif qu'à l'approche de CE seuil personnel — pas d'un seuil universel — via une rampe lisse
-    twf_threshold_min = 65.0
-    twf_threshold_range = 34.0  # seuils personnels dans [65, 99]
-    twf_threshold_beta_a = 4.0
-    twf_threshold_beta_b = 2.0
-    twf_ramp_band = 12.0  # largeur (en points d'usure) de la rampe avant le seuil personnel
-    twf_ramp_exponent = 3.0
+    seuil_min_use = 65.0
+    plage_seuil_use = 34.0  # seuils personnels dans [65, 99]
+    beta_a_seuil_use = 4.0
+    beta_b_seuil_use = 2.0
+    bande_rampe_use = 12.0  # largeur (en points d'usure) de la rampe avant le seuil personnel
+    exposant_rampe_use = 3.0
     # Recalibré (0.05 -> 0.08) pour compenser la dilution de part par les nouveaux
     # canaux HDF/OSF et par la maintenance préventive ci-dessous — cf.
     # docs/data-generation.md pour la méthode de calibration.
-    twf_hazard_coeff = 0.08
+    coeff_risque_use = 0.08
 
     # HDF (Heat Dissipation Failure) — surchauffe soutenue (moyenne glissante ~4h), pas un pic instantané
     # Hasard nul sous le seuil, quadratique au-delà
-    hdf_window_steps = 8  # 8 × 30 min = 4h
-    hdf_overheat_threshold = 38.0  # °C au-delà de l'ambiant en moyenne sur la fenêtre choisie
-    # Recalibré (0.0004 -> 0.00012) : la chaîne encrassement (fouling_heat_factor)
+    pas_fenetre_shd = 8  # 8 × 30 min = 4h
+    seuil_surchauffe_shd = 38.0  # °C au-delà de l'ambiant en moyenne sur la fenêtre choisie
+    # Recalibré (0.0004 -> 0.00012) : la chaîne encrassement (facteur_chaleur_encrassement)
     # ajoute une source de chaleur supplémentaire, sans baisse du coefficient HDF
     # dominait les autres causes (jusqu'à 65 % des pannes lors du premier essai).
-    hdf_hazard_coeff = 0.00012
+    coeff_risque_shd = 0.00012
 
     # OSF (Overstrain Failure) — surcharge mécanique : couple élevé combiné à une usure déjà significative.
     # Recalibré (0.00038 -> 0.0007) pour compenser la dilution par le mélange avec
-    # bearing_wear (osf_bearing_weight ci-dessous).
-    osf_hazard_coeff = 0.0007
+    # usure_roulements (poids_roulements_osf ci-dessous).
+    coeff_risque_sm = 0.0007
 
     # PWF (Power Failure) — instabilité électrique routinière hors coupure franche
-    # (le choc de redémarrage après blackout est géré séparément, cf. blackout_failure_sensitivity)
+    # (le choc de redémarrage après blackout est géré séparément, cf. sensibilite_panne_coupure)
     # Recalibré (0.000024 -> 0.000015) : sa part croît mécaniquement quand les autres
     # causes baissent (risques concurrents), sans rapport avec un changement de PWF lui-même.
-    pwf_hazard_coeff = 0.000015
+    coeff_risque_pe = 0.000015
 
     # RNF (Random Failure) — risque résiduel irréductible, par construction sans précurseur (miroir du RNF d'AI4I 2020)
-    rnf_hazard_base = 0.000018
+    risque_base_pa = 0.000018
 
     # Dérive thermique additionnelle due au frottement d'un outil usé
-    wear_heat_factor = 3.0  # °C additionnels max à usure = 100 %
+    facteur_chaleur_usure = 3.0  # °C additionnels max à usure = 100 %
 
     # Rampe terminale de dégradation (TWF) — au-delà du seuil personnel, l'usure peut
     # plafonner (capée à 100 %) alors que la panne n'a pas encore été tirée : sans ce
     # mécanisme, le hasard redevient un pur tirage mémoryless une fois le plafond
-    # atteint, non prédictible depuis les capteurs. ramp_exposure_hours compte le temps
+    # atteint, non prédictible depuis les capteurs. heures_exposition_rampe compte le temps
     # cumulé passé dans la bande de rampe et fait évoluer le hasard + la vibration/
     # chaleur même quand l'usure elle-même ne bouge plus.
-    twf_ramp_max_exposure_hours = 240.0  # plafond (10 j) — au-delà, effet saturé
-    twf_ramp_time_half_life_hours = 48.0  # le hasard TWF ~double tous les 2 jours passés dans la bande
-    twf_chatter_rate = 0.022  # vibration additionnelle par heure d'exposition à la bande
-    twf_ramp_heat_rate = 0.014  # °C additionnels par heure d'exposition à la bande
+    heures_max_exposition_rampe_use = 240.0  # plafond (10 j) — au-delà, effet saturé
+    demi_vie_heures_rampe_use = 48.0  # le hasard TWF ~double tous les 2 jours passés dans la bande
+    taux_broutement_use = 0.022  # vibration additionnelle par heure d'exposition à la bande
+    taux_chaleur_rampe_use = 0.014  # °C additionnels par heure d'exposition à la bande
 
     # Encrassement (poussière → dissipation thermique réduite → HDF)
-    fouling_base_rate = 0.06  # % d'encrassement gagné par pas, à dust=100 et sensibilité=1
-    fouling_heat_factor = 1.8  # °C additionnels max à encrassement = 100 %
-    fouling_reset_residual = 10.0  # % résiduel après une visite de maintenance (nettoyage partiel)
+    taux_base_encrassement = 0.06  # % d'encrassement gagné par pas, à poussiere_locale=100 et sensibilité=1
+    facteur_chaleur_encrassement = 1.8  # °C additionnels max à encrassement = 100 %
+    residu_reinitialisation_encrassement = 10.0  # % résiduel après une visite de maintenance (nettoyage partiel)
 
     # Maintenance préventive imparfaite — sans elle, les machines tournent toujours
     # jusqu'à la panne : les indicateurs précurseurs (usure, encrassement, roulements)
@@ -112,42 +112,42 @@ class SyntheticDataConfig:
     # artificiellement facile. Une visite préventive (routine + risque, jamais
     # garantie) intercepte parfois une machine à risque avant qu'elle ne casse
     # réellement — le hasard de panne l'emporte la plupart du temps (imparfaite).
-    preventive_base_prob = 0.00002  # composante routine, indépendante du risque
+    probabilite_base_preventive = 0.00002  # composante routine, indépendante du risque
     # Recalibré (0.0004 -> 0.0001) : la première valeur interceptait trop de
     # trajectoires TWF (part TWF réduite de 32 % à 25 % des pannes, sans réaction à
     # une hausse du hasard TWF lui-même — même signal de risque pilotant les deux
     # mécanismes). Cf. docs/data-generation.md.
-    preventive_risk_coeff = 0.0001  # composante risque, ∝ max(usure, encrassement, roulements)²
-    preventive_duration_median_hours = 2.0
-    preventive_duration_max_hours = 8.0
-    preventive_wear_reduction = 0.5  # fraction d'usure/roulements retirée — service partiel, pas une remise à neuf
+    coeff_risque_preventif = 0.0001  # composante risque, ∝ max(usure, encrassement, roulements)²
+    heures_mediane_duree_preventive = 2.0
+    heures_max_duree_preventive = 8.0
+    reduction_usure_preventive = 0.5  # fraction d'usure/roulements retirée — service partiel, pas une remise à neuf
 
     # Second processus de dégradation indépendant de l'usure outil : usure des
     # roulements, pilotée par la vitesse/vibration plutôt que par la poussière ou le
     # couple — canal de dégradation distinct, contribue à OSF.
-    bearing_wear_base_rate = 0.004
-    bearing_vibration_coeff = 2.0
-    osf_bearing_weight = 0.25  # part de bearing_wear_norm**3 dans le hasard OSF (reste : tool wear)
+    taux_base_usure_roulements = 0.004
+    coeff_vibration_roulements = 2.0
+    poids_roulements_osf = 0.25  # part de usure_roulements_norm**3 dans le hasard OSF (reste : usure outil)
 
     # Parts de pannes visées par cause — cibles de calibration, pas une garantie stricte
     # (la réalisation dépend des coefficients ci-dessus, à vérifier empiriquement)
-    failure_mode_shares = {"TWF": 0.40, "HDF": 0.20, "OSF": 0.15, "PWF": 0.20, "RNF": 0.05}
+    parts_mode_panne = {"TWF": 0.40, "HDF": 0.20, "OSF": 0.15, "PWF": 0.20, "RNF": 0.05}
 
     # Thermique — inertie machine forte : 30 min ≈ 60 % du chemin vers T_cible
-    coef_lissage_temp = 0.55
-    friction_temp_factor = 25.0
+    coef_lissage_temperature = 0.55
+    facteur_temperature_frottement = 25.0
 
     # Électrique et environnement
     # 220V = norme béninoise (réseau CEB/SBEE), pas les 230V harmonisés européens.
-    nominal_voltage = 220.0
-    voltage_variation_range = 0.15
+    tension_nominale = 220.0
+    plage_variation_tension = 0.15
 
     # Température atelier de référence par mois (°C), ancrée mi-mois puis interpolée
-    # (voir generate_ambient_temperature) — calendrier bimodal réel du Sud-Bénin :
+    # (voir generer_temperature_ambiante) — calendrier bimodal réel du Sud-Bénin :
     # pic chaud fév-mars, creux fin juillet-août (petite saison sèche, remontée
     # d'eau froide atlantique), léger réchauffement sept-oct, Harmattan nov-mars.
     # Cf. docs/data-generation.md pour le détail et les sources.
-    monthly_base_temp = {
+    temperature_base_mensuelle = {
         1: 32.5,
         2: 34.0,
         3: 34.0,
@@ -168,66 +168,68 @@ class SyntheticDataConfig:
     # réaliste pour de l'IoT industriel. Généré par (machine, capteur), pas par
     # cellule : un capteur qui décroche reste indisponible sur une fenêtre de temps
     # continue. Cf. docs/data-generation.md.
-    sensor_burst_nan_start_prob = 0.0024  # probabilité de démarrage d'une rafale, par pas/capteur
-    sensor_burst_nan_duration_mean_steps = 3.0
-    sensor_burst_nan_duration_sigma = 0.6
-    sensor_burst_nan_duration_range = (1, 24)  # 30 min à 12h
+    probabilite_debut_rafale_nan_capteur = 0.0024  # probabilité de démarrage d'une rafale, par pas/capteur
+    pas_moyens_duree_rafale_nan_capteur = 3.0
+    sigma_duree_rafale_nan_capteur = 0.6
+    plage_duree_rafale_nan_capteur = (1, 24)  # 30 min à 12h
 
-    sensor_stuck_start_prob = 0.00025
-    sensor_stuck_duration_mean_steps = 12.0
-    sensor_stuck_duration_sigma = 1.0
-    sensor_stuck_duration_range = (2, 96)  # 1h à 48h
+    probabilite_debut_capteur_bloque = 0.00025
+    pas_moyens_duree_capteur_bloque = 12.0
+    sigma_duree_capteur_bloque = 1.0
+    plage_duree_capteur_bloque = (2, 96)  # 1h à 48h
 
-    sensor_drift_start_prob = 0.00006
-    sensor_drift_duration_mean_steps = 48.0
-    sensor_drift_duration_sigma = 1.0
-    sensor_drift_duration_range = (12, 200)  # 6h à 100h
-    sensor_drift_max_pct_of_std = 0.5  # biais max atteint en fin de dérive, en fraction de l'écart-type du capteur
+    probabilite_debut_derive_capteur = 0.00006
+    pas_moyens_duree_derive_capteur = 48.0
+    sigma_duree_derive_capteur = 1.0
+    plage_duree_derive_capteur = (12, 200)  # 6h à 100h
+    pct_max_derive_capteur = 0.5  # biais max atteint en fin de dérive, en fraction de l'écart-type du capteur
 
     # Chemins d'export
-    output_dir = pathlib.Path("data/raw")
-    parquet_file = output_dir / "gdiz_dataset.parquet"
-    duckdb_file = output_dir / "gdiz_maintenance.db"
+    dossier_sortie = pathlib.Path("data/raw")
+    fichier_parquet = dossier_sortie / "gdiz_dataset.parquet"
+    fichier_duckdb = dossier_sortie / "gdiz_maintenance.db"
 
 
 # A - Contexte exogène global
 
 
-class ExogenousContextGenerator:
+class GenerateurContexteExogene:
     """Génère la chronologie environnementale et électrique partagée par toute l'usine."""
 
-    def __init__(self, config: SyntheticDataConfig = None):
-        self.config = config or SyntheticDataConfig()
-        np.random.seed(self.config.global_seed)
-        self.num_samples = self._calculate_num_samples()
-        logger.info(f"Contexte exogène initialisé: {self.num_samples} enregistrements à générer...")
+    def __init__(self, config: ConfigDonneesSynthetiques = None):
+        self.config = config or ConfigDonneesSynthetiques()
+        np.random.seed(self.config.graine_globale)
+        self.nb_echantillons = self._calculer_nombre_echantillons()
+        logger.info(f"Contexte exogène initialisé: {self.nb_echantillons} enregistrements à générer...")
 
-    def _calculate_num_samples(self) -> int:
-        return int(self.config.duration_days * 24 * 60 / self.config.interval_minutes)
+    def _calculer_nombre_echantillons(self) -> int:
+        return int(self.config.duree_jours * 24 * 60 / self.config.intervalle_minutes)
 
-    def generate_timestamps(self) -> pd.DatetimeIndex:
-        return pd.date_range(start=self.config.start_date, periods=self.num_samples, freq=f"{self.config.interval_minutes}min")
+    def generer_horodatages(self) -> pd.DatetimeIndex:
+        return pd.date_range(
+            start=self.config.date_debut, periods=self.nb_echantillons, freq=f"{self.config.intervalle_minutes}min"
+        )
 
-    def generate_activity_level(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
+    def generer_niveau_activite(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
         """Modélise un rythme d'activité industriel de 3 équipes en roulement 3x8."""
-        hours = timestamps.hour.values
+        heures = timestamps.hour.values
         minutes = timestamps.minute.values
-        days = timestamps.dayofweek.values
+        jours = timestamps.dayofweek.values
 
-        activity = np.zeros(len(timestamps))
-        activity = np.where((hours >= 6) & (hours < 14), 0.92, activity)
-        activity = np.where((hours >= 14) & (hours < 22), 0.86, activity)
-        activity = np.where((hours >= 22) | (hours < 6), 0.55, activity)
+        activite_locale = np.zeros(len(timestamps))
+        activite_locale = np.where((heures >= 6) & (heures < 14), 0.92, activite_locale)
+        activite_locale = np.where((heures >= 14) & (heures < 22), 0.86, activite_locale)
+        activite_locale = np.where((heures >= 22) | (heures < 6), 0.55, activite_locale)
 
-        is_handover = (minutes < 20) & np.isin(hours, [6, 14, 22])
-        activity = np.where(is_handover, activity * 0.75, activity)
+        est_releve_equipe = (minutes < 20) & np.isin(heures, [6, 14, 22])
+        activite_locale = np.where(est_releve_equipe, activite_locale * 0.75, activite_locale)
 
-        operational_noise = np.random.normal(0, 0.04, len(timestamps))
-        activity = activity + operational_noise
-        activity = np.where(days >= 5, 0.0, activity)
-        return np.clip(activity, 0.0, 1.0)
+        bruit_operationnel = np.random.normal(0, 0.04, len(timestamps))
+        activite_locale = activite_locale + bruit_operationnel
+        activite_locale = np.where(jours >= 5, 0.0, activite_locale)
+        return np.clip(activite_locale, 0.0, 1.0)
 
-    def generate_benin_seasons(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
+    def generer_saisons_benin(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
         """
         Calendrier bimodal réel du Sud-Bénin (climat guinéen côtier) : deux saisons des
         pluies et deux saisons sèches, pas le cycle unimodal du Bénin septentrional.
@@ -237,115 +239,121 @@ class ExogenousContextGenerator:
             3 = grande saison sèche/Harmattan (novembre → mi-mars)
         Cf. docs/data-generation.md.
         """
-        months = timestamps.month.values
-        days = timestamps.day.values
+        mois = timestamps.month.values
+        jours = timestamps.day.values
         seasons = np.full(len(timestamps), 3, dtype=int)  # défaut : grande saison sèche
 
-        is_grande_pluies = np.isin(months, [4, 5, 6]) | ((months == 3) & (days >= 15)) | ((months == 7) & (days < 15))
-        is_petite_seche = ((months == 7) & (days >= 15)) | (months == 8)
-        is_petite_pluies = np.isin(months, [9, 10])
+        est_grande_saison_pluies = np.isin(mois, [4, 5, 6]) | ((mois == 3) & (jours >= 15)) | ((mois == 7) & (jours < 15))
+        est_petite_saison_seche = ((mois == 7) & (jours >= 15)) | (mois == 8)
+        est_petite_saison_pluies = np.isin(mois, [9, 10])
 
-        seasons[is_grande_pluies] = 0
-        seasons[is_petite_seche] = 1
-        seasons[is_petite_pluies] = 2
+        seasons[est_grande_saison_pluies] = 0
+        seasons[est_petite_saison_seche] = 1
+        seasons[est_petite_saison_pluies] = 2
         return seasons
 
-    def _monthly_anchor_temperature(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
+    def _temperature_ancrage_mensuel(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
         """
-        Interpolation linéaire circulaire entre 12 ancrages mi-mois (config.monthly_base_temp) :
+        Interpolation linéaire circulaire entre 12 ancrages mi-mois (config.temperature_base_mensuelle) :
         remplace l'ancien saut en escalier (jusqu'à 4°C) au changement de mois par une
         transition continue, sans supposer une forme sinusoïdale simple (le cycle annuel
         du Sud-Bénin est bimodal, pas une sinusoïde unique).
         """
-        anchors = self.config.monthly_base_temp
-        mid_month_doy = np.array([15, 45, 74, 105, 135, 166, 196, 227, 258, 288, 319, 349], dtype=float)
-        anchor_temps = np.array([anchors[m] for m in range(1, 13)])
+        ancrages = self.config.temperature_base_mensuelle
+        jour_annee_mi_mois = np.array([15, 45, 74, 105, 135, 166, 196, 227, 258, 288, 319, 349], dtype=float)
+        temperatures_ancrage = np.array([ancrages[m] for m in range(1, 13)])
         # Périodicité : on prolonge d'un point avant janvier et un après décembre
-        doy_ext = np.concatenate([[mid_month_doy[-1] - 365.0], mid_month_doy, [mid_month_doy[0] + 365.0]])
-        temp_ext = np.concatenate([[anchor_temps[-1]], anchor_temps, [anchor_temps[0]]])
-        doy = timestamps.dayofyear.values.astype(float)
-        return np.interp(doy, doy_ext, temp_ext)
+        jour_annee_etendu = np.concatenate(
+            [[jour_annee_mi_mois[-1] - 365.0], jour_annee_mi_mois, [jour_annee_mi_mois[0] + 365.0]]
+        )
+        temperature_etendue = np.concatenate([[temperatures_ancrage[-1]], temperatures_ancrage, [temperatures_ancrage[0]]])
+        jour_annee = timestamps.dayofyear.values.astype(float)
+        return np.interp(jour_annee, jour_annee_etendu, temperature_etendue)
 
-    def generate_ambient_temperature(self, timestamps: pd.DatetimeIndex, seasons: np.ndarray) -> np.ndarray:
+    def generer_temperature_ambiante(self, timestamps: pd.DatetimeIndex, seasons: np.ndarray) -> np.ndarray:
         """
         Température de l'atelier combinant normale saisonnière lissée et cycle jour/nuit.
         Régulation industrielle : si T_brute > 38°C, la ventilation dissipe 70 % de l'excès.
         """
-        hours = timestamps.hour.values
+        heures = timestamps.hour.values
 
-        daily_variation = 4.5 * np.sin(2 * np.pi * (hours - 8) / 24)
-        base_temp = self._monthly_anchor_temperature(timestamps)
+        variation_journaliere = 4.5 * np.sin(2 * np.pi * (heures - 8) / 24)
+        base_temp = self._temperature_ancrage_mensuel(timestamps)
         # Air plus stable (moins de bruit) en saison sèche (1, 3) qu'en saison des pluies (0, 2)
-        is_dry_ish = np.isin(seasons, [1, 3])
-        noise = np.where(is_dry_ish, np.random.normal(0, 1.0, len(timestamps)), np.random.normal(0, 1.8, len(timestamps)))
+        est_plutot_sec = np.isin(seasons, [1, 3])
+        bruit = np.where(est_plutot_sec, np.random.normal(0, 1.0, len(timestamps)), np.random.normal(0, 1.8, len(timestamps)))
 
-        ambient_temp = base_temp + daily_variation + noise
+        temperature_ambiante_locale = base_temp + variation_journaliere + bruit
 
         # Régulation/ventilation industrielle : dissipe 70 % de la chaleur excédentaire > 38°C
-        ambient_temp = np.where(ambient_temp > 38.0, 38.0 + 0.30 * (ambient_temp - 38.0), ambient_temp)
-        return np.clip(ambient_temp, 23.0, 42.0)
+        temperature_ambiante_locale = np.where(
+            temperature_ambiante_locale > 38.0, 38.0 + 0.30 * (temperature_ambiante_locale - 38.0), temperature_ambiante_locale
+        )
+        return np.clip(temperature_ambiante_locale, 23.0, 42.0)
 
-    # (p_start, p_stop) par saison — cf. generate_benin_seasons pour le code des 4 saisons.
+    # (p_debut, p_arret) par saison — cf. generer_saisons_benin pour le code des 4 saisons.
     # La petite saison des pluies (2) est en moyenne moins intense que la grande (0) ;
     # la petite saison sèche (1) n'est pas aussi aride que l'Harmattan (3).
-    RAIN_TRANSITION_PROBS = {
+    PROBABILITES_TRANSITION_PLUIE = {
         0: (0.12, 0.40),  # grande saison des pluies
         1: (0.02, 0.65),  # petite saison sèche
         2: (0.08, 0.45),  # petite saison des pluies
         3: (0.006, 0.75),  # grande saison sèche / Harmattan
     }
 
-    def generate_rain_events(self, seasons: np.ndarray) -> np.ndarray:
+    def generer_evenements_pluie(self, seasons: np.ndarray) -> np.ndarray:
         """
         Génère des épisodes de pluie cohérents via chaîne de Markov.
         Probabilités recalibrées pour un pas de 30 min (≈ 6× les valeurs 5 min).
         """
-        num_samples = len(seasons)
-        rain_flag = np.zeros(num_samples, dtype=int)
+        nb_echantillons = len(seasons)
+        indicateur_pluie = np.zeros(nb_echantillons, dtype=int)
 
-        for i in range(1, num_samples):
-            p_start, p_stop = self.RAIN_TRANSITION_PROBS[int(seasons[i])]
+        for i in range(1, nb_echantillons):
+            p_debut, p_arret = self.PROBABILITES_TRANSITION_PLUIE[int(seasons[i])]
 
-            if rain_flag[i - 1] == 1:
-                rain_flag[i] = 1 if np.random.rand() > p_stop else 0
+            if indicateur_pluie[i - 1] == 1:
+                indicateur_pluie[i] = 1 if np.random.rand() > p_arret else 0
             else:
-                rain_flag[i] = 1 if np.random.rand() < p_start else 0
+                indicateur_pluie[i] = 1 if np.random.rand() < p_debut else 0
 
-        return rain_flag
+        return indicateur_pluie
 
-    def generate_humidity(self, ambient_temp: np.ndarray, rain_flag: np.ndarray) -> np.ndarray:
-        base_humidity = 86 - (ambient_temp - 30) * 2.3
-        rain_effect = rain_flag * 9.5
-        noise = np.random.normal(0, 3.0, len(ambient_temp))
-        return np.clip(base_humidity + rain_effect + noise, 45, 98)
+    def generer_humidite(self, temperature_ambiante_locale: np.ndarray, indicateur_pluie: np.ndarray) -> np.ndarray:
+        humidite_base = 86 - (temperature_ambiante_locale - 30) * 2.3
+        effet_pluie = indicateur_pluie * 9.5
+        bruit = np.random.normal(0, 3.0, len(temperature_ambiante_locale))
+        return np.clip(humidite_base + effet_pluie + bruit, 45, 98)
 
-    def generate_dust_concentration(self, timestamps: pd.DatetimeIndex, seasons: np.ndarray, rain_flag: np.ndarray) -> np.ndarray:
+    def generer_concentration_poussiere(
+        self, timestamps: pd.DatetimeIndex, seasons: np.ndarray, indicateur_pluie: np.ndarray
+    ) -> np.ndarray:
         """Concentration de poussière : Effet Harmattan majeur en saison sèche, lavée par la pluie."""
-        num_samples = len(seasons)
-        months = timestamps.month.values
-        is_harmattan = np.isin(months, [12, 1])
-        is_dry_ish = np.isin(seasons, [1, 3])  # petite + grande saison sèche
+        nb_echantillons = len(seasons)
+        mois = timestamps.month.values
+        est_harmattan = np.isin(mois, [12, 1])
+        est_plutot_sec = np.isin(seasons, [1, 3])  # petite + grande saison sèche
 
-        shape = np.select(condlist=[is_harmattan, is_dry_ish], choicelist=[5.0, 2.5], default=1.5)
-        scale = np.select(condlist=[is_harmattan, is_dry_ish], choicelist=[30.0, 12.0], default=6.0)
+        forme = np.select(condlist=[est_harmattan, est_plutot_sec], choicelist=[5.0, 2.5], default=1.5)
+        echelle = np.select(condlist=[est_harmattan, est_plutot_sec], choicelist=[30.0, 12.0], default=6.0)
 
-        dust = np.random.gamma(shape, scale, num_samples)
-        dust = np.where(rain_flag == 1, dust * 0.15, dust)
-        return np.clip(dust, 5, 600)
+        poussiere_locale = np.random.gamma(forme, echelle, nb_echantillons)
+        poussiere_locale = np.where(indicateur_pluie == 1, poussiere_locale * 0.15, poussiere_locale)
+        return np.clip(poussiere_locale, 5, 600)
 
-    def generate_voltage_level(self, activity_level: np.ndarray) -> np.ndarray:
-        base_voltage = self.config.nominal_voltage
-        load_variation = -15 * activity_level
-        noise = np.random.normal(0, 2.5, len(activity_level))
-        return base_voltage + load_variation + noise
+    def generer_niveau_tension(self, niveau_activite: np.ndarray) -> np.ndarray:
+        tension_base = self.config.tension_nominale
+        variation_charge = -15 * niveau_activite
+        bruit = np.random.normal(0, 2.5, len(niveau_activite))
+        return tension_base + variation_charge + bruit
 
-    def generate_voltage_stability(self, voltage: np.ndarray) -> np.ndarray:
-        deviation = np.abs(voltage - self.config.nominal_voltage)
-        stability = 100 * np.exp(-deviation / 18)
-        noise = np.random.normal(0, 1.5, len(voltage))
-        return np.clip(stability + noise, 0, 100)
+    def generer_stabilite_tension(self, tension_locale: np.ndarray) -> np.ndarray:
+        ecart_tension_abs = np.abs(tension_locale - self.config.tension_nominale)
+        stabilite_locale = 100 * np.exp(-ecart_tension_abs / 18)
+        bruit = np.random.normal(0, 1.5, len(tension_locale))
+        return np.clip(stabilite_locale + bruit, 0, 100)
 
-    def generate_power_loss_indicator(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
+    def generer_indicateur_coupure(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
         """
         Simule des délestages SBEE et coupures de secteur.
         Probabilités recalibrées pour un pas de 30 min.
@@ -354,46 +362,46 @@ class ExogenousContextGenerator:
         précédente : coupures en moyenne ~67 min (continuation = 0.55), toujours
         loin des 10-15h que peut atteindre une coupure SBEE non dédiée.
         """
-        hours = timestamps.hour.values
-        num_samples = len(timestamps)
+        heures = timestamps.hour.values
+        nb_echantillons = len(timestamps)
 
-        base_prob = 0.0006  # ≈ 6× la valeur 5 min (0.0001)
-        peak_hours = np.isin(hours, [11, 12, 13, 14, 19, 20, 21, 22])
-        failure_probability = np.where(peak_hours, base_prob * 8, base_prob)
+        probabilite_base = 0.0006  # ≈ 6× la valeur 5 min (0.0001)
+        heures_pointe = np.isin(heures, [11, 12, 13, 14, 19, 20, 21, 22])
+        probabilite_panne = np.where(heures_pointe, probabilite_base * 8, probabilite_base)
 
-        power_loss = (np.random.random(num_samples) < failure_probability).astype(int)
+        coupure = (np.random.random(nb_echantillons) < probabilite_panne).astype(int)
 
         # E[durée] = 1/(1-p) pas ≈ 2.2 pas ≈ 67 min (contre ~50 min avant durcissement)
-        for i in range(1, num_samples):
-            if power_loss[i - 1] == 1 and np.random.random() < 0.55:
-                power_loss[i] = 1
+        for i in range(1, nb_echantillons):
+            if coupure[i - 1] == 1 and np.random.random() < 0.55:
+                coupure[i] = 1
 
-        return power_loss
+        return coupure
 
-    def generate_global_context(self) -> pd.DataFrame:
-        timestamps = self.generate_timestamps()
-        seasons = self.generate_benin_seasons(timestamps)
-        rain_flag = self.generate_rain_events(seasons)
-        ambient_temp = self.generate_ambient_temperature(timestamps, seasons)
-        humidity = self.generate_humidity(ambient_temp, rain_flag)
-        dust = self.generate_dust_concentration(timestamps, seasons, rain_flag)
-        activity_level = self.generate_activity_level(timestamps)
-        voltage = self.generate_voltage_level(activity_level)
-        voltage_stability = self.generate_voltage_stability(voltage)
-        power_loss = self.generate_power_loss_indicator(timestamps)
+    def generer_contexte_global(self) -> pd.DataFrame:
+        timestamps = self.generer_horodatages()
+        seasons = self.generer_saisons_benin(timestamps)
+        indicateur_pluie = self.generer_evenements_pluie(seasons)
+        temperature_ambiante_locale = self.generer_temperature_ambiante(timestamps, seasons)
+        humidite = self.generer_humidite(temperature_ambiante_locale, indicateur_pluie)
+        poussiere_locale = self.generer_concentration_poussiere(timestamps, seasons, indicateur_pluie)
+        niveau_activite = self.generer_niveau_activite(timestamps)
+        tension_locale = self.generer_niveau_tension(niveau_activite)
+        stabilite_tension = self.generer_stabilite_tension(tension_locale)
+        coupure = self.generer_indicateur_coupure(timestamps)
 
         df_global = pd.DataFrame(
             {
                 "timestamp": timestamps,
-                "activity_level": activity_level,
-                "benin_season": seasons,
-                "ambient_temperature": ambient_temp,
-                "rain_flag": rain_flag,
-                "humidity": humidity,
-                "dust_concentration": dust,
-                "voltage_level": voltage,
-                "voltage_stability": voltage_stability,
-                "power_loss_indicator": power_loss,
+                "niveau_activite": niveau_activite,
+                "saison_benin": seasons,
+                "temperature_ambiante": temperature_ambiante_locale,
+                "indicateur_pluie": indicateur_pluie,
+                "humidite": humidite,
+                "concentration_poussiere": poussiere_locale,
+                "niveau_tension": tension_locale,
+                "stabilite_tension": stabilite_tension,
+                "indicateur_coupure": coupure,
             }
         )
         logger.info(f"Contexte exogène généré avec succès ({df_global.shape[0]} enregistrements)")
@@ -403,268 +411,274 @@ class ExogenousContextGenerator:
 # B - Moteur d'évolution chronologique par machine
 
 
-class MachineStateEvolver:
+class EvolueurEtatMachine:
     """Gère l'évolution d'état chronologique d'une machine (Dépendance physique N-1)."""
 
     def __init__(
         self,
-        machine_id: str,
-        machine_type: str,
+        id_machine: str,
+        type_machine: str,
         df_global: pd.DataFrame,
-        config: SyntheticDataConfig = None,
-        override_params: dict = None,
+        config: ConfigDonneesSynthetiques = None,
+        parametres_surcharge: dict = None,
     ):
-        self.machine_id = machine_id
-        self.machine_type = machine_type
+        self.id_machine = id_machine
+        self.type_machine = type_machine
         self.df_global = df_global
-        self.config = config or SyntheticDataConfig()
+        self.config = config or ConfigDonneesSynthetiques()
 
         # RNG isolé par machine — évite toute pollution croisée des flux aléatoires
         # Hash déterministe (md5) plutôt que hash() builtin : hash() est salé
         # aléatoirement par process (PYTHONHASHSEED) sauf s'il est fixé explicitement,
         # ce qui casserait la reproductibilité entre deux exécutions.
-        machine_hash = int(hashlib.md5(machine_id.encode("utf-8")).hexdigest(), 16) % 10000
-        machine_seed = self.config.global_seed + machine_hash
-        self.rng = np.random.default_rng(machine_seed)
+        hash_machine = int(hashlib.md5(id_machine.encode("utf-8")).hexdigest(), 16) % 10000
+        graine_machine = self.config.graine_globale + hash_machine
+        self.rng = np.random.default_rng(graine_machine)
 
-        # Fragilité individuelle (frailty model) — tirée une fois par machine,
+        # Fragilité individuelle (fragilite model) — tirée une fois par machine,
         # n'affecte que le hasard de panne TWF, pas la vitesse d'usure elle-même.
-        shape = self.config.frailty_shape
-        self.frailty = float(self.rng.gamma(shape, 1.0 / shape))
+        forme = self.config.forme_fragilite
+        self.fragilite = float(self.rng.gamma(forme, 1.0 / forme))
 
         # Seuil de rupture personnel (TWF) — variabilité unité-à-unité de fabrication :
         # certaines machines cassent dès 65-75 % d'usure, d'autres tiennent jusqu'à 95-99 %.
-        self.twf_threshold = self.config.twf_threshold_min + self.config.twf_threshold_range * self.rng.beta(
-            self.config.twf_threshold_beta_a, self.config.twf_threshold_beta_b
+        self.seuil_use = self.config.seuil_min_use + self.config.plage_seuil_use * self.rng.beta(
+            self.config.beta_a_seuil_use, self.config.beta_b_seuil_use
         )
 
-        self.num_samples = len(df_global)
-        self.ambient_array = df_global["ambient_temperature"].values
-        self.dust_array = df_global["dust_concentration"].values
-        self.stability_array = df_global["voltage_stability"].values
-        self.voltage_array = df_global["voltage_level"].values
-        self.activity_level_array = df_global["activity_level"].values
-        self.power_loss_array = df_global["power_loss_indicator"].values
-        self._set_machine_parameters()
-        if override_params:
-            self.params.update(override_params)
-        self._init_state_arrays()
+        self.nb_echantillons = len(df_global)
+        self.tableau_temperature_ambiante = df_global["temperature_ambiante"].values
+        self.tableau_poussiere = df_global["concentration_poussiere"].values
+        self.tableau_stabilite = df_global["stabilite_tension"].values
+        self.tableau_tension = df_global["niveau_tension"].values
+        self.tableau_niveau_activite = df_global["niveau_activite"].values
+        self.tableau_coupures = df_global["indicateur_coupure"].values
+        self._definir_parametres_machine()
+        if parametres_surcharge:
+            self.params.update(parametres_surcharge)
+        self._initialiser_tableaux_etat()
 
-    def _set_machine_parameters(self):
-        type_params = {
+    def _definir_parametres_machine(self):
+        parametres_type = {
             "L": {  # Entrée de gamme / Rustique — aucune protection électronique
-                "wear_multiplier": 1.3,
-                "temp_target_offset": 3.0,
-                "vibration_noise": 0.25,
-                "dust_sensitivity": 1.5,
-                "voltage_sensitivity": 0.5,
-                "power_loss_restart_malus": 0.8,
+                "multiplicateur_usure": 1.3,
+                "decalage_temperature_cible": 3.0,
+                "bruit_vibration": 0.25,
+                "sensibilite_poussiere": 1.5,
+                "sensibilite_tension": 0.5,
+                "malus_redemarrage_coupure": 0.8,
                 # Coupure réseau : le choc mécanique au redémarrage est violent pour L
-                "blackout_failure_sensitivity": 1.0,
+                "sensibilite_panne_coupure": 1.0,
             },
             "M": {  # Milieu de gamme / Standard
-                "wear_multiplier": 1.0,
-                "temp_target_offset": 0.0,
-                "vibration_noise": 0.15,
-                "dust_sensitivity": 1.0,
-                "voltage_sensitivity": 1.0,
-                "power_loss_restart_malus": 0.4,
-                "blackout_failure_sensitivity": 0.8,
+                "multiplicateur_usure": 1.0,
+                "decalage_temperature_cible": 0.0,
+                "bruit_vibration": 0.15,
+                "sensibilite_poussiere": 1.0,
+                "sensibilite_tension": 1.0,
+                "malus_redemarrage_coupure": 0.4,
+                "sensibilite_panne_coupure": 0.8,
             },
             "H": {  # Haut de gamme / Précision Électronique + Onduleur UPS industriel
-                "wear_multiplier": 0.7,
-                "temp_target_offset": -2.0,
-                "vibration_noise": 0.08,
-                "dust_sensitivity": 0.4,
-                # voltage_sensitivity conservé pour la physique (usure, chaleur) :
+                "multiplicateur_usure": 0.7,
+                "decalage_temperature_cible": -2.0,
+                "bruit_vibration": 0.08,
+                "sensibilite_poussiere": 0.4,
+                # sensibilite_tension conservé pour la physique (usure, chaleur) :
                 # l'UPS ne supprime pas les effets physiques, il protège des pannes.
-                "voltage_sensitivity": 2.0,
-                "power_loss_restart_malus": 0.2,
+                "sensibilite_tension": 2.0,
+                "malus_redemarrage_coupure": 0.2,
                 # Coupure réseau : l'UPS amortit la surtension → panne sur blackout rare
-                "blackout_failure_sensitivity": 0.2,
+                "sensibilite_panne_coupure": 0.2,
                 # Instabilité routinière : l'onduleur absorbe les creux < blackout total
                 # sensibilité effective aux pannes électriques spontanées quasi nulle
-                "ups_elec_sensitivity": 0.1,
+                "sensibilite_electrique_onduleur": 0.1,
             },
         }
-        self.params = type_params[self.machine_type]
+        self.params = parametres_type[self.type_machine]
 
-    def _init_state_arrays(self):
-        self.tool_wear = np.zeros(self.num_samples)
-        self.process_temperature = np.zeros(self.num_samples)
-        self.rotational_speed = np.zeros(self.num_samples)
-        self.torque = np.zeros(self.num_samples)
-        self.vibration = np.zeros(self.num_samples)
-        self.failure = np.zeros(self.num_samples, dtype=int)
-        self.failure_mode = np.full(self.num_samples, "", dtype=object)
+    def _initialiser_tableaux_etat(self):
+        self.usure_outil = np.zeros(self.nb_echantillons)
+        self.temperature_process = np.zeros(self.nb_echantillons)
+        self.vitesse_rotation = np.zeros(self.nb_echantillons)
+        self.couple = np.zeros(self.nb_echantillons)
+        self.vibration = np.zeros(self.nb_echantillons)
+        self.failure = np.zeros(self.nb_echantillons, dtype=int)
+        self.mode_panne = np.full(self.nb_echantillons, "", dtype=object)
 
         # Encrassement (point 7) et usure des roulements (point 11) : mêmes limites
-        # 0-100 % que tool_wear, mais accumulation et remise à neuf indépendantes.
-        self.fouling = np.zeros(self.num_samples)
-        self.bearing_wear = np.zeros(self.num_samples)
+        # 0-100 % que usure_outil, mais accumulation et remise à neuf indépendantes.
+        self.encrassement = np.zeros(self.nb_echantillons)
+        self.usure_roulements = np.zeros(self.nb_echantillons)
         # Temps cumulé (h) passé dans la bande de rampe TWF (point 8) — remis à zéro
         # à chaque visite de maintenance, quelle que soit la cause de la panne.
-        self.ramp_exposure_hours = np.zeros(self.num_samples)
+        self.heures_exposition_rampe = np.zeros(self.nb_echantillons)
 
-        self.tool_wear[0] = self.rng.uniform(*self.config.initial_wear_range)
-        self.process_temperature[0] = self.ambient_array[0] + 5.0
+        self.usure_outil[0] = self.rng.uniform(*self.config.plage_usure_initiale)
+        self.temperature_process[0] = self.tableau_temperature_ambiante[0] + 5.0
 
-    def _update_physics(self, idx: int, restarted_from_blackout: bool = False):
+    def _mettre_a_jour_physique(self, idx: int, redemarre_apres_coupure: bool = False):
         """Calcule les indicateurs physiques de la machine lorsqu'elle est en fonctionnement."""
-        activity_idx = self.activity_level_array[idx]
-        stability_pct = self.stability_array[idx] / 100.0
-        voltage_deviation = max(0, self.config.nominal_voltage - self.voltage_array[idx])
+        indice_activite = self.tableau_niveau_activite[idx]
+        pourcentage_stabilite = self.tableau_stabilite[idx] / 100.0
+        ecart_tension = max(0, self.config.tension_nominale - self.tableau_tension[idx])
 
         # 1. Vitesse & Couple — découplés : dans un atelier textile réel, la vitesse
         # est gouvernée par le moteur et reste quasi constante une fois la machine
         # lancée ; c'est la CHARGE (couple) qui varie avec l'activité/production, pas
-        # le régime moteur. (Avant : les deux étaient pilotés par activity_level,
+        # le régime moteur. (Avant : les deux étaient pilotés par niveau_activite,
         # corrélation mesurée +0.94 — cf. docs/data-generation.md.)
-        base_speed = 1500.0
-        self.rotational_speed[idx] = base_speed * (0.97 + 0.03 * stability_pct)
-        self.rotational_speed[idx] += self.rng.normal(0, 12)
-        self.rotational_speed[idx] = max(0, self.rotational_speed[idx])
+        vitesse_base = 1500.0
+        self.vitesse_rotation[idx] = vitesse_base * (0.97 + 0.03 * pourcentage_stabilite)
+        self.vitesse_rotation[idx] += self.rng.normal(0, 12)
+        self.vitesse_rotation[idx] = max(0, self.vitesse_rotation[idx])
 
-        base_torque = 45.0
-        self.torque[idx] = base_torque * activity_idx * (1.3 - 0.3 * stability_pct)
-        self.torque[idx] += self.rng.normal(0, 3)
-        self.torque[idx] = max(0, self.torque[idx])
+        couple_base = 45.0
+        self.couple[idx] = couple_base * indice_activite * (1.3 - 0.3 * pourcentage_stabilite)
+        self.couple[idx] += self.rng.normal(0, 3)
+        self.couple[idx] = max(0, self.couple[idx])
 
         # 2. Usure cumulative (outil)
-        wear_prev = self.tool_wear[idx - 1]
-        if restarted_from_blackout:
-            wear_prev = min(wear_prev + self.params["power_loss_restart_malus"], 100)
+        usure_precedente = self.usure_outil[idx - 1]
+        if redemarre_apres_coupure:
+            usure_precedente = min(usure_precedente + self.params["malus_redemarrage_coupure"], 100)
 
-        dust_factor = 1.0 + 0.004 * self.dust_array[idx] * self.params["dust_sensitivity"]
-        voltage_factor = 1.0 + 0.6 * (1.0 - stability_pct) * self.params["voltage_sensitivity"]
-        wear_increment = self.config.base_wear_increment * self.params["wear_multiplier"]
-        wear_increment *= dust_factor * voltage_factor
-        self.tool_wear[idx] = min(wear_prev + wear_increment, 100)
+        dust_factor = 1.0 + 0.004 * self.tableau_poussiere[idx] * self.params["sensibilite_poussiere"]
+        voltage_factor = 1.0 + 0.6 * (1.0 - pourcentage_stabilite) * self.params["sensibilite_tension"]
+        increment_usure = self.config.increment_usure_base * self.params["multiplicateur_usure"]
+        increment_usure *= dust_factor * voltage_factor
+        self.usure_outil[idx] = min(usure_precedente + increment_usure, 100)
 
         # 2b. Encrassement — accumulation indépendante liée à l'exposition à la
-        # poussière, remise à un résidu (fouling_reset_residual) à chaque visite de
-        # maintenance (cf. _handle_downtime_phase). Alimente la chaleur, pas l'usure
+        # poussière, remise à un résidu (residu_reinitialisation_encrassement) à chaque visite de
+        # maintenance (cf. _gerer_phase_arret). Alimente la chaleur, pas l'usure
         # outil : deux canaux physiques distincts vers HDF vs TWF.
-        fouling_increment = self.config.fouling_base_rate * (self.dust_array[idx] / 100.0) * self.params["dust_sensitivity"]
-        self.fouling[idx] = min(self.fouling[idx - 1] + fouling_increment, 100.0)
+        increment_encrassement = (
+            self.config.taux_base_encrassement * (self.tableau_poussiere[idx] / 100.0) * self.params["sensibilite_poussiere"]
+        )
+        self.encrassement[idx] = min(self.encrassement[idx - 1] + increment_encrassement, 100.0)
 
         # 2c. Usure des roulements — second processus de dégradation, indépendant de
         # l'usure outil : piloté par la vitesse (fatigue mécanique), pas la poussière
         # ni le couple. Remis à zéro seulement quand OSF est la cause réparée
-        # (cf. _handle_downtime_phase).
-        speed_ratio = self.rotational_speed[idx] / base_speed
-        bearing_increment = self.config.bearing_wear_base_rate * (speed_ratio**2) * self.params["wear_multiplier"]
-        self.bearing_wear[idx] = min(self.bearing_wear[idx - 1] + bearing_increment, 100.0)
+        # (cf. _gerer_phase_arret).
+        ratio_vitesse = self.vitesse_rotation[idx] / vitesse_base
+        increment_usure_roulements = (
+            self.config.taux_base_usure_roulements * (ratio_vitesse**2) * self.params["multiplicateur_usure"]
+        )
+        self.usure_roulements[idx] = min(self.usure_roulements[idx - 1] + increment_usure_roulements, 100.0)
 
         # 2d. Rampe terminale — temps cumulé passé dans la bande de rampe TWF (autour
-        # du seuil personnel). Continue de s'accumuler même quand tool_wear plafonne à
+        # du seuil personnel). Continue de s'accumuler même quand usure_outil plafonne à
         # 100 % : sans ça, le hasard de panne redevient un pur tirage mémoryless une
         # fois l'usure saturée, invisible depuis les capteurs (cf. point 8 — condition
         # nécessaire pour tout modèle de survie futur).
-        in_ramp_band = self.tool_wear[idx] >= (self.twf_threshold - self.config.twf_ramp_band)
-        if in_ramp_band:
-            step_hours = self.config.interval_minutes / 60.0
-            self.ramp_exposure_hours[idx] = min(
-                self.ramp_exposure_hours[idx - 1] + step_hours, self.config.twf_ramp_max_exposure_hours
+        dans_bande_rampe = self.usure_outil[idx] >= (self.seuil_use - self.config.bande_rampe_use)
+        if dans_bande_rampe:
+            step_hours = self.config.intervalle_minutes / 60.0
+            self.heures_exposition_rampe[idx] = min(
+                self.heures_exposition_rampe[idx - 1] + step_hours, self.config.heures_max_exposition_rampe_use
             )
         else:
-            self.ramp_exposure_hours[idx] = 0.0
+            self.heures_exposition_rampe[idx] = 0.0
 
         # 3. Température Machine
-        temp_prev = self.process_temperature[idx - 1]
-        electrical_heat = (voltage_deviation * 0.15) * self.params["voltage_sensitivity"]
+        temperature_precedente = self.temperature_process[idx - 1]
+        chaleur_electrique = (ecart_tension * 0.15) * self.params["sensibilite_tension"]
         # Frottement accru par l'usure : dérive thermique supplémentaire, corrélée à
         # la vibration — donne deux indicateurs précurseurs conjoints pour TWF.
-        wear_heat = self.config.wear_heat_factor * (self.tool_wear[idx] / 100.0)
+        chaleur_usure = self.config.facteur_chaleur_usure * (self.usure_outil[idx] / 100.0)
         # Encrassement : dissipation thermique réduite par la poussière accumulée.
-        fouling_heat = self.config.fouling_heat_factor * (self.fouling[idx] / 100.0)
+        chaleur_encrassement = self.config.facteur_chaleur_encrassement * (self.encrassement[idx] / 100.0)
         # Rampe terminale : chaleur additionnelle qui continue de croître avec le
-        # temps passé en zone critique, même quand tool_wear a plafonné.
-        ramp_heat = self.config.twf_ramp_heat_rate * self.ramp_exposure_hours[idx]
-        target_temp = (
-            self.ambient_array[idx]
-            + (self.config.friction_temp_factor * (self.torque[idx] / 35.0))
-            + self.params["temp_target_offset"]
-            + electrical_heat
-            + wear_heat
-            + fouling_heat
-            + ramp_heat
+        # temps passé en zone critique, même quand usure_outil a plafonné.
+        chaleur_rampe = self.config.taux_chaleur_rampe_use * self.heures_exposition_rampe[idx]
+        temperature_cible = (
+            self.tableau_temperature_ambiante[idx]
+            + (self.config.facteur_temperature_frottement * (self.couple[idx] / 35.0))
+            + self.params["decalage_temperature_cible"]
+            + chaleur_electrique
+            + chaleur_usure
+            + chaleur_encrassement
+            + chaleur_rampe
         )
-        alpha = self.config.coef_lissage_temp
-        self.process_temperature[idx] = alpha * target_temp + (1 - alpha) * temp_prev
+        alpha = self.config.coef_lissage_temperature
+        self.temperature_process[idx] = alpha * temperature_cible + (1 - alpha) * temperature_precedente
 
         # 4. Vibrations
-        wear_norm = self.tool_wear[idx] / 100.0
-        bearing_norm = self.bearing_wear[idx] / 100.0
-        base_vibration = 0.4 * (self.rotational_speed[idx] / base_speed) + 0.4 * (1.0 - stability_pct)
-        if restarted_from_blackout:
-            base_vibration += self.rng.uniform(3.0, 5.0) * self.params["wear_multiplier"]
-        wear_effect = 4.5 * (wear_norm**2)
-        bearing_effect = self.config.bearing_vibration_coeff * (bearing_norm**2)
+        usure_normalisee = self.usure_outil[idx] / 100.0
+        usure_roulements_normalisee = self.usure_roulements[idx] / 100.0
+        vibration_base = 0.4 * (self.vitesse_rotation[idx] / vitesse_base) + 0.4 * (1.0 - pourcentage_stabilite)
+        if redemarre_apres_coupure:
+            vibration_base += self.rng.uniform(3.0, 5.0) * self.params["multiplicateur_usure"]
+        effet_usure = 4.5 * (usure_normalisee**2)
+        effet_roulements = self.config.coeff_vibration_roulements * (usure_roulements_normalisee**2)
         # Broutement d'outil (chatter) : s'amplifie avec le temps passé en zone
-        # critique — signal observable qui continue de monter même quand wear_effect
+        # critique — signal observable qui continue de monter même quand effet_usure
         # a plafonné (point 8).
-        chatter_effect = self.config.twf_chatter_rate * self.ramp_exposure_hours[idx]
-        noise = self.rng.normal(0, self.params["vibration_noise"])
-        self.vibration[idx] = np.clip(base_vibration + wear_effect + bearing_effect + chatter_effect + noise, 0.05, 15.0)
+        effet_broutement = self.config.taux_broutement_use * self.heures_exposition_rampe[idx]
+        bruit = self.rng.normal(0, self.params["bruit_vibration"])
+        self.vibration[idx] = np.clip(vibration_base + effet_usure + effet_roulements + effet_broutement + bruit, 0.05, 15.0)
 
-    def _calculate_failure_hazards(self, idx: int) -> dict:
+    def _calculer_risques_panne(self, idx: int) -> dict:
         """
         Évalue le hasard de panne par cause au pas actuel (modèle à risques concurrents,
         façon AI4I 2020 : TWF, HDF, OSF, PWF, RNF). Chaque cause a sa propre signature
         précurseur ; aucune ne repose sur un seuil dur déterministe.
         """
-        wear = self.tool_wear[idx]
-        wear_norm = wear / 100.0
-        torque = self.torque[idx]
-        stability_pct = self.stability_array[idx] / 100.0
+        wear = self.usure_outil[idx]
+        usure_normalisee = wear / 100.0
+        couple = self.couple[idx]
+        pourcentage_stabilite = self.tableau_stabilite[idx] / 100.0
 
         # TWF — rampe lisse autour du seuil de rupture personnel de la machine
-        # (self.twf_threshold, tiré une fois à l'initialisation) : pas de seuil
+        # (self.seuil_use, tiré une fois à l'initialisation) : pas de seuil
         # universel, étalement réel du moment de panne entre machines fragiles et
-        # robustes. La fragilité (self.frailty) module l'intensité de la rampe.
-        band = self.config.twf_ramp_band
-        excess = max(0.0, (wear - (self.twf_threshold - band)) / band)
+        # robustes. La fragilité (self.fragilite) module l'intensité de la rampe.
+        band = self.config.bande_rampe_use
+        excess = max(0.0, (wear - (self.seuil_use - band)) / band)
         # Facteur temporel : le hasard continue de croître avec le temps cumulé passé
         # dans la bande de rampe, même quand `excess` a plafonné parce que l'usure est
         # saturée à 100 % — sans ça, une fois saturée, la panne redevient un pur
-        # tirage mémoryless (cf. ramp_exposure_hours dans _update_physics, point 8).
-        time_factor = 1.0 + self.ramp_exposure_hours[idx] / self.config.twf_ramp_time_half_life_hours
+        # tirage mémoryless (cf. heures_exposition_rampe dans _mettre_a_jour_physique, point 8).
+        facteur_temps = 1.0 + self.heures_exposition_rampe[idx] / self.config.demi_vie_heures_rampe_use
         twf = (
-            self.config.twf_hazard_coeff
-            * (excess**self.config.twf_ramp_exponent)
-            * time_factor
-            * self.frailty
-            * self.params["wear_multiplier"]
+            self.config.coeff_risque_use
+            * (excess**self.config.exposant_rampe_use)
+            * facteur_temps
+            * self.fragilite
+            * self.params["multiplicateur_usure"]
         )
 
         # HDF — surchauffe soutenue sur une fenêtre glissante de ~4h, pas un pic
         # instantané : la dissipation thermique insuffisante est un phénomène lent.
-        window = min(idx, self.config.hdf_window_steps)
-        overheat = self.process_temperature[idx - window : idx + 1] - self.ambient_array[idx - window : idx + 1]
-        sustained_overheat = max(0.0, float(overheat.mean()) - self.config.hdf_overheat_threshold)
-        hdf = self.config.hdf_hazard_coeff * sustained_overheat**2
+        window = min(idx, self.config.pas_fenetre_shd)
+        overheat = self.temperature_process[idx - window : idx + 1] - self.tableau_temperature_ambiante[idx - window : idx + 1]
+        surchauffe_soutenue = max(0.0, float(overheat.mean()) - self.config.seuil_surchauffe_shd)
+        hdf = self.config.coeff_risque_shd * surchauffe_soutenue**2
 
         # OSF — surcharge mécanique : couple élevé combiné à une usure déjà
-        # significative. wear_norm**3 supprime naturellement le hasard à usure
+        # significative. usure_normalisee**3 supprime naturellement le hasard à usure
         # faible, sans seuil dur explicite. Combine usure outil et usure des
         # roulements (second processus de dégradation indépendant, point 11) — pas
         # seulement l'usure outil, sinon OSF ne fait que dupliquer le signal TWF.
-        bearing_norm = self.bearing_wear[idx] / 100.0
-        osf_wear_term = (1.0 - self.config.osf_bearing_weight) * wear_norm**3 + self.config.osf_bearing_weight * bearing_norm**3
-        osf = self.config.osf_hazard_coeff * (torque / 45.0) * osf_wear_term
+        usure_roulements_normalisee = self.usure_roulements[idx] / 100.0
+        terme_usure_osf = (
+            1.0 - self.config.poids_roulements_osf
+        ) * usure_normalisee**3 + self.config.poids_roulements_osf * usure_roulements_normalisee**3
+        osf = self.config.coeff_risque_sm * (couple / 45.0) * terme_usure_osf
 
         # PWF — instabilité électrique routinière hors coupure franche (le choc
-        # de redémarrage après blackout est géré séparément dans evolve_states).
-        elec_sensitivity = self.params.get("ups_elec_sensitivity", self.params["voltage_sensitivity"])
-        pwf = self.config.pwf_hazard_coeff * max(0.0, 1.0 - stability_pct) * elec_sensitivity
+        # de redémarrage après blackout est géré séparément dans evoluer_etats).
+        sensibilite_electrique = self.params.get("sensibilite_electrique_onduleur", self.params["sensibilite_tension"])
+        pwf = self.config.coeff_risque_pe * max(0.0, 1.0 - pourcentage_stabilite) * sensibilite_electrique
 
         # RNF — risque résiduel irréductible, par construction sans précurseur.
-        rnf = self.config.rnf_hazard_base
+        rnf = self.config.risque_base_pa
 
         return {"TWF": twf, "HDF": hdf, "OSF": osf, "PWF": pwf, "RNF": rnf}
 
-    def _handle_downtime_phase(self, failure_idx: int) -> int:
+    def _gerer_phase_arret(self, index_panne: int) -> int:
         """
         Met la machine en sommeil pour maintenance suite à une panne.
         Durée générée via loi Log-Normale : médiane ≈ 3h, queue jusqu'à 48h.
@@ -673,178 +687,186 @@ class MachineStateEvolver:
         alpha_refroidissement = 0.70
 
         # Log-Normale : médiane = exp(ln(3)) = 3h, σ=1.2 → P99 ≈ 48h naturellement
-        duration_hours = float(self.rng.lognormal(mean=np.log(3.0), sigma=1.2))
-        duration_hours = float(np.clip(duration_hours, 0.5, 48.0))
-        num_steps = int(np.ceil(duration_hours * 60 / self.config.interval_minutes))
+        duree_heures = float(self.rng.lognormal(mean=np.log(3.0), sigma=1.2))
+        duree_heures = float(np.clip(duree_heures, 0.5, 48.0))
+        nb_pas = int(np.ceil(duree_heures * 60 / self.config.intervalle_minutes))
 
-        start_downtime = failure_idx + 1
-        end_downtime = min(start_downtime + num_steps, self.num_samples)
+        debut_arret = index_panne + 1
+        fin_arret = min(debut_arret + nb_pas, self.nb_echantillons)
 
-        for idx in range(start_downtime, end_downtime):
-            self.rotational_speed[idx] = 0.0
-            self.torque[idx] = 0.0
+        for idx in range(debut_arret, fin_arret):
+            self.vitesse_rotation[idx] = 0.0
+            self.couple[idx] = 0.0
             self.vibration[idx] = np.abs(self.rng.normal(0, 0.01))
             self.failure[idx] = 0
-            self.tool_wear[idx] = self.tool_wear[idx - 1]
-            self.fouling[idx] = self.fouling[idx - 1]
-            self.bearing_wear[idx] = self.bearing_wear[idx - 1]
-            self.ramp_exposure_hours[idx] = self.ramp_exposure_hours[idx - 1]
+            self.usure_outil[idx] = self.usure_outil[idx - 1]
+            self.encrassement[idx] = self.encrassement[idx - 1]
+            self.usure_roulements[idx] = self.usure_roulements[idx - 1]
+            self.heures_exposition_rampe[idx] = self.heures_exposition_rampe[idx - 1]
 
             # Refroidissement passif accéléré : en 30 min, la machine retombe quasi à l'ambiant
-            self.process_temperature[idx] = (
-                alpha_refroidissement * self.ambient_array[idx] + (1 - alpha_refroidissement) * self.process_temperature[idx - 1]
+            self.temperature_process[idx] = (
+                alpha_refroidissement * self.tableau_temperature_ambiante[idx]
+                + (1 - alpha_refroidissement) * self.temperature_process[idx - 1]
             )
 
-        if end_downtime < self.num_samples:
-            cause = self.failure_mode[failure_idx]
+        if fin_arret < self.nb_echantillons:
+            cause = self.mode_panne[index_panne]
             # Remise à neuf de l'outil — seulement si la panne réparée est l'outil
             # lui-même (TWF). Les autres causes réparent un autre composant : l'usure
             # de l'outil continue de s'accumuler sans être remise à zéro, sinon les
             # pannes non-mécaniques interrompraient indéfiniment la montée en usure et
             # TWF ne se déclencherait jamais.
             if cause == "TWF":
-                self.tool_wear[end_downtime - 1] = 0.0
+                self.usure_outil[fin_arret - 1] = 0.0
             # Remise à neuf des roulements — seulement si OSF est la cause réparée
-            # (même logique que TWF/tool_wear, second processus indépendant).
+            # (même logique que TWF/usure_outil, second processus indépendant).
             if cause == "OSF":
-                self.bearing_wear[end_downtime - 1] = 0.0
+                self.usure_roulements[fin_arret - 1] = 0.0
             # Toute visite de maintenance inclut un entretien de base, quelle que soit
             # la cause : nettoyage partiel (encrassement ramené au plus à un résidu,
             # jamais remonté artificiellement) et contrôle de sécurité (zone de rampe
             # réinitialisée).
-            self.fouling[end_downtime - 1] = min(self.fouling[end_downtime - 1], self.config.fouling_reset_residual)
-            self.ramp_exposure_hours[end_downtime - 1] = 0.0
+            self.encrassement[fin_arret - 1] = min(
+                self.encrassement[fin_arret - 1], self.config.residu_reinitialisation_encrassement
+            )
+            self.heures_exposition_rampe[fin_arret - 1] = 0.0
 
-        return end_downtime
+        return fin_arret
 
-    def _preventive_maintenance_prob(self, idx: int) -> float:
+    def _probabilite_maintenance_preventive(self, idx: int) -> float:
         """
         Probabilité qu'une visite de maintenance préventive intercepte la machine à
         ce pas — composante routine (calendaire, indépendante du risque) + composante
         risque (usure/encrassement/roulements). Reste délibérément faible devant le
         hasard de panne réel : l'interception est possible, pas garantie (imparfaite).
         """
-        risk_score = max(self.tool_wear[idx], self.fouling[idx], self.bearing_wear[idx]) / 100.0
-        return self.config.preventive_base_prob + self.config.preventive_risk_coeff * risk_score**2
+        score_risque = max(self.usure_outil[idx], self.encrassement[idx], self.usure_roulements[idx]) / 100.0
+        return self.config.probabilite_base_preventive + self.config.coeff_risque_preventif * score_risque**2
 
-    def _handle_preventive_maintenance_phase(self, event_idx: int) -> int:
+    def _gerer_phase_maintenance_preventive(self, event_idx: int) -> int:
         """
         Visite de maintenance préventive : pas une panne (failure reste à 0, aucun
-        failure_mode enregistré), plus courte qu'une réparation, et surtout
+        mode_panne enregistré), plus courte qu'une réparation, et surtout
         imparfaite — réduit l'usure/les roulements sans les remettre à neuf,
         contrairement à une réparation de panne qui répare le composant en cause.
         """
-        duration_hours = float(self.rng.lognormal(mean=np.log(self.config.preventive_duration_median_hours), sigma=0.6))
-        duration_hours = float(np.clip(duration_hours, 0.5, self.config.preventive_duration_max_hours))
-        num_steps = int(np.ceil(duration_hours * 60 / self.config.interval_minutes))
+        duree_heures = float(self.rng.lognormal(mean=np.log(self.config.heures_mediane_duree_preventive), sigma=0.6))
+        duree_heures = float(np.clip(duree_heures, 0.5, self.config.heures_max_duree_preventive))
+        nb_pas = int(np.ceil(duree_heures * 60 / self.config.intervalle_minutes))
 
         start = event_idx + 1
-        end = min(start + num_steps, self.num_samples)
+        end = min(start + nb_pas, self.nb_echantillons)
         alpha_refroidissement = 0.70
 
         for idx in range(start, end):
-            self.rotational_speed[idx] = 0.0
-            self.torque[idx] = 0.0
+            self.vitesse_rotation[idx] = 0.0
+            self.couple[idx] = 0.0
             self.vibration[idx] = np.abs(self.rng.normal(0, 0.01))
             self.failure[idx] = 0
-            self.tool_wear[idx] = self.tool_wear[idx - 1]
-            self.fouling[idx] = self.fouling[idx - 1]
-            self.bearing_wear[idx] = self.bearing_wear[idx - 1]
-            self.ramp_exposure_hours[idx] = self.ramp_exposure_hours[idx - 1]
-            self.process_temperature[idx] = (
-                alpha_refroidissement * self.ambient_array[idx] + (1 - alpha_refroidissement) * self.process_temperature[idx - 1]
+            self.usure_outil[idx] = self.usure_outil[idx - 1]
+            self.encrassement[idx] = self.encrassement[idx - 1]
+            self.usure_roulements[idx] = self.usure_roulements[idx - 1]
+            self.heures_exposition_rampe[idx] = self.heures_exposition_rampe[idx - 1]
+            self.temperature_process[idx] = (
+                alpha_refroidissement * self.tableau_temperature_ambiante[idx]
+                + (1 - alpha_refroidissement) * self.temperature_process[idx - 1]
             )
 
-        if end < self.num_samples:
+        if end < self.nb_echantillons:
             # Service partiel — réduit sans remettre à neuf (contrairement à une
-            # réparation de panne, cf. _handle_downtime_phase).
-            self.tool_wear[end - 1] *= 1.0 - self.config.preventive_wear_reduction
-            self.bearing_wear[end - 1] *= 1.0 - self.config.preventive_wear_reduction
-            self.fouling[end - 1] = min(self.fouling[end - 1], self.config.fouling_reset_residual)
-            self.ramp_exposure_hours[end - 1] = 0.0
+            # réparation de panne, cf. _gerer_phase_arret).
+            self.usure_outil[end - 1] *= 1.0 - self.config.reduction_usure_preventive
+            self.usure_roulements[end - 1] *= 1.0 - self.config.reduction_usure_preventive
+            self.encrassement[end - 1] = min(self.encrassement[end - 1], self.config.residu_reinitialisation_encrassement)
+            self.heures_exposition_rampe[end - 1] = 0.0
 
         return end
 
-    def evolve_states(self) -> pd.DataFrame:
+    def evoluer_etats(self) -> pd.DataFrame:
         """Exécute la boucle d'évolution séquentielle sur la chronologie de la machine."""
-        maintenance_end_idx = 0
+        index_fin_maintenance = 0
 
-        for idx in range(1, self.num_samples):
-            if idx < maintenance_end_idx:
+        for idx in range(1, self.nb_echantillons):
+            if idx < index_fin_maintenance:
                 continue
 
             # Interception des délestages et coupures de courant
-            if self.power_loss_array[idx] == 1:
-                self.rotational_speed[idx] = 0.0
-                self.torque[idx] = 0.0
+            if self.tableau_coupures[idx] == 1:
+                self.vitesse_rotation[idx] = 0.0
+                self.couple[idx] = 0.0
                 self.vibration[idx] = np.abs(self.rng.normal(0, 0.01))
-                self.tool_wear[idx] = self.tool_wear[idx - 1]
-                self.fouling[idx] = self.fouling[idx - 1]
-                self.bearing_wear[idx] = self.bearing_wear[idx - 1]
-                self.ramp_exposure_hours[idx] = self.ramp_exposure_hours[idx - 1]
+                self.usure_outil[idx] = self.usure_outil[idx - 1]
+                self.encrassement[idx] = self.encrassement[idx - 1]
+                self.usure_roulements[idx] = self.usure_roulements[idx - 1]
+                self.heures_exposition_rampe[idx] = self.heures_exposition_rampe[idx - 1]
                 self.failure[idx] = 0
 
-                alpha = self.config.coef_lissage_temp
-                self.process_temperature[idx] = alpha * self.ambient_array[idx] + (1 - alpha) * self.process_temperature[idx - 1]
+                alpha = self.config.coef_lissage_temperature
+                self.temperature_process[idx] = (
+                    alpha * self.tableau_temperature_ambiante[idx] + (1 - alpha) * self.temperature_process[idx - 1]
+                )
 
-                if self.power_loss_array[idx - 1] == 0:
+                if self.tableau_coupures[idx - 1] == 0:
                     # L=4%, M=3.2%, H=0.8% — H protégé par l'UPS au choc de coupure
-                    electric_shock_prob = 0.04 * self.params["blackout_failure_sensitivity"]
-                    if self.rng.random() < electric_shock_prob:
+                    probabilite_choc_electrique = 0.04 * self.params["sensibilite_panne_coupure"]
+                    if self.rng.random() < probabilite_choc_electrique:
                         self.failure[idx] = 1
-                        self.failure_mode[idx] = "PWF"
-                        maintenance_end_idx = self._handle_downtime_phase(idx)
+                        self.mode_panne[idx] = "PWF"
+                        index_fin_maintenance = self._gerer_phase_arret(idx)
                 continue
 
-            restarted_from_blackout = self.power_loss_array[idx - 1] == 1
+            redemarre_apres_coupure = self.tableau_coupures[idx - 1] == 1
 
             # Arrêts planifiés (week-end, activité nulle)
-            if self.activity_level_array[idx] == 0.0:
-                self.rotational_speed[idx] = 0.0
-                self.torque[idx] = 0.0
+            if self.tableau_niveau_activite[idx] == 0.0:
+                self.vitesse_rotation[idx] = 0.0
+                self.couple[idx] = 0.0
                 self.vibration[idx] = np.abs(self.rng.normal(0, 0.01))
-                self.tool_wear[idx] = self.tool_wear[idx - 1]
-                self.fouling[idx] = self.fouling[idx - 1]
-                self.bearing_wear[idx] = self.bearing_wear[idx - 1]
-                self.ramp_exposure_hours[idx] = self.ramp_exposure_hours[idx - 1]
+                self.usure_outil[idx] = self.usure_outil[idx - 1]
+                self.encrassement[idx] = self.encrassement[idx - 1]
+                self.usure_roulements[idx] = self.usure_roulements[idx - 1]
+                self.heures_exposition_rampe[idx] = self.heures_exposition_rampe[idx - 1]
                 self.failure[idx] = 0
 
-                alpha = self.config.coef_lissage_temp
-                self.process_temperature[idx] = alpha * self.ambient_array[idx] + (1 - alpha) * self.process_temperature[idx - 1]
+                alpha = self.config.coef_lissage_temperature
+                self.temperature_process[idx] = (
+                    alpha * self.tableau_temperature_ambiante[idx] + (1 - alpha) * self.temperature_process[idx - 1]
+                )
                 continue
 
             # Régime de fonctionnement normal
-            self._update_physics(idx, restarted_from_blackout=restarted_from_blackout)
+            self._mettre_a_jour_physique(idx, redemarre_apres_coupure=redemarre_apres_coupure)
 
-            hazards = self._calculate_failure_hazards(idx)
+            hazards = self._calculer_risques_panne(idx)
             total_hazard = sum(hazards.values())
-            failure_prob = min(total_hazard, 1.0)
-            if self.rng.random() < failure_prob:
+            probabilite_panne = min(total_hazard, 1.0)
+            if self.rng.random() < probabilite_panne:
                 self.failure[idx] = 1
                 modes = list(hazards.keys())
                 weights = np.array(list(hazards.values()))
                 mode_probs = weights / total_hazard if total_hazard > 0 else np.full(len(modes), 1.0 / len(modes))
-                self.failure_mode[idx] = self.rng.choice(modes, p=mode_probs)
-                maintenance_end_idx = self._handle_downtime_phase(idx)
-            elif self.rng.random() < self._preventive_maintenance_prob(idx):
+                self.mode_panne[idx] = self.rng.choice(modes, p=mode_probs)
+                index_fin_maintenance = self._gerer_phase_arret(idx)
+            elif self.rng.random() < self._probabilite_maintenance_preventive(idx):
                 # Maintenance préventive imparfaite : intercepte parfois une machine à
-                # risque avant la panne réelle — cf. _preventive_maintenance_prob.
-                maintenance_end_idx = self._handle_preventive_maintenance_phase(idx)
+                # risque avant la panne réelle — cf. _probabilite_maintenance_preventive.
+                index_fin_maintenance = self._gerer_phase_maintenance_preventive(idx)
 
         return pd.DataFrame(
             {
-                "machine_id": self.machine_id,
-                "machine_type": self.machine_type,
+                "id_machine": self.id_machine,
+                "type_machine": self.type_machine,
                 "timestamp": self.df_global["timestamp"],
-                "rotational_speed": self.rotational_speed,
-                "torque": self.torque,
-                "tool_wear": self.tool_wear,
-                "fouling": self.fouling,
-                "bearing_wear": self.bearing_wear,
-                "process_temperature": self.process_temperature,
+                "vitesse_rotation": self.vitesse_rotation,
+                "couple": self.couple,
+                "usure_outil": self.usure_outil,
+                "encrassement": self.encrassement,
+                "usure_roulements": self.usure_roulements,
+                "temperature_process": self.temperature_process,
                 "vibration": self.vibration,
-                "target": self.failure,
-                "failure_mode": self.failure_mode,
+                "panne": self.failure,
+                "mode_panne": self.mode_panne,
             }
         )
 
@@ -852,13 +874,13 @@ class MachineStateEvolver:
 # C - Agrégation, masquage IoT et persistence des données
 
 
-class DataAggregator:
+class AgregateurDonnees:
     """Combine les historiques des machines et orchestre la persistence des données."""
 
-    def __init__(self, config: SyntheticDataConfig = None):
-        self.config = config or SyntheticDataConfig()
+    def __init__(self, config: ConfigDonneesSynthetiques = None):
+        self.config = config or ConfigDonneesSynthetiques()
 
-    def _apply_bursts(
+    def _appliquer_rafales(
         self,
         values: np.ndarray,
         start_prob: float,
@@ -888,7 +910,7 @@ class DataAggregator:
             affected += end - s
         return out, affected
 
-    def _apply_drift(self, values: np.ndarray, scale: float) -> tuple[np.ndarray, int]:
+    def _appliquer_derive(self, values: np.ndarray, echelle: float) -> tuple[np.ndarray, int]:
         """
         Dérive de calibration : biais qui croît linéairement (rampe 0 → max) sur la
         durée de l'événement, signe aléatoire, amplitude proportionnelle à l'écart-type
@@ -897,15 +919,15 @@ class DataAggregator:
         """
         n = len(values)
         out = values.copy()
-        starts = np.flatnonzero(np.random.random(n) < self.config.sensor_drift_start_prob)
-        dmin, dmax = self.config.sensor_drift_duration_range
+        starts = np.flatnonzero(np.random.random(n) < self.config.probabilite_debut_derive_capteur)
+        dmin, dmax = self.config.plage_duree_derive_capteur
         affected = 0
         for s in starts:
             duration = int(
                 np.ceil(
                     np.clip(
                         np.random.lognormal(
-                            np.log(self.config.sensor_drift_duration_mean_steps), self.config.sensor_drift_duration_sigma
+                            np.log(self.config.pas_moyens_duree_derive_capteur), self.config.sigma_duree_derive_capteur
                         ),
                         dmin,
                         dmax,
@@ -915,11 +937,11 @@ class DataAggregator:
             end = min(s + duration, n)
             sign = 1.0 if np.random.random() < 0.5 else -1.0
             ramp = np.linspace(0.0, 1.0, end - s)
-            out[s:end] += sign * scale * self.config.sensor_drift_max_pct_of_std * ramp
+            out[s:end] += sign * echelle * self.config.pct_max_derive_capteur * ramp
             affected += end - s
         return out, affected
 
-    def inject_missing_data(self, df: pd.DataFrame) -> pd.DataFrame:
+    def injecter_donnees_manquantes(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Simule des défaillances de capteurs IoT réalistes plutôt qu'un MCAR uniforme
         (une cellule isolée sur deux sans lien avec les autres, le cas le plus facile
@@ -927,72 +949,72 @@ class DataAggregator:
         Généré indépendamment par (machine, capteur) — pas par cellule.
         """
         df_copy = df.copy()
-        sensor_cols = [
-            "tool_wear",
-            "process_temperature",
-            "rotational_speed",
-            "torque",
+        colonnes_capteurs = [
+            "usure_outil",
+            "temperature_process",
+            "vitesse_rotation",
+            "couple",
             "vibration",
-            "ambient_temperature",
-            "humidity",
-            "dust_concentration",
+            "temperature_ambiante",
+            "humidite",
+            "concentration_poussiere",
         ]
-        sensor_cols = [col for col in sensor_cols if col in df_copy.columns]
+        colonnes_capteurs = [col for col in colonnes_capteurs if col in df_copy.columns]
 
-        if not sensor_cols or "machine_id" not in df_copy.columns or df_copy.empty:
+        if not colonnes_capteurs or "id_machine" not in df_copy.columns or df_copy.empty:
             return df_copy
 
         # Extraction explicite en float → corruption → réassignation propre. copy=True :
         # sous pandas 3.x (copy-on-write par défaut), to_numpy() sans copie explicite
         # peut renvoyer un tableau read-only et faire échouer l'affectation ci-dessous.
-        sensor_data = df_copy[sensor_cols].to_numpy(dtype=float, copy=True)
+        donnees_capteurs = df_copy[colonnes_capteurs].to_numpy(dtype=float, copy=True)
 
         n_nan = n_stuck = n_drift = 0
-        for positions in df_copy.groupby("machine_id", sort=False).indices.values():
+        for positions in df_copy.groupby("id_machine", sort=False).indices.values():
             positions = np.asarray(positions)
-            for c in range(len(sensor_cols)):
-                values = sensor_data[positions, c]
-                scale = float(np.nanstd(values)) or 1.0
+            for c in range(len(colonnes_capteurs)):
+                values = donnees_capteurs[positions, c]
+                echelle = float(np.nanstd(values)) or 1.0
 
-                values, affected = self._apply_drift(values, scale)
+                values, affected = self._appliquer_derive(values, echelle)
                 n_drift += affected
 
-                values, affected = self._apply_bursts(
+                values, affected = self._appliquer_rafales(
                     values,
-                    self.config.sensor_stuck_start_prob,
-                    self.config.sensor_stuck_duration_mean_steps,
-                    self.config.sensor_stuck_duration_sigma,
-                    self.config.sensor_stuck_duration_range,
+                    self.config.probabilite_debut_capteur_bloque,
+                    self.config.pas_moyens_duree_capteur_bloque,
+                    self.config.sigma_duree_capteur_bloque,
+                    self.config.plage_duree_capteur_bloque,
                     mode="stuck",
                 )
                 n_stuck += affected
 
-                values, affected = self._apply_bursts(
+                values, affected = self._appliquer_rafales(
                     values,
-                    self.config.sensor_burst_nan_start_prob,
-                    self.config.sensor_burst_nan_duration_mean_steps,
-                    self.config.sensor_burst_nan_duration_sigma,
-                    self.config.sensor_burst_nan_duration_range,
+                    self.config.probabilite_debut_rafale_nan_capteur,
+                    self.config.pas_moyens_duree_rafale_nan_capteur,
+                    self.config.sigma_duree_rafale_nan_capteur,
+                    self.config.plage_duree_rafale_nan_capteur,
                     mode="nan",
                 )
                 n_nan += affected
 
-                sensor_data[positions, c] = values
+                donnees_capteurs[positions, c] = values
 
-        df_copy[sensor_cols] = sensor_data
+        df_copy[colonnes_capteurs] = donnees_capteurs
         logger.info(
             f"Défaillance capteurs : {n_nan} valeurs manquantes (rafales), {n_stuck} figées, {n_drift} en dérive de calibration."
         )
         return df_copy
 
-    def save_parquet(self, df: pd.DataFrame):
-        self.config.output_dir.mkdir(parents=True, exist_ok=True)
-        df.to_parquet(self.config.parquet_file, compression="snappy", index=False)
-        size_mb = self.config.parquet_file.stat().st_size / (1024**2)
-        logger.info(f"Fichier {self.config.parquet_file} sauvegardé ({size_mb:.2f} MB)")
+    def sauvegarder_parquet(self, df: pd.DataFrame):
+        self.config.dossier_sortie.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(self.config.fichier_parquet, compression="snappy", index=False)
+        size_mb = self.config.fichier_parquet.stat().st_size / (1024**2)
+        logger.info(f"Fichier {self.config.fichier_parquet} sauvegardé ({size_mb:.2f} MB)")
 
-    def insert_to_duckdb(self, df: pd.DataFrame):
-        db_path = pathlib.Path(self.config.duckdb_file).resolve()
+    def inserer_duckdb(self, df: pd.DataFrame):
+        db_path = pathlib.Path(self.config.fichier_duckdb).resolve()
         try:
             db_path.parent.mkdir(parents=True, exist_ok=True)
         except Exception as e:
@@ -1007,7 +1029,7 @@ class DataAggregator:
                 conn.execute(f"DROP TABLE IF EXISTS {table_name}")
                 conn.register("df_arrow", df)
                 conn.execute(f"CREATE TABLE {table_name} AS SELECT * FROM df_arrow")
-                conn.execute(f"CREATE INDEX idx_machine_time ON {table_name}(machine_id, timestamp)")
+                conn.execute(f"CREATE INDEX idx_machine_time ON {table_name}(id_machine, timestamp)")
                 rows = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchall()[0][0]
                 logger.info(f"Base de données DuckDB mise à jour ({rows:,} lignes).")
             finally:
@@ -1023,31 +1045,31 @@ class DataAggregator:
 # Orchestrateur principal
 
 
-class SyntheticDatasetOrchestrator:
+class OrchestrateurDatasetSynthetique:
     """Pilote suprême du pipeline d'ingénierie des données synthétiques."""
 
-    def __init__(self, random_seed: int | None = None):
-        self.config = SyntheticDataConfig()
-        if random_seed is not None:
-            self.config.global_seed = random_seed
-        # Pas de np.random.seed() ici : ExogenousContextGenerator.__init__ reseed
-        # déjà avec self.config.global_seed juste après — l'appel ici était redondant
+    def __init__(self, graine_aleatoire: int | None = None):
+        self.config = ConfigDonneesSynthetiques()
+        if graine_aleatoire is not None:
+            self.config.graine_globale = graine_aleatoire
+        # Pas de np.random.seed() ici : GenerateurContexteExogene.__init__ reseed
+        # déjà avec self.config.graine_globale juste après — l'appel ici était redondant
         # et source de confusion sur la source de vérité du seed.
 
-    def generate(self) -> pd.DataFrame:
-        exo_gen = ExogenousContextGenerator(self.config)
-        df_global = exo_gen.generate_global_context()
+    def generer(self) -> pd.DataFrame:
+        generateur_exogene = GenerateurContexteExogene(self.config)
+        df_global = generateur_exogene.generer_contexte_global()
 
         # Distribution déterministe, aussi équilibrée que possible entre les 3 types
         # (L, M, H) : 17/17/16 pour 50 machines (50 n'est pas un multiple de 3).
-        machine_types_cycle = ["L", "M", "H"]
-        machine_type_quality = {mid: machine_types_cycle[i % 3] for i, mid in enumerate(self.config.machine_ids)}
+        cycle_types_machine = ["L", "M", "H"]
+        qualite_type_machine = {mid: cycle_types_machine[i % 3] for i, mid in enumerate(self.config.ids_machines)}
 
         machine_dfs = []
-        for mid in self.config.machine_ids:
-            mtype = machine_type_quality[mid]
-            evolver = MachineStateEvolver(mid, mtype, df_global, self.config)
-            df_machine = evolver.evolve_states()
+        for mid in self.config.ids_machines:
+            mtype = qualite_type_machine[mid]
+            evolueur = EvolueurEtatMachine(mid, mtype, df_global, self.config)
+            df_machine = evolueur.evoluer_etats()
             machine_dfs.append(df_machine)
 
         df_sensor = pd.concat(machine_dfs, ignore_index=True)
@@ -1056,18 +1078,18 @@ class SyntheticDatasetOrchestrator:
         if len(df_final) != len(df_sensor):
             raise ValueError(f"La fusion a modifié le nombre de lignes ! (Sensor: {len(df_sensor)}, Final: {len(df_final)})")
 
-        aggregator = DataAggregator(self.config)
-        df_corrupted = aggregator.inject_missing_data(df_final)
-        aggregator.save_parquet(df_corrupted)
-        aggregator.insert_to_duckdb(df_corrupted)
+        agregateur = AgregateurDonnees(self.config)
+        df_corrompu = agregateur.injecter_donnees_manquantes(df_final)
+        agregateur.sauvegarder_parquet(df_corrompu)
+        agregateur.inserer_duckdb(df_corrompu)
 
         logger.info(
             f"Dataset synthétique généré : {self.config.nb_machines} machines, "
-            f"{self.config.duration_days} jours, {self.config.interval_minutes} min/pas."
+            f"{self.config.duree_jours} jours, {self.config.intervalle_minutes} min/pas."
         )
-        return df_corrupted
+        return df_corrompu
 
 
 if __name__ == "__main__":
-    orchestrator = SyntheticDatasetOrchestrator()
-    dataset = orchestrator.generate()
+    orchestrateur = OrchestrateurDatasetSynthetique()
+    jeu_donnees = orchestrateur.generer()
