@@ -14,16 +14,41 @@ import pandas as pd
 
 from src.features import PREDICTABLE_FAILURE_MODES
 
+# Délai de réarmement par défaut (24h = 48 pas de 30 min) : au-delà de cette durée,
+# un épisode d'alerte continu est redécoupé en plusieurs épisodes. Sans ça, un
+# modèle qui reste bloqué en alerte pendant des mois ne compte jamais que comme UN
+# épisode — angle mort vérifié empiriquement (cf. docs/model-decisions.md) qui
+# permet à un modèle inutilisable (alerte quasi permanente) d'obtenir un taux de
+# fausses alertes proche de zéro. 24h = un technicien qui n'a pas résolu l'alerte
+# en une journée justifie un nouveau signalement, pas un silence indéfini.
+DEFAULT_MAX_EPISODE_STEPS = 48
 
-def _alert_episodes(alert_flags: np.ndarray) -> list[tuple[int, int]]:
-    """Runs consécutifs à 1 dans un vecteur binaire trié par temps — (start_idx, end_idx) inclusifs."""
+
+def _alert_episodes(alert_flags: np.ndarray, max_episode_steps: int | None = DEFAULT_MAX_EPISODE_STEPS) -> list[tuple[int, int]]:
+    """
+    Runs consécutifs à 1 dans un vecteur binaire trié par temps — (start_idx, end_idx)
+    inclusifs. `max_episode_steps` : redécoupe tout run plus long que cette durée
+    (délai de réarmement, cf. commentaire du module) ; None désactive le redécoupage.
+    """
     if alert_flags.sum() == 0:
         return []
     padded = np.concatenate([[0], alert_flags.astype(int), [0]])
     diff = np.diff(padded)
     starts = np.flatnonzero(diff == 1)
     ends = np.flatnonzero(diff == -1) - 1
-    return list(zip(starts.tolist(), ends.tolist()))
+    episodes = list(zip(starts.tolist(), ends.tolist()))
+
+    if max_episode_steps is None:
+        return episodes
+
+    split_episodes = []
+    for s, e in episodes:
+        cur = s
+        while cur <= e:
+            seg_end = min(cur + max_episode_steps - 1, e)
+            split_episodes.append((cur, seg_end))
+            cur = seg_end + 1
+    return split_episodes
 
 
 def event_based_metrics(
@@ -32,6 +57,7 @@ def event_based_metrics(
     threshold: float,
     horizon_steps: int | dict[str, int],
     failure_modes: tuple = PREDICTABLE_FAILURE_MODES,
+    max_episode_steps: int | None = DEFAULT_MAX_EPISODE_STEPS,
 ) -> dict:
     """
     df : doit contenir machine_id, timestamp, target, failure_mode, aligné index à
@@ -45,6 +71,10 @@ def event_based_metrics(
     `horizon_steps` : soit un entier unique (même fenêtre pour tous les modes), soit
     un dict {mode: pas} pour une fenêtre propre à chaque mode de panne (point 15 —
     HDF/OSF perdent en précision au-delà de 72h, TWF reste optimal à 120h).
+
+    `max_episode_steps` : délai de réarmement (cf. DEFAULT_MAX_EPISODE_STEPS) — un
+    épisode continu plus long est redécoupé, pour qu'un modèle en alerte quasi
+    permanente ne soit pas artificiellement bien noté.
     """
     if len(df) != len(probas):
         raise ValueError(f"df et probas doivent avoir la même longueur ({len(df)} vs {len(probas)}).")
@@ -68,7 +98,7 @@ def event_based_metrics(
         span_hours = (g["timestamp"].iloc[-1] - g["timestamp"].iloc[0]).total_seconds() / 3600.0
         total_machine_days += span_hours / 24.0
 
-        episodes = _alert_episodes(a)
+        episodes = _alert_episodes(a, max_episode_steps=max_episode_steps)
         total_episodes += len(episodes)
 
         is_failure = (g["target"] == 1) & g["failure_mode"].isin(failure_modes)
@@ -108,6 +138,7 @@ def find_threshold_for_fa_budget(
     horizon_steps: int | dict[str, int],
     budget_per_machine_day: float,
     failure_modes: tuple = PREDICTABLE_FAILURE_MODES,
+    max_episode_steps: int | None = DEFAULT_MAX_EPISODE_STEPS,
 ) -> tuple[float, dict]:
     """
     Balaie une grille de seuils, ne retient que ceux dont le taux de fausses alertes
@@ -116,7 +147,9 @@ def find_threshold_for_fa_budget(
     retombe sur celui qui minimise le taux de fausses alertes plutôt que de planter
     ou de retourner un seuil arbitraire.
     """
-    results = [(float(t), event_based_metrics(df, probas, float(t), horizon_steps, failure_modes)) for t in thresholds]
+    results = [
+        (float(t), event_based_metrics(df, probas, float(t), horizon_steps, failure_modes, max_episode_steps)) for t in thresholds
+    ]
 
     within_budget = [(t, m) for t, m in results if m["false_alarm_rate_per_machine_day"] <= budget_per_machine_day]
     if within_budget:

@@ -23,6 +23,27 @@ def test_alert_episodes_multiple_runs():
     assert _alert_episodes(a) == [(1, 2), (5, 5), (7, 9)]
 
 
+def test_alert_episodes_rearm_splits_long_runs():
+    """
+    Délai de réarmement : un run continu plus long que max_episode_steps est
+    redécoupé — sinon un modèle bloqué en alerte pendant des mois ne compterait
+    jamais que comme UN épisode (angle mort vérifié empiriquement, cf.
+    docs/model-decisions.md).
+    """
+    a = np.ones(10, dtype=int)
+    assert _alert_episodes(a, max_episode_steps=4) == [(0, 3), (4, 7), (8, 9)]
+    # max_episode_steps=None désactive explicitement le redécoupage
+    assert _alert_episodes(a, max_episode_steps=None) == [(0, 9)]
+
+
+def test_alert_episodes_default_max_episode_steps_splits_month_long_alert():
+    """Un modèle en alerte permanente pendant 300 jours ne doit pas compter comme 1 épisode."""
+    n = 48 * 300  # 300 jours de pas 30 min, en alerte continue
+    a = np.ones(n, dtype=int)
+    episodes = _alert_episodes(a)
+    assert len(episodes) == 300  # un épisode par tranche de 24h (délai de réarmement par défaut)
+
+
 def _make_single_machine_df(n: int, failure_idx: int, failure_mode: str = "TWF") -> pd.DataFrame:
     timestamps = pd.date_range("2025-01-01", periods=n, freq="30min")
     target = np.zeros(n, dtype=int)
@@ -61,6 +82,30 @@ def test_event_based_metrics_misses_failure_without_episode():
     assert metrics["n_caught"] == 0
     assert metrics["recall_event"] == 0.0
     assert metrics["n_episodes"] == 0
+
+
+def test_event_based_metrics_permanent_alert_is_not_scored_as_perfect():
+    """
+    Un modèle qui alerte 100 % du temps doit être lourdement pénalisé par le taux de
+    fausses alertes, pas récompensé. Sans délai de réarmement, une alerte permanente
+    ne forme qu'UN épisode sur toute la période -> FA/machine/jour proche de 0, un
+    score en apparence excellent pour un modèle inutilisable en pratique.
+    """
+    n = 48 * 10  # 10 jours, alerte permanente, aucune panne
+    df = pd.DataFrame(
+        {
+            "machine_id": ["M1"] * n,
+            "timestamp": pd.date_range("2025-01-01", periods=n, freq="30min"),
+            "target": np.zeros(n, dtype=int),
+            "failure_mode": np.full(n, "", dtype=object),
+        }
+    )
+    probas = np.ones(n)
+
+    metrics = event_based_metrics(df, probas, threshold=0.5, horizon_steps=10)
+
+    assert metrics["n_episodes"] == 10  # un épisode par tranche de 24h (délai de réarmement)
+    assert metrics["false_alarm_rate_per_machine_day"] == pytest.approx(1.0, rel=0.01)
 
 
 def test_event_based_metrics_false_alarm_rate_per_machine_day():

@@ -71,6 +71,7 @@ def render(C: dict) -> None:
     peak_ts = None
     current_prob: float | None = None
     df_pred = pd.DataFrame()
+    predictor = None
 
     try:
         predictor = get_predictor()
@@ -87,16 +88,21 @@ def render(C: dict) -> None:
         logger.warning(f"Prédiction indisponible pour {sel_id} : {e}")
 
     # Risque pic = métrique principale pour la maintenance
+    # Seuils dérivés du seuil de décision réel du modèle (probabilités calibrées,
+    # cf. docs/model-decisions.md) plutôt que des bornes fixes 0,35/0,50 : avec un
+    # seuil optimal typiquement bas (pannes rares, ~3 % de base), des bornes fixes
+    # afficheraient "Normal" pour une machine que le modèle alerte réellement.
     disp_prob = peak_prob
-    if disp_prob < 0.35:
+    threshold = predictor.threshold if predictor is not None else 0.5
+    if disp_prob < threshold:
         p_color, p_label = C["green"], "Normal"
-    elif disp_prob < 0.50:
+    elif disp_prob < threshold * 3:
         p_color, p_label = C["orange"], "Surveillance"
     else:
         p_color, p_label = C["red"], "Risque élevé"
 
     _peak_date = f"pic le {pd.Timestamp(peak_ts).strftime('%d/%m %H:%M')}" if peak_ts is not None else ""
-    _calib_note = "Modèle non disponible" if current_prob is None else "LightGBM · Seuil F2 optimisé"
+    _calib_note = "Modèle non disponible" if current_prob is None else "LightGBM · Probabilités calibrées (isotonique)"
     _h = sel_horizon
 
     st.markdown("<br>", unsafe_allow_html=True)

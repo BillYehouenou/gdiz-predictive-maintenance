@@ -54,7 +54,12 @@ def _log_to_mlflow(
     """
     try:
         mlflow.set_experiment("GDIZ_Monitoring_Predictions")
-        alert_level = "high" if probability >= 0.5 else ("medium" if probability >= 0.35 else "normal")
+        # Seuils dérivés du seuil de décision réel (probabilités calibrées, cf.
+        # docs/model-decisions.md) plutôt que des bornes fixes 0,35/0,50 — un modèle
+        # calibré sur un événement rare (~3 % de base) a un seuil optimal typiquement
+        # bien plus bas que 0,5.
+        threshold = predictor.threshold
+        alert_level = "high" if probability >= threshold * 3 else ("medium" if probability >= threshold else "normal")
         with mlflow.start_run(
             run_name=machine_id,
             tags={

@@ -52,33 +52,27 @@ class Predictor:
         logger.warning(f"Seuil non trouvé dans {self.threshold_path} — utilisation du seuil par défaut 0.5")
         return DEFAULT_THRESHOLD
 
-    def _normalize_probability(self, raw_prob: float) -> float:
-        """
-        Normalise la probabilité brute sur l'axe logit centré au seuil optimal.
-        - raw_prob = threshold  - normalized = 0.5  (exactement à la frontière)
-        - raw_prob > threshold  - normalized > 0.5  (prédiction = panne)
-        - raw_prob < threshold  - normalized < 0.5  (prédiction = sain)
-        Cela corrige le biais de calibration dû à l'extrême déséquilibre de classes.
-        """
-        eps = 1e-10
-        raw_logit = np.log((raw_prob + eps) / (1.0 - raw_prob + eps))
-        threshold_logit = np.log(self.threshold / (1.0 - self.threshold))
-        return float(1.0 / (1.0 + np.exp(-(raw_logit - threshold_logit))))
-
     def predict(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Le pipeline chargé produit déjà des probabilités calibrées (calibration
+        isotonique ajustée en entraînement sur la validation, cf. src/train.py) —
+        pas de recentrage logit ad hoc ici : `failure_probability` est directement
+        interprétable, `prediction` est la décision au seuil optimal (choisi pour
+        respecter le budget de fausses alertes, pas nécessairement proche de 0,5 —
+        les pannes restent un événement rare).
+        """
         if self.pipeline is None:
             raise ValueError("Le modèle n'est pas chargé.")
 
         logger.info(f"Prédictions sur {len(data)} ligne(s) avec seuil={self.threshold:.4f}...")
 
-        raw_probabilities: np.ndarray = self.pipeline.predict_proba(data)[:, 1]
-        predictions = (raw_probabilities >= self.threshold).astype(int)
-        normalized = np.array([self._normalize_probability(p) for p in raw_probabilities])
+        probabilities: np.ndarray = self.pipeline.predict_proba(data)[:, 1]
+        predictions = (probabilities >= self.threshold).astype(int)
 
         results = pd.DataFrame(
             {
                 "prediction": predictions,
-                "failure_probability": normalized,
+                "failure_probability": probabilities,
             }
         )
 

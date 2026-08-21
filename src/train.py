@@ -9,9 +9,12 @@ import mlflow
 import mlflow.sklearn
 import numpy as np
 import pandas as pd
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.frozen import FrozenEstimator
 from sklearn.metrics import (
     ConfusionMatrixDisplay,
     average_precision_score,
+    brier_score_loss,
     confusion_matrix,
     f1_score,
     precision_score,
@@ -158,8 +161,23 @@ class ModelPipeline:
             full_pipeline.fit(X_train, y_train)
             logger.info("Entraînement terminé.")
 
-            probas_val = full_pipeline.predict_proba(X_val)[:, 1]
-            probas_test = full_pipeline.predict_proba(X_test)[:, 1]
+            raw_probas_test = full_pipeline.predict_proba(X_test)[:, 1]
+
+            # Calibration isotonique des probabilités, ajustée sur la validation —
+            # remplace le recentrage logit ad hoc de Predictor._normalize_probability
+            # (qui ne faisait que déplacer artificiellement le seuil sur 50 %, sans
+            # rendre les probabilités elles-mêmes interprétables). FrozenEstimator :
+            # le pipeline est déjà entraîné, seule la calibration doit être fittée
+            # (point 22).
+            calibrator = CalibratedClassifierCV(FrozenEstimator(full_pipeline), method="isotonic")
+            calibrator.fit(X_val, y_val)
+
+            probas_val = calibrator.predict_proba(X_val)[:, 1]
+            probas_test = calibrator.predict_proba(X_test)[:, 1]
+
+            brier_raw = brier_score_loss(y_test, raw_probas_test)
+            brier_calibrated = brier_score_loss(y_test, probas_test)
+            logger.info(f"Brier score (test) — brut: {brier_raw:.4f} | calibré: {brier_calibrated:.4f}")
 
             # Seuil choisi sur la validation, jamais sur le test (point 16).
             val_meta = train_df.loc[X_val.index, ["machine_id", "timestamp", "target", "failure_mode"]]
@@ -188,6 +206,8 @@ class ModelPipeline:
                 "precision": precision_score(y_test, y_pred, average="binary", pos_label=1, zero_division=0),
                 "recall": recall_score(y_test, y_pred, average="binary", pos_label=1, zero_division=0),
                 "f1_score": f1_score(y_test, y_pred, average="binary", pos_label=1, zero_division=0),
+                "brier_score_raw": brier_raw,
+                "brier_score_calibrated": brier_calibrated,
                 "failure_rate_train": float(y_train.mean()),
                 "failure_rate_validation": float(y_val.mean()),
                 "failure_rate_test": float(y_test.mean()),
@@ -208,8 +228,11 @@ class ModelPipeline:
             self._log_confusion_matrix(y_test.values, y_pred)
             self._log_feature_importances(full_pipeline)
 
+            # C'est le pipeline CALIBRÉ qui est sauvegardé/loggé — predict_proba()
+            # dessus renvoie déjà des probabilités calibrées, plus besoin du
+            # recentrage logit ad hoc côté service (cf. src/xpredict.py).
             model_info = mlflow.sklearn.log_model(
-                sk_model=full_pipeline,
+                sk_model=calibrator,
                 name="model_pipeline",
                 registered_model_name=model_name,
             )
@@ -218,7 +241,7 @@ class ModelPipeline:
 
             if promoted:
                 os.makedirs("models", exist_ok=True)
-                joblib.dump(full_pipeline, "models/model_pipeline.pkl")
+                joblib.dump(calibrator, "models/model_pipeline.pkl")
                 with open(THRESHOLD_PATH, "w") as f:
                     json.dump({"threshold": optimal_threshold}, f)
                 logger.info("Pipeline sauvegardé : models/model_pipeline.pkl")
