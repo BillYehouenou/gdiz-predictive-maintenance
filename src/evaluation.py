@@ -30,7 +30,7 @@ def event_based_metrics(
     df: pd.DataFrame,
     probas: np.ndarray,
     threshold: float,
-    horizon_steps: int,
+    horizon_steps: int | dict[str, int],
     failure_modes: tuple = PREDICTABLE_FAILURE_MODES,
 ) -> dict:
     """
@@ -41,6 +41,10 @@ def event_based_metrics(
     fenêtre [panne - horizon_steps, panne] sur la même machine : s'il existe, la
     panne est "attrapée" et le préavis = temps entre le début de cet épisode et la
     panne. Les épisodes non associés à une panne sont des fausses alertes.
+
+    `horizon_steps` : soit un entier unique (même fenêtre pour tous les modes), soit
+    un dict {mode: pas} pour une fenêtre propre à chaque mode de panne (point 15 —
+    HDF/OSF perdent en précision au-delà de 72h, TWF reste optimal à 120h).
     """
     if len(df) != len(probas):
         raise ValueError(f"df et probas doivent avoir la même longueur ({len(df)} vs {len(probas)}).")
@@ -69,12 +73,14 @@ def event_based_metrics(
 
         is_failure = (g["target"] == 1) & g["failure_mode"].isin(failure_modes)
         failure_idxs = np.flatnonzero(is_failure.to_numpy())
+        failure_modes_arr = g["failure_mode"].to_numpy()
 
         matched_episode_idx = set()
         for f_raw in failure_idxs:
             f = int(f_raw)
             total_failures += 1
-            window_start = max(0, f - horizon_steps)
+            steps = horizon_steps[failure_modes_arr[f]] if isinstance(horizon_steps, dict) else horizon_steps
+            window_start = max(0, f - steps)
             candidates = [i for i, (s, e) in enumerate(episodes) if s <= f and e >= window_start]
             if candidates:
                 total_caught += 1
@@ -99,7 +105,7 @@ def find_threshold_for_fa_budget(
     df: pd.DataFrame,
     probas: np.ndarray,
     thresholds: np.ndarray,
-    horizon_steps: int,
+    horizon_steps: int | dict[str, int],
     budget_per_machine_day: float,
     failure_modes: tuple = PREDICTABLE_FAILURE_MODES,
 ) -> tuple[float, dict]:

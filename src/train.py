@@ -36,8 +36,10 @@ THRESHOLD_PATH = "models/optimal_threshold.json"
 CHAMPION_ALIAS = "champion"
 PROMOTION_METRIC = "recall_event"
 
-# Horizon événementiel : aligné sur target_h120_predictable (cf. config/config.yaml),
-# l'horizon au-delà duquel le modèle n'a de toute façon aucun signal d'entraînement.
+# Horizon événementiel : aligné sur target_h120_predictable (cf. config/config.yaml).
+# Des horizons différenciés par mode (point 15, HORIZON_BY_FAILURE_MODE dans
+# src/features.py) ont été testés et invalidés empiriquement sur ce dataset — cf.
+# docs/model-decisions.md. L'horizon unique reste la cible active.
 EVENT_HORIZON_HOURS = 120
 EVENT_HORIZON_STEPS = EVENT_HORIZON_HOURS * 2  # pas de 30 min
 

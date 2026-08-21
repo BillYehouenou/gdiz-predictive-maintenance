@@ -82,6 +82,36 @@ def test_event_based_metrics_false_alarm_rate_per_machine_day():
     assert metrics["false_alarm_rate_per_machine_day"] == pytest.approx(0.5, rel=0.05)
 
 
+def test_event_based_metrics_uses_per_mode_horizon_dict():
+    """
+    Point 15 : horizon_steps peut être un dict {mode: pas}. Une panne HDF avec un
+    horizon court (3 pas) ne doit pas être attrapée par un épisode trop éloigné qui
+    l'aurait été avec l'horizon TWF (plus long, 15 pas) — preuve que le bon horizon
+    est bien appliqué par panne, pas un horizon unique pour tout le monde.
+    """
+    n = 40
+    timestamps = pd.date_range("2025-01-01", periods=n, freq="30min")
+    target = np.zeros(n, dtype=int)
+    mode = np.full(n, "", dtype=object)
+    target[10] = 1
+    mode[10] = "HDF"
+    target[30] = 1
+    mode[30] = "TWF"
+    df = pd.DataFrame({"machine_id": ["M1"] * n, "timestamp": timestamps, "target": target, "failure_mode": mode})
+
+    probas = np.zeros(n)
+    probas[2:5] = 0.9  # épisode A : hors fenêtre HDF (horizon 3 -> [7,10]), aurait chevauché avec horizon 15
+    probas[20:25] = 0.9  # épisode B : dans la fenêtre TWF (horizon 15 -> [15,30])
+
+    metrics = event_based_metrics(df, probas, threshold=0.5, horizon_steps={"HDF": 3, "TWF": 15})
+
+    assert metrics["n_failures"] == 2
+    assert metrics["n_caught"] == 1  # seule la panne TWF est attrapée
+    assert metrics["recall_event"] == 0.5
+    assert metrics["n_episodes"] == 2
+    assert metrics["n_false_alarm_episodes"] == 1  # épisode A, hors fenêtre HDF
+
+
 def test_find_threshold_for_fa_budget_falls_back_when_no_threshold_meets_budget():
     """Budget de 0 fausse alerte impossible à tenir dès qu'il y a du bruit -> repli, pas de crash."""
     n = 20

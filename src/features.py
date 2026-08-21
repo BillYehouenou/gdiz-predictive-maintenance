@@ -66,15 +66,43 @@ def enrich_training_df(df: pd.DataFrame) -> pd.DataFrame:
     # positive exploitable par le modèle au-delà de l'instant exact de la panne brute.
     df["target_h24"] = compute_horizon_target(df, horizon_hours=24)
     df["target_h48"] = compute_horizon_target(df, horizon_hours=48)
-    # Cible retenue pour l'entraînement
+    # Cible retenue pour l'entraînement (cf. config.yaml).
     df["target_h120_predictable"] = compute_horizon_target(df, horizon_hours=120, failure_modes=PREDICTABLE_FAILURE_MODES)
+    # Horizons différenciés par mode (point 15) — calculée pour rester disponible et
+    # testable, mais PAS la cible active : testée et invalidée empiriquement sur ce
+    # dataset (recall événementiel en validation inférieur à l'horizon unique dans
+    # toutes les configurations essayées). Cf. docs/model-decisions.md.
+    df["target_multi_horizon"] = compute_multi_horizon_target(df, HORIZON_BY_FAILURE_MODE)
 
     logger.info(f"Features temporelles calculées : {TEMPORAL_FEATURES} sur {df['machine_id'].nunique()} machines.")
     return df
 
 
-# Les autres causes de panne sont non prévisibles, par nature.
+# Les autres causes de panne sont non prévisibles, par nature (point 18 — vérifié
+# empiriquement : ratios signal pré-panne / baseline pour PWF et RNF entre 0,98 et
+# 1,16 selon le capteur, contre 2 à 4x pour TWF/HDF/OSF. Cf. docs/model-decisions.md).
 PREDICTABLE_FAILURE_MODES = ("TWF", "HDF", "OSF")
+
+# Horizons différenciés par mode de panne (point 15) — hypothèse de la roadmap :
+# HDF/OSF perdraient en précision au-delà de 72h. Testée avec plusieurs
+# combinaisons (cf. docs/model-decisions.md) via target_multi_horizon ci-dessus :
+# AUCUNE ne bat l'horizon unique de 120h sur le recall événementiel en validation
+# sur ce dataset. Valeur ci-dessous = meilleure combinaison testée, gardée
+# disponible pour ré-essayer avec un futur générateur/modèle, pas activée par défaut.
+HORIZON_BY_FAILURE_MODE = {"TWF": 120, "HDF": 72, "OSF": 72}
+
+
+def compute_multi_horizon_target(df: pd.DataFrame, horizon_by_mode: dict[str, int]) -> pd.Series:
+    """
+    Cible combinée : 1 si la ligne est dans l'horizon propre à AU MOINS UN mode de
+    panne prédictible à venir, chaque mode évalué avec sa propre fenêtre plutôt
+    qu'un horizon unique appliqué à tous.
+    """
+    combined = pd.Series(0, index=df.index)
+    for mode, horizon_hours in horizon_by_mode.items():
+        mode_target = compute_horizon_target(df, horizon_hours=horizon_hours, failure_modes=(mode,))
+        combined = combined | mode_target
+    return combined.astype(int)
 
 
 def compute_horizon_target(df: pd.DataFrame, horizon_hours: int = 24, failure_modes: tuple | None = None) -> pd.Series:

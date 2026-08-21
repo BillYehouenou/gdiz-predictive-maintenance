@@ -9,6 +9,8 @@ Document vivant, même esprit que `docs/data-generation.md` et `docs/experiments
 - [Tendances non retenues cette fois : portée de "tendances et cumuls"](#tendances-non-retenues-cette-fois--portée-de-tendances-et-cumuls)
 - [Retrait du StandardScaler, catégorielles natives LightGBM](#retrait-du-standardscaler-catégorielles-natives-lightgbm)
 - [Incident : rupture de compatibilité du modèle en production](#incident--rupture-de-compatibilité-du-modèle-en-production)
+- [Horizons différenciés par mode de panne — hypothèse testée et invalidée](#horizons-différenciés-par-mode-de-panne--hypothèse-testée-et-invalidée)
+- [PWF/RNF non prédictibles — confirmé empiriquement](#pwfrnf-non-prédictibles--confirmé-empiriquement)
 
 ---
 
@@ -55,3 +57,38 @@ Le changement de `Preprocessor` ci-dessus a cassé la compatibilité avec le mod
 **Trouvaille à noter pour une phase MLOps future** (points 27/29 de la roadmap) : la gate actuelle ne vérifie que la métrique, jamais si le champion actuel est encore chargeable/exécutable avec le code courant. Un changement de schéma de preprocessing peut donc casser silencieusement un modèle en production sans que la gate ne s'en aperçoive — elle continuerait de comparer un nouveau candidat au score d'un champion mort. Corriger ça proprement demanderait que la gate tente une inférence de fumée sur le champion avant de comparer les scores, pas juste lire une métrique loguée. Hors scope ici (ce commit porte sur les features/preprocessing, pas sur la gate elle-même) — mais le risque est réel et vérifié empiriquement, pas hypothétique.
 
 **Écart de performance non expliqué, signalé plutôt que caché** : même après ce contournement, la version 7 reste très légèrement en dessous de la version 6 sur le recall événementiel mesuré (0,8348 vs 0,8435 — un seul événement de panne de différence sur 115, 96 vs 97 attrapées). Les nouvelles features sont mesurablement utiles (`dust_max_24h` en 3ᵉ position d'importance), donc ce n'est probablement que du bruit de ré-entraînement plutôt qu'une vraie régression — mais ce n'est pas prouvé statistiquement ici (un seul point de mesure, pas un intervalle de confiance). Le tuning d'hyperparamètres (point 25, phase ultérieure) est le bon moment pour vérifier si cet écart se résorbe.
+
+---
+
+## Horizons différenciés par mode de panne — hypothèse testée et invalidée
+
+**L'hypothèse de la roadmap** : l'horizon unique de 120h (`target_h120_predictable`) plafonnerait la précision — HDF/OSF auraient un signal précurseur exploitable seulement jusqu'à ~72h, TWF resterait exploitable jusqu'à 120-168h (surtout après la rampe terminale, point 8). Combiner un horizon propre à chaque mode devrait donc battre l'horizon unique.
+
+**Premier test, méthodologiquement bancal** : comparaison de plusieurs configurations d'horizon (label combiné par mode via `compute_multi_horizon_target`), mais évaluées avec la fenêtre événementielle unique de 120h héritée d'avant ce commit — y compris pour les configurations où le label HDF/OSF avait été réduit à 72h. Résultat apparent : la config HDF/OSF=72h/TWF=120h battait l'horizon unique (recall test 0,861 contre 0,835). **Ce résultat était un artefact** : évaluer avec une fenêtre de 120h un modèle entraîné à alerter dans les 72h avant HDF/OSF le crédite de rattrapages qu'il n'a pas appris à faire de façon fiable.
+
+**Deuxième test, cohérent** : la fenêtre d'évaluation (`horizon_steps` dans `event_based_metrics`) a été rendue capable d'accepter un horizon par mode (`dict[str, int]`, testé dans `tests/test_evaluation.py::test_event_based_metrics_uses_per_mode_horizon_dict`), pour évaluer chaque configuration avec **sa propre** fenêtre — cohérence entre ce que le modèle apprend à prédire et ce sur quoi on le juge. Résultat, sur la validation (le seul critère de sélection légitime, pas le test) :
+
+| Configuration | Seuil retenu | Recall événementiel (validation) |
+|---|---|---|
+| **Horizon unique 120h (actuel)** | 0,080 | **0,826** |
+| HDF/OSF=72h, TWF=120h | 0,050 | 0,739 |
+| HDF/OSF=60h, TWF=120h | 0,035 | 0,696 |
+| HDF/OSF=72h, TWF=96h | 0,040 | 0,761 |
+| HDF/OSF=96h, TWF=120h | 0,060 | 0,761 |
+
+**Aucune configuration à horizon différencié ne bat l'horizon unique** une fois l'évaluation rendue cohérente. Hypothèse pour expliquer l'écart (non vérifiée plus loin, notée pour une future itération) : réduire la fenêtre HDF/OSF à 72h réduit aussi le nombre d'exemples positifs de ces deux causes dans les données d'entraînement — HDF+OSF représentent ensemble ~35 % des pannes (cf. `docs/data-generation.md`) — pendant qu'un seul classifieur binaire partagé apprend les trois causes mélangées. La perte de volume d'exemples pourrait coûter plus cher que le gain espéré en retirant des exemples "flous" (panne dans 72-120h, signal faible mais pas nul).
+
+**Décision** : `target_h120_predictable` reste la cible active (`config/config.yaml`). Le code pour tester des horizons différenciés (`HORIZON_BY_FAILURE_MODE`, `compute_multi_horizon_target`, colonne `target_multi_horizon` calculée mais non utilisée, support `dict` dans `event_based_metrics`/`find_threshold_for_fa_budget`) est conservé — testé, fonctionnel, disponible pour une ré-évaluation si le générateur ou le modèle changent significativement, mais pas activé par défaut. Cohérent avec le point 24 déjà invalidé une fois dans ce projet (persistance des alertes) : un résultat négatif mesuré vaut mieux qu'un succès non mesuré.
+
+## PWF/RNF non prédictibles — confirmé empiriquement
+
+Vérifié sur le dataset final (50 machines, générateur v2) que PWF et RNF n'ont pas de signal précurseur exploitable, en excluant les pas de temps à l'arrêt (délestage/activité nulle) pour ne pas biaiser la mesure par du temps d'arrêt contaminant la fenêtre pré-panne :
+
+| Capteur | Ratio PWF (pré-panne 24h / baseline) | Ratio RNF |
+|---|---|---|
+| process_temperature | 1,021 | 0,987 |
+| torque | 1,005 | 0,998 |
+| vibration | 1,111 | 1,007 |
+| tool_wear | 1,089 | 1,155 |
+
+Ratios proches de 1,0 pour la plupart des capteurs (contre 2 à 4x pour TWF/HDF/OSF, cf. sections précédentes) — confirme la décision déjà actée d'exclure PWF/RNF de `PREDICTABLE_FAILURE_MODES`. Le léger excès sur `tool_wear` (1,09-1,16) n'est pas un vrai précurseur : c'est un effet de population — les machines plus usées ont simplement plus d'occasions de subir n'importe quelle panne, pas spécifiquement PWF/RNF à ce moment précis.
