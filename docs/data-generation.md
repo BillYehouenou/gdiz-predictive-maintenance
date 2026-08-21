@@ -9,6 +9,9 @@ Statut des sections : les choix décrits ici sont des calibrations pour un gén�
 - [Calendrier saisonnier du Sud-Bénin](#calendrier-saisonnier-du-sud-bénin)
 - [Réseau électrique](#réseau-électrique)
 - [Physique des pannes](#physique-des-pannes)
+- [Maintenance préventive imparfaite](#maintenance-préventive-imparfaite)
+- [Données manquantes structurées](#données-manquantes-structurées)
+- [Taille du parc : 50 machines](#taille-du-parc--50-machines)
 
 ---
 
@@ -154,3 +157,45 @@ Résultat final (dataset régénéré, 251 pannes / 30 machines / 2 ans, soit 8,
 Pas un alignement parfait sur les cibles (documentées dès le départ comme "cibles de calibration, pas une garantie stricte") — PWF reste au-dessus de sa cible, en partie parce qu'une fraction de ses occurrences vient d'un mécanisme séparé (choc électrique au redémarrage après coupure, `blackout_failure_sensitivity`) non affecté par ce recalibrage. Mais aucun mode n'écrase plus les autres, et la répartition reste dans le même ordre de grandeur que celle mesurée avant l'ajout de ces quatre mécanismes (TWF 34,8 / HDF 22,0 / PWF 21,6 / OSF 15,0 / RNF 6,6).
 
 **Effet secondaire positif, non recherché** : le modèle entraîné sur ce dataset régénéré passe de F2=0,42 à F2=0,48 — cohérent avec l'ajout de signaux précurseurs réellement informatifs (chatter, encrassement) plutôt qu'un artefact de recalibrage.
+
+---
+
+## Maintenance préventive imparfaite
+
+**Le problème** : les machines tournaient jusqu'à la panne, sans exception. Une fois qu'une machine entrait dans la zone à risque (usure/encrassement/roulements élevés), la seule issue possible dans les données était une panne réelle — il n'existait aucun cas où une machine à risque était interceptée avant de casser. Un modèle entraîné là-dessus apprend une relation trop propre : "indicateurs élevés ⇒ panne", sans jamais voir de contre-exemple. Réaliste ? Non : une équipe de maintenance qui fait des rondes ou des contrôles ponctuels attrape parfois un problème avant qu'il ne devienne une panne.
+
+**Le choix** : à chaque pas, en plus du tirage de panne existant, un second tirage indépendant évalue une interception préventive — probabilité = composante routine (fixe, indépendante du risque) + composante risque (∝ `max(usure, encrassement, roulements)²`). Volontairement **imparfaite** : la probabilité reste nettement inférieure au hasard de panne réel, donc la panne l'emporte la plupart du temps — la maintenance préventive n'est pas un filet de sécurité fiable, juste une chance supplémentaire. Quand elle intercepte, le service est partiel (réduction de 50 % de l'usure/des roulements, pas une remise à neuf — `preventive_wear_reduction`) et plus court qu'une réparation de panne (médiane 2h contre 3h).
+
+**Recalibrage** : le premier essai (`preventive_risk_coeff=0.0004`) interceptait trop de trajectoires TWF spécifiquement — la part de TWF est tombée de 32 % à 25 % des pannes, **sans réagir à une hausse du hasard TWF lui-même** (`twf_hazard_coeff` monté à 0,10 puis 0,12 sans effet sur la part TWF réalisée). Explication : le même signal de risque (`max(usure, ...)`) pilote à la fois le hasard TWF et l'interception préventive — booster l'un booste presque autant l'autre. Recalibré à `preventive_risk_coeff=0.0001` : la part TWF revient à un niveau proche d'avant l'ajout du mécanisme, tout en gardant un effet réel et mesurable.
+
+**Vérifié** (50 machines, dataset régénéré) : 76 visites préventives déclenchées sur 2 ans (1,52/machine/2ans, environ une tous les 16 mois) — un rythme plausible pour un contrôle opportuniste, pas une politique de maintenance planifiée à part entière (cf. section 0 du brief projet : la politique de réentraînement/maintenance déclarée est explicitement hors périmètre). Nombre de pannes réelles : 365 sur 50 machines/2 ans (7,3/machine — dans la fourchette calibrée 4-8).
+
+---
+
+## Données manquantes structurées
+
+**Le problème** : `inject_missing_data` tirait 2 % des cellules capteurs uniformément au hasard (MCAR — *missing completely at random*), sans lien entre elles. C'est le cas le plus facile à gérer pour un pipeline de données : une valeur manquante isolée s'impute trivialement à partir de ses voisines temporelles. La réalité IoT industrielle est plus dure : un capteur qui décroche reste indisponible sur une fenêtre de temps, pas un pas sur deux au hasard.
+
+**Le choix** : trois mécanismes indépendants, générés par (machine, capteur) — pas par cellule — pour que chaque défaillance affecte une fenêtre continue :
+
+1. **Rafales de paquets perdus** (`sensor_burst_nan_*`) — un capteur cesse de transmettre pendant une durée aléatoire (log-normale, médiane ~2h, jusqu'à 12h). Remplace le NaN isolé.
+2. **Capteurs figés** (`sensor_stuck_*`) — le capteur reste bloqué à sa dernière valeur valide pendant une durée plus longue (médiane ~6h, jusqu'à 48h) — pas de NaN, une valeur qui ne bouge plus alors que la machine, elle, continue d'évoluer.
+3. **Dérive de calibration** (`sensor_drift_*`) — un biais qui croît linéairement (rampe) sur la durée de l'événement (médiane ~24h, jusqu'à 100h), signe aléatoire, amplitude proportionnelle à l'écart-type du capteur — le plus sournois des trois, aucune valeur manquante ni figée, juste une mesure silencieusement fausse.
+
+Les trois s'appliquent dans cet ordre (dérive → figé → rafale de NaN) : un capteur qui dérive peut ensuite se figer sur sa valeur dérivée, et une perte de paquets a toujours le dernier mot (le NaN écrase tout, cohérent avec le fait qu'une valeur manquante est l'état le plus sévère).
+
+**Calibrage** : un premier essai (`sensor_burst_nan_duration_mean_steps=2`, troncature par `int()`) produisait des rafales à 55 % isolées sur un seul pas — pas franchement différent du MCAR d'origine. Cause : `int()` tronque vers zéro, ce qui biaise systématiquement les durées tirées vers le bas (un tirage de 1,9 pas devient 1, pas 2). Corrigé en utilisant `np.ceil()` (cohérent avec le reste du générateur — `_handle_downtime_phase` faisait déjà ça) et en réajustant `duration_mean_steps` à 3 : la part de rafales isolées tombe à moins de 5 %.
+
+**Vérifié** (échantillon machine 01, capteur vibration) : 83 rafales sur 2 ans, durée médiane 4 pas (2h), 4,8 % de rafales isolées à un seul pas. Sur l'ensemble du dataset (50 machines) : 0,98 % de cellules en rafale NaN, 0,47 % figées, 0,39 % en dérive — budget de corruption total (~1,8 %) proche de l'ancien flat 2 %, mais restructuré en événements réalistes plutôt qu'en bruit i.i.d.
+
+---
+
+## Taille du parc : 50 machines
+
+**Le raisonnement (repris du brief projet, mesuré sur une étude antérieure, pas refait ici)** : à 30 machines, le jeu de test ne contient que ~72 pannes, avec une marge d'erreur ±11,5 points sur les métriques de recall — trop bruité pour trancher entre deux versions de modèle. À 50 machines, ~126 pannes, marge ±8,7 points. Au-delà (100 machines testé), le gain marginal (±6,2 points) ne justifie plus le coût ×2 en temps de génération et en RAM. 50 est le point d'équilibre retenu.
+
+**Le changement** : `nb_machines` passe de 30 à 50 dans `SyntheticDataConfig`. La répartition par type (L/M/H) n'est plus un partage exact en trois (30 = 10×3), elle devient 17/17/16 — `machine_types_cycle[i % 3]` gère ça automatiquement, seul le commentaire du code a dû être corrigé pour ne plus prétendre à un partage exact.
+
+**Effets de bord traités** : deux libellés codés en dur dans le dashboard (`ui/tabs/tab_about.py`, `dashboard.py`) affichaient "30 machines" et "1.05M" enregistrements — mis à jour vers 50 machines et 1,75M. Les mentions historiques dans ce document (sections précédentes, mesurées à l'époque sur 30 machines) sont laissées telles quelles : elles décrivent fidèlement ce qui a été mesuré au moment où c'était encore la configuration active, les réécrire en "50" serait une réécriture malhonnête de l'historique.
+
+**Vérifié** : régénération complète en ~21s (contre ~10s à 30 machines — passage x1,67 en volume de données pour x2,1 en temps, cohérent avec le coût annoncé). 365 pannes sur 50 machines/2 ans (7,3/machine, toujours dans la fourchette 4-8), répartition par cause quasi identique à celle mesurée à 30 machines (TWF 31,0 / PWF 24,9 / HDF 19,2 / OSF 18,9 / RNF 6,0) — signe que le recalibrage des sections précédentes n'était pas surajusté au nombre de machines. Le modèle réentraîné sur ce dataset élargi n'a **pas** dépassé le champion entraîné sur 30 machines (F2 0,4729 contre 0,4904) — la gate de promotion a correctement refusé de le promouvoir. Pas un problème : les deux jeux de données ne sont pas directement comparables (composition différente), et l'évaluation événementielle propre (métrique + split validation) arrive dans la phase suivante.

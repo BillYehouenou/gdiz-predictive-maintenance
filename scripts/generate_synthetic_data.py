@@ -35,8 +35,11 @@ class SyntheticDataConfig:
     duration_days = 730  # 2 ans — capture 2 cycles Harmattan + saisons des pluies
     interval_minutes = 30  # Pas de 30 min
 
-    # Machines
-    nb_machines = 30
+    # Machines — 50 : au-delà, gain marginal sur la fiabilité des métriques de test
+    # pour un coût ~x2 en temps/RAM (30 machines → marge ±11,5 pts sur le recall
+    # événementiel mesuré sur le jeu de test ; 50 → ±8,7 pts ; 100 → ±6,2 pts).
+    # Cf. docs/data-generation.md.
+    nb_machines = 50
     machine_ids = [f"GDIZ_TEX_M_{i:02d}" for i in range(1, nb_machines + 1)]
     machine_type_quality = ["L", "M", "H"]
 
@@ -56,9 +59,10 @@ class SyntheticDataConfig:
     twf_threshold_beta_b = 2.0
     twf_ramp_band = 12.0  # largeur (en points d'usure) de la rampe avant le seuil personnel
     twf_ramp_exponent = 3.0
-    # Recalibré (0.05 -> 0.075) pour compenser la dilution de part par les nouveaux
-    # canaux HDF/OSF ci-dessous — cf. docs/data-generation.md pour la méthode de calibration.
-    twf_hazard_coeff = 0.075
+    # Recalibré (0.05 -> 0.08) pour compenser la dilution de part par les nouveaux
+    # canaux HDF/OSF et par la maintenance préventive ci-dessous — cf.
+    # docs/data-generation.md pour la méthode de calibration.
+    twf_hazard_coeff = 0.08
 
     # HDF (Heat Dissipation Failure) — surchauffe soutenue (moyenne glissante ~4h), pas un pic instantané
     # Hasard nul sous le seuil, quadratique au-delà
@@ -102,6 +106,22 @@ class SyntheticDataConfig:
     fouling_heat_factor = 1.8  # °C additionnels max à encrassement = 100 %
     fouling_reset_residual = 10.0  # % résiduel après une visite de maintenance (nettoyage partiel)
 
+    # Maintenance préventive imparfaite — sans elle, les machines tournent toujours
+    # jusqu'à la panne : les indicateurs précurseurs (usure, encrassement, roulements)
+    # deviennent un prédicteur quasi certain de panne imminente, ce qui rend TWF
+    # artificiellement facile. Une visite préventive (routine + risque, jamais
+    # garantie) intercepte parfois une machine à risque avant qu'elle ne casse
+    # réellement — le hasard de panne l'emporte la plupart du temps (imparfaite).
+    preventive_base_prob = 0.00002  # composante routine, indépendante du risque
+    # Recalibré (0.0004 -> 0.0001) : la première valeur interceptait trop de
+    # trajectoires TWF (part TWF réduite de 32 % à 25 % des pannes, sans réaction à
+    # une hausse du hasard TWF lui-même — même signal de risque pilotant les deux
+    # mécanismes). Cf. docs/data-generation.md.
+    preventive_risk_coeff = 0.0001  # composante risque, ∝ max(usure, encrassement, roulements)²
+    preventive_duration_median_hours = 2.0
+    preventive_duration_max_hours = 8.0
+    preventive_wear_reduction = 0.5  # fraction d'usure/roulements retirée — service partiel, pas une remise à neuf
+
     # Second processus de dégradation indépendant de l'usure outil : usure des
     # roulements, pilotée par la vitesse/vibration plutôt que par la poussière ou le
     # couple — canal de dégradation distinct, contribue à OSF.
@@ -142,8 +162,27 @@ class SyntheticDataConfig:
         12: 32.0,
     }
 
-    # Erreurs capteurs IoT
-    missing_data_ratio = 0.02
+    # Erreurs capteurs IoT — rafales corrélées (perte de paquets), capteurs figés,
+    # dérive de calibration : remplace un MCAR uniforme (une cellule isolée sur deux
+    # sans lien avec les autres), le cas le plus facile à imputer et le moins
+    # réaliste pour de l'IoT industriel. Généré par (machine, capteur), pas par
+    # cellule : un capteur qui décroche reste indisponible sur une fenêtre de temps
+    # continue. Cf. docs/data-generation.md.
+    sensor_burst_nan_start_prob = 0.0024  # probabilité de démarrage d'une rafale, par pas/capteur
+    sensor_burst_nan_duration_mean_steps = 3.0
+    sensor_burst_nan_duration_sigma = 0.6
+    sensor_burst_nan_duration_range = (1, 24)  # 30 min à 12h
+
+    sensor_stuck_start_prob = 0.00025
+    sensor_stuck_duration_mean_steps = 12.0
+    sensor_stuck_duration_sigma = 1.0
+    sensor_stuck_duration_range = (2, 96)  # 1h à 48h
+
+    sensor_drift_start_prob = 0.00006
+    sensor_drift_duration_mean_steps = 48.0
+    sensor_drift_duration_sigma = 1.0
+    sensor_drift_duration_range = (12, 200)  # 6h à 100h
+    sensor_drift_max_pct_of_std = 0.5  # biais max atteint en fin de dérive, en fraction de l'écart-type du capteur
 
     # Chemins d'export
     output_dir = pathlib.Path("data/raw")
@@ -678,6 +717,54 @@ class MachineStateEvolver:
 
         return end_downtime
 
+    def _preventive_maintenance_prob(self, idx: int) -> float:
+        """
+        Probabilité qu'une visite de maintenance préventive intercepte la machine à
+        ce pas — composante routine (calendaire, indépendante du risque) + composante
+        risque (usure/encrassement/roulements). Reste délibérément faible devant le
+        hasard de panne réel : l'interception est possible, pas garantie (imparfaite).
+        """
+        risk_score = max(self.tool_wear[idx], self.fouling[idx], self.bearing_wear[idx]) / 100.0
+        return self.config.preventive_base_prob + self.config.preventive_risk_coeff * risk_score**2
+
+    def _handle_preventive_maintenance_phase(self, event_idx: int) -> int:
+        """
+        Visite de maintenance préventive : pas une panne (failure reste à 0, aucun
+        failure_mode enregistré), plus courte qu'une réparation, et surtout
+        imparfaite — réduit l'usure/les roulements sans les remettre à neuf,
+        contrairement à une réparation de panne qui répare le composant en cause.
+        """
+        duration_hours = float(self.rng.lognormal(mean=np.log(self.config.preventive_duration_median_hours), sigma=0.6))
+        duration_hours = float(np.clip(duration_hours, 0.5, self.config.preventive_duration_max_hours))
+        num_steps = int(np.ceil(duration_hours * 60 / self.config.interval_minutes))
+
+        start = event_idx + 1
+        end = min(start + num_steps, self.num_samples)
+        alpha_refroidissement = 0.70
+
+        for idx in range(start, end):
+            self.rotational_speed[idx] = 0.0
+            self.torque[idx] = 0.0
+            self.vibration[idx] = np.abs(self.rng.normal(0, 0.01))
+            self.failure[idx] = 0
+            self.tool_wear[idx] = self.tool_wear[idx - 1]
+            self.fouling[idx] = self.fouling[idx - 1]
+            self.bearing_wear[idx] = self.bearing_wear[idx - 1]
+            self.ramp_exposure_hours[idx] = self.ramp_exposure_hours[idx - 1]
+            self.process_temperature[idx] = (
+                alpha_refroidissement * self.ambient_array[idx] + (1 - alpha_refroidissement) * self.process_temperature[idx - 1]
+            )
+
+        if end < self.num_samples:
+            # Service partiel — réduit sans remettre à neuf (contrairement à une
+            # réparation de panne, cf. _handle_downtime_phase).
+            self.tool_wear[end - 1] *= 1.0 - self.config.preventive_wear_reduction
+            self.bearing_wear[end - 1] *= 1.0 - self.config.preventive_wear_reduction
+            self.fouling[end - 1] = min(self.fouling[end - 1], self.config.fouling_reset_residual)
+            self.ramp_exposure_hours[end - 1] = 0.0
+
+        return end
+
     def evolve_states(self) -> pd.DataFrame:
         """Exécute la boucle d'évolution séquentielle sur la chronologie de la machine."""
         maintenance_end_idx = 0
@@ -739,6 +826,10 @@ class MachineStateEvolver:
                 mode_probs = weights / total_hazard if total_hazard > 0 else np.full(len(modes), 1.0 / len(modes))
                 self.failure_mode[idx] = self.rng.choice(modes, p=mode_probs)
                 maintenance_end_idx = self._handle_downtime_phase(idx)
+            elif self.rng.random() < self._preventive_maintenance_prob(idx):
+                # Maintenance préventive imparfaite : intercepte parfois une machine à
+                # risque avant la panne réelle — cf. _preventive_maintenance_prob.
+                maintenance_end_idx = self._handle_preventive_maintenance_phase(idx)
 
         return pd.DataFrame(
             {
@@ -767,11 +858,73 @@ class DataAggregator:
     def __init__(self, config: SyntheticDataConfig = None):
         self.config = config or SyntheticDataConfig()
 
+    def _apply_bursts(
+        self,
+        values: np.ndarray,
+        start_prob: float,
+        duration_mean_steps: float,
+        duration_sigma: float,
+        duration_range: tuple,
+        mode: str,
+    ) -> tuple[np.ndarray, int]:
+        """
+        Applique des rafales indépendantes à une série 1D d'un (machine, capteur) :
+        mode="nan" (perte de paquets) ou mode="stuck" (capteur figé à sa valeur de
+        début de rafale). Durée tirée d'une loi log-normale, comme les autres durées
+        d'événements du générateur (coupures, maintenance).
+        """
+        n = len(values)
+        out = values.copy()
+        starts = np.flatnonzero(np.random.random(n) < start_prob)
+        dmin, dmax = duration_range
+        affected = 0
+        for s in starts:
+            duration = int(np.ceil(np.clip(np.random.lognormal(np.log(duration_mean_steps), duration_sigma), dmin, dmax)))
+            end = min(s + duration, n)
+            if mode == "nan":
+                out[s:end] = np.nan
+            else:  # "stuck" — valeur d'origine (pré-corruption) au début de la rafale
+                out[s:end] = values[s]
+            affected += end - s
+        return out, affected
+
+    def _apply_drift(self, values: np.ndarray, scale: float) -> tuple[np.ndarray, int]:
+        """
+        Dérive de calibration : biais qui croît linéairement (rampe 0 → max) sur la
+        durée de l'événement, signe aléatoire, amplitude proportionnelle à l'écart-type
+        du capteur — pas de valeur manquante, un biais silencieux, plus difficile à
+        repérer qu'un NaN.
+        """
+        n = len(values)
+        out = values.copy()
+        starts = np.flatnonzero(np.random.random(n) < self.config.sensor_drift_start_prob)
+        dmin, dmax = self.config.sensor_drift_duration_range
+        affected = 0
+        for s in starts:
+            duration = int(
+                np.ceil(
+                    np.clip(
+                        np.random.lognormal(
+                            np.log(self.config.sensor_drift_duration_mean_steps), self.config.sensor_drift_duration_sigma
+                        ),
+                        dmin,
+                        dmax,
+                    )
+                )
+            )
+            end = min(s + duration, n)
+            sign = 1.0 if np.random.random() < 0.5 else -1.0
+            ramp = np.linspace(0.0, 1.0, end - s)
+            out[s:end] += sign * scale * self.config.sensor_drift_max_pct_of_std * ramp
+            affected += end - s
+        return out, affected
+
     def inject_missing_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Simule des pertes de paquets IoT ou des défaillances de capteurs physiques.
-        Utilise une sous-matrice float explicite pour éviter les comportements instables
-        lors de l'affectation de NaN sur un DataFrame à types mixtes.
+        Simule des défaillances de capteurs IoT réalistes plutôt qu'un MCAR uniforme
+        (une cellule isolée sur deux sans lien avec les autres, le cas le plus facile
+        à imputer) : rafales de paquets perdus, capteurs figés, dérive de calibration.
+        Généré indépendamment par (machine, capteur) — pas par cellule.
         """
         df_copy = df.copy()
         sensor_cols = [
@@ -786,25 +939,50 @@ class DataAggregator:
         ]
         sensor_cols = [col for col in sensor_cols if col in df_copy.columns]
 
-        ratio = self.config.missing_data_ratio
-        total_sensor_cells = len(df_copy) * len(sensor_cols)
-        num_missing = int(total_sensor_cells * ratio)
-
-        if num_missing == 0:
+        if not sensor_cols or "machine_id" not in df_copy.columns or df_copy.empty:
             return df_copy
 
-        random_rows = np.random.randint(0, len(df_copy), size=num_missing)
-        random_sub_cols = np.random.randint(0, len(sensor_cols), size=num_missing)
-
-        # Extraction explicite en float → injection NaN → réassignation propre
-        # copy=True : sous pandas 3.x (copy-on-write par défaut), to_numpy() sans
-        # copie explicite peut renvoyer un tableau read-only et faire échouer
-        # l'affectation ci-dessous.
+        # Extraction explicite en float → corruption → réassignation propre. copy=True :
+        # sous pandas 3.x (copy-on-write par défaut), to_numpy() sans copie explicite
+        # peut renvoyer un tableau read-only et faire échouer l'affectation ci-dessous.
         sensor_data = df_copy[sensor_cols].to_numpy(dtype=float, copy=True)
-        sensor_data[random_rows, random_sub_cols] = np.nan
-        df_copy[sensor_cols] = sensor_data
 
-        logger.info(f"Défaillance capteurs : {num_missing} valeurs manquantes injectées.")
+        n_nan = n_stuck = n_drift = 0
+        for positions in df_copy.groupby("machine_id", sort=False).indices.values():
+            positions = np.asarray(positions)
+            for c in range(len(sensor_cols)):
+                values = sensor_data[positions, c]
+                scale = float(np.nanstd(values)) or 1.0
+
+                values, affected = self._apply_drift(values, scale)
+                n_drift += affected
+
+                values, affected = self._apply_bursts(
+                    values,
+                    self.config.sensor_stuck_start_prob,
+                    self.config.sensor_stuck_duration_mean_steps,
+                    self.config.sensor_stuck_duration_sigma,
+                    self.config.sensor_stuck_duration_range,
+                    mode="stuck",
+                )
+                n_stuck += affected
+
+                values, affected = self._apply_bursts(
+                    values,
+                    self.config.sensor_burst_nan_start_prob,
+                    self.config.sensor_burst_nan_duration_mean_steps,
+                    self.config.sensor_burst_nan_duration_sigma,
+                    self.config.sensor_burst_nan_duration_range,
+                    mode="nan",
+                )
+                n_nan += affected
+
+                sensor_data[positions, c] = values
+
+        df_copy[sensor_cols] = sensor_data
+        logger.info(
+            f"Défaillance capteurs : {n_nan} valeurs manquantes (rafales), {n_stuck} figées, {n_drift} en dérive de calibration."
+        )
         return df_copy
 
     def save_parquet(self, df: pd.DataFrame):
@@ -860,7 +1038,8 @@ class SyntheticDatasetOrchestrator:
         exo_gen = ExogenousContextGenerator(self.config)
         df_global = exo_gen.generate_global_context()
 
-        # Distribution déterministe : exactement 10 machines de chaque type (L, M, H)
+        # Distribution déterministe, aussi équilibrée que possible entre les 3 types
+        # (L, M, H) : 17/17/16 pour 50 machines (50 n'est pas un multiple de 3).
         machine_types_cycle = ["L", "M", "H"]
         machine_type_quality = {mid: machine_types_cycle[i % 3] for i, mid in enumerate(self.config.machine_ids)}
 

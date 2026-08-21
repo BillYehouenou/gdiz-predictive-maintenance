@@ -31,7 +31,7 @@ with col_title:
     st.markdown("## ⚙  GDIZ Bénin · Supervision Maintenance Prédictive")
     st.markdown(
         f"<p style='color:{C['faint']};font-size:.77rem;margin-top:-.35rem;margin-bottom:.3rem;'>"
-        "30 machines · Textile · Données 30 min</p>",
+        "50 machines · Textile · Données 30 min</p>",
         unsafe_allow_html=True,
     )
 with col_toggle:

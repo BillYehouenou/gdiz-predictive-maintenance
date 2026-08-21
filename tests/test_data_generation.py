@@ -18,10 +18,21 @@ import pytest
 
 from scripts.generate_synthetic_data import DataAggregator, SyntheticDataConfig
 
+SENSOR_COLS = [
+    "tool_wear",
+    "process_temperature",
+    "rotational_speed",
+    "torque",
+    "vibration",
+    "ambient_temperature",
+    "humidity",
+    "dust_concentration",
+]
+
 
 @pytest.fixture
 def dummy_sensor_df() -> pd.DataFrame:
-    n = 500
+    n = 3000
     rng = np.random.default_rng(0)
     return pd.DataFrame(
         {
@@ -41,6 +52,7 @@ def dummy_sensor_df() -> pd.DataFrame:
 def test_inject_missing_data_pandas3_copy_on_write_compat(dummy_sensor_df):
     """Reproduit le mode par défaut de pandas 3.x : to_numpy() doit rester inscriptible."""
     original_cow = pd.options.mode.copy_on_write
+    np.random.seed(42)
     try:
         pd.options.mode.copy_on_write = True
         aggregator = DataAggregator(SyntheticDataConfig())
@@ -48,25 +60,33 @@ def test_inject_missing_data_pandas3_copy_on_write_compat(dummy_sensor_df):
     finally:
         pd.options.mode.copy_on_write = original_cow
 
-    sensor_cols = [
-        "tool_wear",
-        "process_temperature",
-        "rotational_speed",
-        "torque",
-        "vibration",
-        "ambient_temperature",
-        "humidity",
-        "dust_concentration",
-    ]
-    total_cells = len(result) * len(sensor_cols)
-    expected_missing = int(total_cells * SyntheticDataConfig().missing_data_ratio)
-    actual_missing = result[sensor_cols].isna().sum().sum()
-
-    # Tirage (row, col) avec remise : quelques collisions possibles, donc <= au nombre
-    # demandé plutôt qu'une égalité stricte. On garde une tolérance large mais non nulle.
-    assert 0 < actual_missing <= expected_missing
+    # Sur 3000 pas, au moins une rafale de perte de paquets est quasi certaine —
+    # preuve que l'écriture sur le tableau extrait par to_numpy() n'a pas échoué.
+    assert result[SENSOR_COLS].isna().sum().sum() > 0
     # La source n'a pas été mutée en place (pas d'effet de bord via une vue partagée).
-    assert dummy_sensor_df[sensor_cols].isna().sum().sum() == 0
+    assert dummy_sensor_df[SENSOR_COLS].isna().sum().sum() == 0
+
+
+def test_inject_missing_data_produces_correlated_bursts(dummy_sensor_df):
+    """
+    Point 10 : les valeurs manquantes doivent former des rafales corrélées dans le
+    temps (perte de paquets IoT réaliste), pas des cellules isolées au hasard (MCAR).
+    """
+    np.random.seed(7)
+    aggregator = DataAggregator(SyntheticDataConfig())
+    result = aggregator.inject_missing_data(dummy_sensor_df)
+
+    is_nan = result["vibration"].isna().to_numpy().astype(int)
+    assert is_nan.sum() > 0, "aucune rafale générée sur cet essai — augmenter la taille de l'échantillon"
+
+    diff = np.diff(np.concatenate([[0], is_nan, [0]]))
+    starts = np.flatnonzero(diff == 1)
+    ends = np.flatnonzero(diff == -1)
+    run_lengths = ends - starts
+
+    # La majorité des rafales doivent durer plus d'un pas — sinon on a juste reproduit
+    # le MCAR d'origine sous un autre nom.
+    assert (run_lengths > 1).mean() > 0.5
 
 
 def test_machine_seed_deterministic_across_process():

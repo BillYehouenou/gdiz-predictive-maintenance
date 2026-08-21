@@ -149,11 +149,11 @@ def render(C: dict) -> None:
 
     # ── Rangée 1 : Contexte (Machines + Données) ──────────────────────────────
     row1 = [
-        ("https://img.icons8.com/?size=100&id=Ouhuf6HfyHeJ&format=png&color=FFFFFF", "Machines", "30", "Textiles", C["green"]),
+        ("https://img.icons8.com/?size=100&id=Ouhuf6HfyHeJ&format=png&color=FFFFFF", "Machines", "50", "Textiles", C["green"]),
         (
             "https://img.icons8.com/?size=100&id=KZHjwwenS7oK&format=png&color=000000",
             "Données",
-            "1.05M",
+            "1.75M",
             "enrégistrements sur 2 ans",
             C["teal"],
         ),
@@ -259,7 +259,7 @@ def render(C: dict) -> None:
         (
             "Interface",
             C["blue"],
-            "Le dashboard final donne une vue d'ensemble du parc des 30 machines avec leurs alertes en temps réel, "
+            "Le dashboard final donne une vue d'ensemble du parc des 50 machines avec leurs alertes en temps réel, "
             "un suivi historique détaillé par machine et des indicateurs de coût liés aux pannes (production "
             "perdue, pièces, matière gâchée). Le risque affiché pour une machine correspond toujours à la "
             "probabilité de panne prévisible <strong>dans les 5 prochains jours</strong> ; le sélecteur 24h/7j/30j "
