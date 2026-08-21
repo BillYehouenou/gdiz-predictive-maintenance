@@ -1,12 +1,11 @@
 import logging
 
-import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.preprocessing import OrdinalEncoder
 
 from src.configloader import load_config
 
@@ -21,6 +20,7 @@ class Preprocessor(BaseEstimator, TransformerMixin):
         self.config = load_config()
         self.is_fitted = False
         self.pipeline = None
+        self._categorical_dtypes: dict[str, pd.CategoricalDtype] = {}
 
         # Récupération de la liste des features de la config
         self.all_features = self.config["dataset"]["features"]
@@ -36,34 +36,50 @@ class Preprocessor(BaseEstimator, TransformerMixin):
         """
         logger.info("Fitting du pipeline de preprocessing en cours...")
 
-        # 1. Transformation des variables numériques (Imputation + Standardisation)
-        numeric_transformer = Pipeline(steps=[("imputer", SimpleImputer(strategy="median")), ("scaler", StandardScaler())])
+        # 1. Variables numériques : imputation seule. Pas de StandardScaler — les
+        # arbres de décision (LightGBM) sont invariants à toute transformation
+        # monotone des features numériques, la standardisation n'apporte rien et
+        # ajoute un artefact inutile à maintenir/expliquer.
+        numeric_transformer = SimpleImputer(strategy="median")
 
-        # 2. Transformation des variables catégorielles (Imputation + Encodage)
+        # 2. Variables catégorielles : encodage ordinal + dtype 'category' plutôt que
+        # one-hot — LightGBM gère nativement les colonnes catégorielles (meilleurs
+        # splits, pas d'explosion de dimension). unknown_value=-1 gère les catégories
+        # jamais vues à l'entraînement sans lever d'erreur.
         categorical_transformer = Pipeline(
             steps=[
                 ("imputer", SimpleImputer(strategy="most_frequent")),
-                ("onehot", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
+                ("ordinal", OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)),
             ]
         )
 
-        # Assemblage des deux pipelines
         self.pipeline = ColumnTransformer(
             transformers=[
                 ("num", numeric_transformer, self.numeric_features),
                 ("cat", categorical_transformer, self.categorical_features),
             ],
             remainder="drop",  # Supprime automatiquement autres colonnes
-        )
+        ).set_output(transform="pandas")
 
         existing_features = [col for col in self.all_features if col in X.columns]
         self.pipeline.fit(X[existing_features])
+
+        # Catégories figées à l'issue du fit : LightGBM interprète les *codes* pandas
+        # 'category' pour choisir ses splits, qui doivent rester stables d'un appel à
+        # l'autre — sans ça, un lot de prédiction ne contenant qu'un sous-ensemble des
+        # catégories vues à l'entraînement se retrouverait ré-indexé différemment
+        # (bug silencieux, pas une erreur).
+        ordinal_encoder = self.pipeline.named_transformers_["cat"].named_steps["ordinal"]
+        self._categorical_dtypes = {
+            f"cat__{col}": pd.CategoricalDtype(categories=list(range(len(categories))) + [-1])
+            for col, categories in zip(self.categorical_features, ordinal_encoder.categories_)
+        }
 
         self.is_fitted = True
         logger.info("Pipeline de preprocessing configuré avec succès.")
         return self
 
-    def transform(self, X: pd.DataFrame) -> np.ndarray:
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         """
         Applique les transformations configurées sur un DataFrame.
         """
@@ -73,12 +89,17 @@ class Preprocessor(BaseEstimator, TransformerMixin):
         logger.info("Transformation des données en cours...")
         existing_features = [col for col in self.all_features if col in X.columns]
         result = self.pipeline.transform(X[existing_features])
-        feature_names = self.pipeline.get_feature_names_out()
-        result = pd.DataFrame(result, columns=feature_names, index=X.index)
+        # getattr défensif : un modèle sérialisé par une version antérieure de cette
+        # classe (avant l'ajout du typage catégoriel natif) n'a pas cet attribut sur
+        # l'instance restaurée par pickle — sans ce filet, tout modèle déjà déployé
+        # planterait à la première prédiction suivant un déploiement de ce fichier.
+        for col, dtype in getattr(self, "_categorical_dtypes", {}).items():
+            result[col] = result[col].astype(int).astype(dtype)
+        result.index = X[existing_features].index
         logger.info("Transformation des données terminée.")
         return result
 
-    def fit_transform(self, X: pd.DataFrame, y=None) -> np.ndarray:
+    def fit_transform(self, X: pd.DataFrame, y=None) -> pd.DataFrame:
         """
         Combine le fit et le transform.
         """

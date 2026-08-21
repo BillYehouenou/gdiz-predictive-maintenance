@@ -17,6 +17,9 @@ TEMPORAL_FEATURES = [
     "process_temp_max_24h",
     "process_temp_mean_24h",
     "process_temp_delta_4h",
+    "delta_temp",
+    "dust_mean_24h",
+    "dust_max_24h",
 ]
 
 
@@ -28,7 +31,8 @@ def _delta(series: pd.Series, window: int) -> pd.Series:
 def enrich_training_df(df: pd.DataFrame) -> pd.DataFrame:
     """
     Calcule les features temporelles sur le dataset d'entraînement complet.
-    Requiert les colonnes : machine_id, timestamp, tool_wear, vibration, process_temperature.
+    Requiert les colonnes : machine_id, timestamp, tool_wear, vibration, process_temperature,
+    ambient_temperature, dust_concentration.
     Chaque machine est traitée indépendamment via groupby.
     """
     logger.info("Calcul des features temporelles sur le dataset d'entraînement...")
@@ -47,6 +51,16 @@ def enrich_training_df(df: pd.DataFrame) -> pd.DataFrame:
     df["process_temp_max_24h"] = grp["process_temperature"].transform(lambda x: x.rolling(WINDOW_24H, min_periods=1).max())
     df["process_temp_mean_24h"] = grp["process_temperature"].transform(lambda x: x.rolling(WINDOW_24H, min_periods=1).mean())
     df["process_temp_delta_4h"] = grp["process_temperature"].transform(lambda x: _delta(x, WINDOW_4H))
+
+    # Écart thermique process/ambiant : le générateur définit HDF sur cette grandeur
+    # (moyennée 4h), mais elle n'était pas exposée comme feature au modèle — gain
+    # quasi gratuit sur le mode le moins bien détecté (point 19).
+    df["delta_temp"] = df["process_temperature"] - df["ambient_temperature"]
+
+    # Poussière cumulée sur 24h : signal précurseur de l'encrassement (chaîne
+    # poussière → HDF, cf. docs/data-generation.md), pas juste la lecture instantanée.
+    df["dust_mean_24h"] = grp["dust_concentration"].transform(lambda x: x.rolling(WINDOW_24H, min_periods=1).mean())
+    df["dust_max_24h"] = grp["dust_concentration"].transform(lambda x: x.rolling(WINDOW_24H, min_periods=1).max())
 
     # Label ML à horizon : "panne dans les prochaines 24h/48h" — élargit la fenêtre
     # positive exploitable par le modèle au-delà de l'instant exact de la panne brute.
@@ -104,6 +118,10 @@ def enrich_inference_series(df_ts: pd.DataFrame) -> pd.DataFrame:
     df["process_temp_max_24h"] = df["process_temperature"].rolling(WINDOW_24H, min_periods=1).max()
     df["process_temp_mean_24h"] = df["process_temperature"].rolling(WINDOW_24H, min_periods=1).mean()
     df["process_temp_delta_4h"] = _delta(df["process_temperature"], WINDOW_4H)
+
+    df["delta_temp"] = df["process_temperature"] - df["ambient_temperature"]
+    df["dust_mean_24h"] = df["dust_concentration"].rolling(WINDOW_24H, min_periods=1).mean()
+    df["dust_max_24h"] = df["dust_concentration"].rolling(WINDOW_24H, min_periods=1).max()
     return df
 
 
@@ -112,13 +130,18 @@ def enrich_inference_point(current: dict, history_df: pd.DataFrame) -> dict:
     Calcule les features temporelles pour un point unique (chemin API).
     current       : dict avec les features courantes (les 15 features brutes)
     history_df    : DataFrame des dernières 48 lignes de la machine (ASC : tool_wear,
-                     vibration, process_temperature), peut être vide.
-    Retourne un dict enrichi avec les 9 features temporelles.
+                     vibration, process_temperature, dust_concentration), peut être vide.
+    Retourne un dict enrichi avec les features temporelles.
     """
     result = dict(current)
     current_wear = float(current.get("tool_wear", 0.0))
     current_vibr = float(current.get("vibration", 0.0))
     current_temp = float(current.get("process_temperature", 0.0))
+    current_ambient = float(current.get("ambient_temperature", 0.0))
+    current_dust = float(current.get("dust_concentration", 0.0))
+
+    # Ne dépend pas de l'historique — calculé dans tous les cas.
+    result["delta_temp"] = current_temp - current_ambient
 
     if history_df.empty:
         result["tool_wear_delta_24h"] = 0.0
@@ -130,6 +153,8 @@ def enrich_inference_point(current: dict, history_df: pd.DataFrame) -> dict:
         result["process_temp_max_24h"] = current_temp
         result["process_temp_mean_24h"] = current_temp
         result["process_temp_delta_4h"] = 0.0
+        result["dust_mean_24h"] = current_dust
+        result["dust_max_24h"] = current_dust
         return result
 
     def _hist_delta(col: str, current_value: float, window: int) -> float:
@@ -155,5 +180,14 @@ def enrich_inference_point(current: dict, history_df: pd.DataFrame) -> dict:
     result["process_temp_max_24h"] = float(np.max(hist_temp))
     result["process_temp_mean_24h"] = float(np.mean(hist_temp))
     result["process_temp_delta_4h"] = _hist_delta("process_temperature", current_temp, WINDOW_4H)
+
+    # Poussière : max / moyenne sur historique + valeur courante
+    hist_dust = (
+        history_df["dust_concentration"].dropna().tolist() + [current_dust]
+        if "dust_concentration" in history_df
+        else [current_dust]
+    )
+    result["dust_mean_24h"] = float(np.mean(hist_dust))
+    result["dust_max_24h"] = float(np.max(hist_dust))
 
     return result

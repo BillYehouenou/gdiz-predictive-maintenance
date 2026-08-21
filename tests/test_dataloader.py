@@ -43,6 +43,8 @@ def test_load_raw_data_parquet_enrichit_features_temporelles(tmp_path, configure
             "tool_wear": [10.0, 12.0, 14.0],
             "vibration": [1.0, 1.1, 1.2],
             "process_temperature": [40.0, 41.0, 42.0],
+            "ambient_temperature": [26.0, 26.5, 27.0],
+            "dust_concentration": [30.0, 32.0, 35.0],
             "target": [0, 0, 0],
             "failure_mode": [None, None, None],
         }
@@ -53,4 +55,6 @@ def test_load_raw_data_parquet_enrichit_features_temporelles(tmp_path, configure
 
     assert "tool_wear_delta_24h" in df.columns
     assert "vibration_max_24h" in df.columns
+    assert "delta_temp" in df.columns
+    assert "dust_mean_24h" in df.columns
     assert len(df) == 3
