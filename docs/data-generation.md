@@ -8,6 +8,7 @@ Statut des sections : les choix décrits ici sont des calibrations pour un gén�
 
 - [Calendrier saisonnier du Sud-Bénin](#calendrier-saisonnier-du-sud-bénin)
 - [Réseau électrique](#réseau-électrique)
+- [Physique des pannes](#physique-des-pannes)
 
 ---
 
@@ -87,3 +88,69 @@ Décision actée en amont (cf. brief projet) : le réseau reste volontairement *
 Le "légèrement durci" demandé se traduit par une probabilité de persistance de la coupure relevée de 0,40 à 0,55 (`generate_power_loss_indicator`), ce qui porte la durée moyenne d'une coupure de ~50 min à **~67 min** (E[durée] = 1/(1-p) pas de 30 min). Vérifié sur une régénération complète : 77 coupures sur 2 ans, durée moyenne mesurée 63,9 min — cohérent avec la valeur théorique (l'écart vient de la taille d'échantillon, 77 événements).
 
 Toujours très loin des 10-15h d'une coupure SBEE non dédiée — c'est voulu, et maintenant documenté plutôt qu'implicite.
+
+---
+
+## Physique des pannes
+
+Quatre changements dans `MachineStateEvolver`, tous dans `_update_physics` / `_calculate_failure_hazards` / `_handle_downtime_phase`.
+
+### Découplage couple/vitesse
+
+**Le problème** : `rotational_speed` et `torque` étaient tous les deux calculés comme une fonction directe de `activity_level` — corrélation mesurée ≈ +0,94. Dans un atelier textile réel, la vitesse est gouvernée par le moteur et reste quasi constante une fois la machine lancée ; c'est la **charge** (couple) qui varie avec la production, pas le régime moteur.
+
+**Le choix** : `rotational_speed` ne dépend plus que de `voltage_stability` (± bruit réduit, 25→12) — quasi constante autour de 1500 tr/min. `torque` garde sa dépendance à `activity_level` (c'est la charge qui doit varier avec la production, pas la vitesse).
+
+**Vérifié** : corrélation torque/vitesse mesurée après le changement : **-0,28** (contre +0,94 avant). Vitesse : moyenne 1479 tr/min, écart-type 13 (quasi constante, comme voulu).
+
+### Encrassement (poussière → dissipation thermique → HDF)
+
+**Le problème** : la poussière (`dust_concentration`) n'avait aucun effet sur la température machine — le mode HDF (surchauffe), pourtant présenté comme le mode "Harmattan" emblématique, n'avait donc aucune chaîne causale le reliant à la saison sèche/poussiéreuse.
+
+**Le choix** : nouvel état cumulatif `fouling` (0-100 %, comme `tool_wear`), qui s'accumule à chaque pas actif proportionnellement à `dust_concentration` et à la sensibilité poussière du type de machine (`dust_sensitivity`, déjà utilisée pour l'usure — pas de nouveau paramètre par type inventé). L'encrassement réduit la dissipation thermique : contribue à `target_temp` via `fouling_heat_factor`. Remise à un résidu (10 %, pas 0 — nettoyage partiel) à chaque visite de maintenance, quelle que soit la cause de la panne réparée (une visite technicien inclut un entretien de base).
+
+**Vérifié** : encrassement moyen plus élevé en grande saison sèche/Harmattan (38,6 %) qu'en saison des pluies (~26 %) — cohérent avec le calendrier poussière déjà en place.
+
+### Rampe terminale de dégradation
+
+**Le problème identifié par un test à 100 machines (mentionné dans le brief projet)** : corrélation entre temps-restant-estimé et temps-restant-réel avant panne TWF ≈ 0,03 — quasiment nulle. Cause racine identifiée en lisant le code : une fois `tool_wear` saturé à 100 % (ce qui arrive **avant** que le hasard TWF ne se déclenche, pour la majorité des machines dont le seuil personnel est élevé — distribution beta biaisée vers 80-99 %), le terme `excess` de la formule de hasard plafonne lui aussi. À partir de ce point, le hasard de panne est constant : la panne devient un pur tirage mémoryless, sans aucun signal observable pour la distinguer d'un pas au suivant.
+
+**Le choix** : nouvel état `ramp_exposure_hours`, qui compte le temps cumulé passé dans la bande de rampe (autour du seuil personnel) — **continue de croître même quand `tool_wear` a plafonné**, plafonné lui-même à 240h (10 jours) pour éviter toute dérive non bornée. Ce compteur alimente trois choses : le hasard TWF lui-même (facteur multiplicatif qui double tous les ~2 jours d'exposition), la vibration (effet "broutement d'outil" croissant), et la température (chaleur additionnelle modeste). Le compteur n'est **pas** exposé comme colonne du dataset — seuls ses effets observables (vibration, température) le sont, pour éviter de fuiter une information que des capteurs réels n'auraient pas directement.
+
+**Vérifié** (sur les pannes TWF du dataset régénéré, fenêtre des 240h précédant chaque panne, 38 400 points) : corrélation vibration ↔ temps-restant = **-0,21** (contre 0,03 rapporté sur l'ancien générateur). Toujours loin d'une prédiction fiable — c'est voulu, une machine industrielle n'est pas un compte à rebours déterministe — mais un signal directionnel réel et mesurable, condition nécessaire pour qu'un futur modèle de survie ait quelque chose à apprendre.
+
+### Second processus de dégradation : usure des roulements
+
+**Le problème** : tout le signal de dégradation passait par un seul canal (`tool_wear`) — un modèle qui apprend à repérer l'usure outil apprend, de fait, tout ce qu'il y a à apprendre. Pas réaliste : une machine textile a plusieurs modes de dégradation mécanique indépendants.
+
+**Le choix** : nouvel état `bearing_wear` (0-100 %), piloté par le carré du ratio de vitesse (fatigue mécanique ∝ vitesse², pas la poussière ni le couple) — délibérément découplé des facteurs qui pilotent `tool_wear`. Contribue au hasard OSF (mélangé à 25 % avec l'usure outil, 75 % — `osf_bearing_weight`) et à la vibration. Remis à zéro uniquement quand OSF est la cause réparée (même logique que `tool_wear`/TWF).
+
+**Vérifié** : corrélation `tool_wear` ↔ `bearing_wear` = **0,008** — canaux effectivement indépendants, comme voulu.
+
+### Recalibrage — un résultat qui a d'abord été faux
+
+Premier essai (coefficients de hasard inchangés, seuls les nouveaux canaux ajoutés) : **HDF est passé à 64,6 % des pannes** (cible 20 %), tous les autres modes écrasés. Cause : la chaleur ajoutée par l'encrassement et la rampe terminale s'additionne à la chaleur existante sans qu'aucun coefficient n'ait été réduit en face — le hasard HDF (quadratique en surchauffe soutenue) a mécaniquement explosé.
+
+Recalibré par itération empirique (régénération complète + inspection de la répartition des causes à chaque essai, pas par calcul analytique) :
+
+| Coefficient | Avant | Après | Raison |
+|---|---|---|---|
+| `hdf_hazard_coeff` | 0.0004 | 0.00012 | compenser la nouvelle source de chaleur (encrassement) |
+| `fouling_heat_factor` | 4.5 (essai initial) | 1.8 | idem, contribution modérée plutôt que dominante |
+| `twf_hazard_coeff` | 0.05 | 0.075 | compenser la dilution de part par HDF/OSF |
+| `osf_hazard_coeff` | 0.00038 | 0.0007 | compenser la dilution par le mélange avec bearing_wear |
+| `pwf_hazard_coeff` | 0.000024 | 0.000015 | sa part croît mécaniquement quand les autres causes baissent (risques concurrents) |
+
+Résultat final (dataset régénéré, 251 pannes / 30 machines / 2 ans, soit 8,37/machine — légèrement au-dessus de la fourchette calibrée 4-8, écart jugé acceptable) :
+
+| Mode | Cible | Résultat |
+|---|---|---|
+| TWF | 40 % | 31,9 % |
+| HDF | 20 % | 18,3 % |
+| OSF | 15 % | 16,7 % |
+| PWF | 20 % | 27,5 % |
+| RNF | 5 % | 5,6 % |
+
+Pas un alignement parfait sur les cibles (documentées dès le départ comme "cibles de calibration, pas une garantie stricte") — PWF reste au-dessus de sa cible, en partie parce qu'une fraction de ses occurrences vient d'un mécanisme séparé (choc électrique au redémarrage après coupure, `blackout_failure_sensitivity`) non affecté par ce recalibrage. Mais aucun mode n'écrase plus les autres, et la répartition reste dans le même ordre de grandeur que celle mesurée avant l'ajout de ces quatre mécanismes (TWF 34,8 / HDF 22,0 / PWF 21,6 / OSF 15,0 / RNF 6,6).
+
+**Effet secondaire positif, non recherché** : le modèle entraîné sur ce dataset régénéré passe de F2=0,42 à F2=0,48 — cohérent avec l'ajout de signaux précurseurs réellement informatifs (chatter, encrassement) plutôt qu'un artefact de recalibrage.
