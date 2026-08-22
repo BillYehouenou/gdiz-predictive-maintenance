@@ -12,6 +12,8 @@ Document vivant, même esprit que `docs/data-generation.md` et `docs/experiments
 - [Horizons différenciés par mode de panne — hypothèse testée et invalidée](#horizons-différenciés-par-mode-de-panne--hypothèse-testée-et-invalidée)
 - [PWF/RNF non prédictibles — confirmé empiriquement](#pwfrnf-non-prédictibles--confirmé-empiriquement)
 - [Pourquoi HDF/OSF sont moins bien détectés que TWF, et ce qui a été tenté](#pourquoi-hdfosf-sont-moins-bien-détectés-que-twf-et-ce-qui-a-été-tenté)
+- [Ré-audit de la variable cible et de l'architecture — trois hypothèses testées, trois échecs](#ré-audit-de-la-variable-cible-et-de-larchitecture--trois-hypothèses-testées-trois-échecs)
+- [Étage 2 : diagnostic de cause (point 14)](#étage-2--diagnostic-de-cause-point-14)
 
 ---
 
@@ -140,4 +142,63 @@ Conclusion : le signal OSF existe et est fort (+52 %), mais il est **court** (24
 **Ce qui reste un vrai point faible** : OSF, à 53 %, capture un peu plus d'une panne sur deux — mieux qu'avant, mais loin d'être résolu. Le signal physique existe (torque +52 % dans les 24h précédentes) mais reste intrinsèquement court et partiellement confondu avec le bruit d'activité normale. Deux pistes non tentées, discutées mais pas implémentées :
 
 1. **Modifier le générateur** pour rendre le précurseur OSF plus long/moins bruité — par exemple une composante de charge "structurelle" qui monte progressivement avant l'OSF (au lieu du couple purement instantané piloté par l'activité), à la manière de la rampe terminale ajoutée pour TWF au point 8. Non fait ici : ça change la physique du générateur, donc oblige à revalider tout le travail de calibration des parts de pannes (`docs/data-generation.md`), potentiellement tout le pipeline de calibration isotonique et les budgets de FA en aval — un chantier bien plus large que l'ajout de deux features, à traiter comme son propre sujet plutôt que noyé dans celui-ci.
-2. **Étage de classification dédié par cause** (point 14 de la roadmap, pas encore traité) — un classifieur séparé entraîné spécifiquement sur la population pré-panne, où OSF ne serait plus noyé dans un label binaire partagé avec TWF/HDF. Cohérent avec la logique déjà utilisée pour PWF/RNF (les exclure du label plutôt que diluer le signal) mais pour OSF il faudrait le garder au premier étage (toujours prédictible) et l'isoler seulement au second étage (diagnostic de cause).
+2. **Étage de classification dédié par cause** (point 14 de la roadmap) — testé depuis, cf. section suivante : n'améliore pas la détection, contrairement à l'intuition initiale.
+
+---
+
+## Ré-audit de la variable cible et de l'architecture — trois hypothèses testées, trois échecs
+
+Suite à un doute légitime sur la cohérence de la cible active (`target_h120_predictable`) après plusieurs séances de modifications successives (features, calibration, métrique), trois architectures alternatives ont été testées empiriquement plutôt que supposées meilleures ou pires.
+
+**Ce qu'on détecte, pour mémoire** : pas "panne à cet instant", mais "cette ligne est-elle dans les 120h qui précèdent une panne TWF/HDF/OSF ?" — un état de risque soutenu sur une fenêtre de 5 jours, pas un instant de bascule. PWF/RNF exclus (point 18, aucun signal précurseur mesurable).
+
+### Hypothèse 1 — classifieurs séparés par cause (au lieu d'un modèle mutualisé)
+
+Intuition testée : un classifieur OSF dédié, non concurrencé par le signal TWF dominant (`tool_wear` pesait 524 en importance contre 9 pour `torque`), devrait mieux apprendre le signal OSF spécifique.
+
+**Résultat : l'inverse.** Un classifieur OSF seul, quel que soit l'horizon (24h à 120h), plafonne à 43,3 % de recall test — pire que le modèle mutualisé (53,3 %). Cause identifiée : seulement **23 pannes OSF en train** (contre 115 pannes toutes causes confondues pour le modèle poolé) — pas assez d'exemples pour qu'un classifieur isolé apprenne quoi que ce soit de robuste. Le modèle mutualisé n'est pas un compromis bancal, c'est le choix qui a le plus de données pour apprendre le signal général de dégradation (usure, vibration) qui, même générique, reste plus utile à OSF qu'un signal OSF-only entraîné sur un échantillon trop petit. Confirme *a posteriori* la justification donnée par la roadmap elle-même pour l'étage 1 mutualisé ("robuste, tous positifs poolés") — c'était déjà la bonne réponse.
+
+### Hypothèse 2 — horizons différenciés par mode, re-testés avec les nouvelles features
+
+Invalidée une première fois avant l'ajout de `torque_max_24h`/`delta_temp_max_24h` (cf. section précédente). Re-testée après, au cas où les nouvelles features changeraient la conclusion :
+
+| Configuration | Recall validation |
+|---|---|
+| **Horizon unique 120h (actuel)** | **0,739** |
+| HDF/OSF=72h, TWF=120h | 0,696 |
+| HDF/OSF=72h, TWF=168h | 0,630 |
+| HDF/OSF=48h, TWF=120h | 0,630 |
+
+Toujours invalidée, avec un effet secondaire notable : réduire la fenêtre OSF à 72h fait *chuter* le recall OSF lui-même (57 %→43 %) plutôt que l'améliorer — réduire la fenêtre réduit le nombre d'exemples positifs OSF disponibles pour le modèle mutualisé, ce qui coûte plus cher que le bruit qu'on retire n'en fait gagner.
+
+### Hypothèse 3 — sur-pondérer les exemples OSF à l'entraînement
+
+`sample_weight` sur les lignes en fenêtre pré-OSF, poids ×2 à ×5. Résultat : neutre au mieux (poids×1 = référence à 0,739/57 % de recall OSF), dégradé au pire (poids×2 → 0,717/50 %). Le modèle avec poids uniformes reste optimal.
+
+### Conclusion du ré-audit
+
+**La cible et l'architecture actuelles (`target_h120_predictable`, horizon unique, modèle mutualisé) ne sont pas une incohérence — c'est, à ce stade, l'option la mieux vérifiée du projet.** Trois alternatives plausibles ont été testées avec la même rigueur que les décisions précédentes (mesure avant conclusion, jamais l'inverse), les trois ont perdu. Le vrai facteur limitant pour OSF n'est pas un choix de cible ou d'architecture mal aligné : c'est la rareté des exemples (23-30 pannes OSF selon le split) combinée à un signal physique intrinsèquement court (24h, cf. section précédente). Ni le label, ni le découpage du modèle ne peuvent compenser un manque de données — seuls plus de données (plus de machines, plus de temps de simulation) ou une refonte du signal physique du générateur le pourraient, et les deux sont des chantiers distincts, pas des corrections de cohérence.
+
+---
+
+## Étage 2 : diagnostic de cause (point 14)
+
+Contrairement à l'intuition qui a motivé le ré-audit ci-dessus, le point 14 de la roadmap ne promettait pas d'améliorer la détection : l'étage 1 y est explicitement décrit comme "mutualisé, robuste" (confirmé ci-dessus), l'étage 2 est un **diagnostic**, entraîné uniquement sur les lignes déjà en fenêtre pré-panne, pour répondre à "laquelle des 3 causes est la plus probable" une fois l'alerte de l'étage 1 levée.
+
+**Implémenté** : `src/features.py::compute_failure_cause_label` (cible : la cause de la prochaine panne prédictible dans les 120h, None ailleurs) + `scripts/run_cause_classifier.py` (LightGBM multi-classe, `class_weight="balanced"`, entraîné sur train restreint aux lignes pré-panne).
+
+**Mesuré** :
+
+| | Validation | Test |
+|---|---|---|
+| Accuracy globale | 46,8 % | 64,4 % |
+| TWF (recall) | — | 92 % |
+| HDF (recall) | — | 44 % |
+| OSF (recall) | 5 % | 32 % |
+
+L'accuracy test (64,4 %) est dans l'ordre de grandeur cité par la roadmap ("~70 % à 30 machines"), mais deux réserves empêchent de le considérer comme fiable en l'état :
+
+1. **Écart validation/test important** (46,8 % vs 64,4 %) — signe que la mesure elle-même est instable, cohérent avec le nombre réduit de pannes en validation (46 événements, comme pour toutes les métriques de ce projet).
+2. **OSF quasi non diagnostiqué en validation** (5 % de recall — le classifieur ne le reconnaît presque jamais) — la même rareté d'exemples qui limite la détection (hypothèse 1 ci-dessus) limite aussi le diagnostic.
+
+**Décision** : gardé comme script disponible et testé (`scripts/run_cause_classifier.py`), **pas intégré au dashboard/API**. L'intégrer maintenant afficherait une "cause probable" fiable une fois sur deux au mieux, et quasiment jamais pour OSF — ce serait pire que ne rien afficher. Point 33 (dashboard, phase ultérieure) est le bon moment pour décider comment présenter ce diagnostic avec ses limites, une fois qu'il aura gagné en fiabilité (plus de données) ou qu'une présentation honnête de l'incertitude aura été conçue.

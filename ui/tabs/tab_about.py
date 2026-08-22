@@ -164,27 +164,27 @@ def render(C: dict) -> None:
 
     st.markdown("<div style='margin:.5rem 0;'></div>", unsafe_allow_html=True)
 
-    # ── Rangée 2 : Métriques (ROC-AUC + F2 + Seuil) ──────────────────────────
+    # ── Rangée 2 : Métriques (recall événementiel + fausses alertes + seuil) ──
     row2 = [
         (
             "https://img.icons8.com/?size=100&id=Yt084riMRP1m&format=png&color=FFFFFF",
-            "ROC-AUC",
-            "0.843",
+            "Recall événementiel",
+            "80.9%",
             "Split temporel 2024 → 2025",
             C["blue"],
         ),
         (
             "https://img.icons8.com/?size=100&id=0ZNXJnXqu3Lh&format=png&color=FFFFFF",
-            "F2-Score",
-            "0.382",
-            "Recall 56 % · Précision 17 %",
+            "Fausses alertes",
+            "0.21",
+            "Épisodes / machine / jour",
             C["orange"],
         ),
         (
             "https://img.icons8.com/?size=100&id=hvx78MXvVF91&format=png&color=000000",
-            "Seuil F2",
-            "0.06",
-            "Logit-normalisé à 50 %",
+            "Seuil de décision",
+            "0.12",
+            "Probabilités calibrées (isotonique)",
             C["red"],
         ),
     ]
@@ -223,14 +223,13 @@ def render(C: dict) -> None:
         (
             "Préparation des données",
             C["orange"],
-            "Avant d'entraîner l'IA, les données brutes doivent être nettoyées et standardisées automatiquement : "
-            "les valeurs manquantes (capteurs défaillants, pertes de signal IoT) sont imputées, toutes les mesures "
-            "numériques sont mises à la même échelle (StandardScaler) pour qu'aucune variable ne soit favorisée "
-            "simplement parce qu'elle a de grandes valeurs, et les variables catégorielles comme le type de machine "
-            "sont converties en colonnes numériques (OneHotEncoder). Cette chaîne de préparation est figée dans un "
-            "artefact unique, pour garantir que le dashboard et l'API traitent toujours les données "
-            "<strong>exactement comme lors de l'entraînement</strong> — un point critique pour éviter tout écart "
-            "silencieux entre entraînement et production.",
+            "Avant d'entraîner l'IA, les données brutes doivent être nettoyées automatiquement : les valeurs "
+            "manquantes (capteurs défaillants, pertes de signal IoT) sont imputées, et les variables catégorielles "
+            "comme le type de machine sont encodées nativement pour LightGBM — pas de mise à l'échelle "
+            "(inutile pour un modèle à base d'arbres) ni d'explosion en colonnes one-hot. Cette chaîne de "
+            "préparation est figée dans un artefact unique, pour garantir que le dashboard et l'API traitent "
+            "toujours les données <strong>exactement comme lors de l'entraînement</strong> — un point critique "
+            "pour éviter tout écart silencieux entre entraînement et production.",
         ),
         (
             "ML",

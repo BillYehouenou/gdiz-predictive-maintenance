@@ -142,6 +142,42 @@ def compute_horizon_target(df: pd.DataFrame, horizon_hours: int = 24, failure_mo
     return horizon_target.reindex(original_index).astype(int)
 
 
+def compute_failure_cause_label(
+    df: pd.DataFrame, horizon_hours: int = 120, failure_modes: tuple = PREDICTABLE_FAILURE_MODES
+) -> pd.Series:
+    """
+    Cible du diagnostic de cause (étage 2, point 14) : pour chaque ligne, la cause de
+    la PROCHAINE panne prédictible dans les `horizon_hours` à venir (None si aucune).
+    Entraîné uniquement sur les lignes où le label de l'étage 1 (target_h120_predictable)
+    vaut 1 — pas un détecteur, un diagnostic qui s'exécute après qu'une alerte a déjà
+    été levée. Cf. docs/model-decisions.md pour pourquoi ce n'est pas censé améliorer
+    le recall de l'étage 1 (testé et écarté : classifieurs séparés par cause, horizons
+    différenciés, pondération des exemples OSF — aucun ne bat le modèle mutualisé).
+    """
+    horizon_steps = horizon_hours * 2
+    df_sorted = df.sort_values(["machine_id", "timestamp"]).reset_index(drop=False)
+    result = np.full(len(df_sorted), None, dtype=object)
+
+    for _, g in df_sorted.groupby("machine_id", sort=False):
+        start = g.index[0]
+        n = len(g)
+        modes_arr = g["failure_mode"].to_numpy()
+        is_fail = (g["target"].to_numpy() == 1) & np.isin(modes_arr, failure_modes)
+        fail_positions = np.flatnonzero(is_fail)
+        if len(fail_positions) == 0:
+            continue
+
+        local_positions = np.arange(n)
+        insertion = np.searchsorted(fail_positions, local_positions, side="left")
+        has_next = insertion < len(fail_positions)
+        next_fail_position = np.where(has_next, fail_positions[np.clip(insertion, 0, len(fail_positions) - 1)], -1)
+        distance = next_fail_position - local_positions
+        within_horizon = has_next & (distance >= 0) & (distance <= horizon_steps)
+        result[start : start + n] = np.where(within_horizon, modes_arr[np.clip(next_fail_position, 0, n - 1)], None)
+
+    return pd.Series(result, index=df_sorted["index"]).reindex(df.index)
+
+
 def enrich_inference_series(df_ts: pd.DataFrame) -> pd.DataFrame:
     """
     Calcule les features temporelles sur une série d'une seule machine (chemin Streamlit).
