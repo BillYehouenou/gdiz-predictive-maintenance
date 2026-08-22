@@ -57,7 +57,7 @@ def metriques_evenementielles(
     df: pd.DataFrame,
     probas: np.ndarray,
     threshold: float,
-    pas_horizon: int | dict[str, int],
+    pas_horizon: int,
     modes_panne: tuple = MODES_PANNE_PREDICTIBLES,
     pas_max_episode: int | None = PAS_MAX_EPISODE_DEFAUT,
 ) -> dict:
@@ -69,10 +69,6 @@ def metriques_evenementielles(
     fenêtre [panne - pas_horizon, panne] sur la même machine : s'il existe, la
     panne est "attrapée" et le préavis = temps entre le début de cet épisode et la
     panne. Les épisodes non associés à une panne sont des fausses alertes.
-
-    `pas_horizon` : soit un entier unique (même fenêtre pour tous les modes), soit
-    un dict {mode: pas} pour une fenêtre propre à chaque mode de panne (point 15 —
-    HDF/OSF perdent en précision au-delà de 72h, TWF reste optimal à 120h).
 
     `pas_max_episode` : délai de réarmement (cf. PAS_MAX_EPISODE_DEFAUT) — un
     épisode continu plus long est redécoupé, pour qu'un modèle en alerte quasi
@@ -105,14 +101,12 @@ def metriques_evenementielles(
 
         is_failure = (g["panne"] == 1) & g["mode_panne"].isin(modes_panne)
         index_pannes = np.flatnonzero(is_failure.to_numpy())
-        tableau_modes_panne = g["mode_panne"].to_numpy()
 
         index_episodes_associes = set()
         for f_raw in index_pannes:
             f = int(f_raw)
             total_pannes += 1
-            steps = pas_horizon[tableau_modes_panne[f]] if isinstance(pas_horizon, dict) else pas_horizon
-            debut_fenetre = max(0, f - steps)
+            debut_fenetre = max(0, f - pas_horizon)
             candidates = [i for i, (s, e) in enumerate(episodes) if s <= f and e >= debut_fenetre]
             if candidates:
                 total_attrapees += 1
@@ -139,7 +133,7 @@ def trouver_seuil_pour_budget_fa(
     df: pd.DataFrame,
     probas: np.ndarray,
     thresholds: np.ndarray,
-    pas_horizon: int | dict[str, int],
+    pas_horizon: int,
     budget_par_machine_jour: float,
     modes_panne: tuple = MODES_PANNE_PREDICTIBLES,
     pas_max_episode: int | None = PAS_MAX_EPISODE_DEFAUT,

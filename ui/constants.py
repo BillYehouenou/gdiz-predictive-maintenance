@@ -17,6 +17,7 @@ FEAT_COLS: list[str] = [
     "indicateur_coupure",
     "niveau_tension",
     "stabilite_tension",
+    "encrassement",
     # Features temporelles — calculées par enrichir_serie_inference(), doit rester
     # synchronisé avec config/config.yaml::jeu_donnees.features (une divergence ici
     # envoie un jeu de features incomplet au modèle, cf. docs/model-decisions.md).
@@ -34,6 +35,7 @@ FEAT_COLS: list[str] = [
     "poussiere_moyenne_24h",
     "poussiere_max_24h",
     "couple_max_24h",
+    "encrassement_max_24h",
 ]
 
 # ─── COÛTS DE MAINTENANCE — constantes métier GDIZ Bénin ─────────────────────

@@ -1,9 +1,9 @@
 import logging
 
-from fastapi import APIRouter, FastAPI, HTTPException
+from fastapi import APIRouter, BackgroundTasks, FastAPI, HTTPException
 
-from app.schemas import DonneesMachine, ReponsePrediction
-from app.utils import traiter_prediction
+from app import utils
+from app.schemas import DonneesMachine, InfoModele, ReponsePrediction, ReponseRechargement
 
 logger = logging.getLogger(__name__)
 
@@ -23,14 +23,50 @@ def sante():
 
 
 @router.post("/predict", response_model=ReponsePrediction)
-def predire(data: DonneesMachine):
+def predire(data: DonneesMachine, background_tasks: BackgroundTasks):
     """Reçoit les données machine, valide le format et renvoie la prédiction."""
     try:
-        result = traiter_prediction(data.model_dump())
-        return result
+        return utils.traiter_prediction(data.model_dump(), background_tasks=background_tasks)
     except Exception:
         logger.exception("Erreur lors du traitement de la prédiction")
         raise HTTPException(status_code=500, detail="Erreur interne lors de la prédiction.")
+
+
+@router.post("/predict/batch", response_model=list[ReponsePrediction])
+def predire_lot(donnees: list[DonneesMachine], background_tasks: BackgroundTasks):
+    """
+    Prédit sur plusieurs machines en un seul appel — usage naturel pour un parc de
+    50 machines relevées toutes les 30 min plutôt que 50 appels /predict séparés.
+    """
+    try:
+        return [utils.traiter_prediction(d.model_dump(), background_tasks=background_tasks) for d in donnees]
+    except Exception:
+        logger.exception("Erreur lors du traitement d'un lot de prédictions")
+        raise HTTPException(status_code=500, detail="Erreur interne lors de la prédiction par lot.")
+
+
+@router.get("/info", response_model=InfoModele)
+def info_modele():
+    """Version et seuil du modèle @champion actuellement chargé en mémoire."""
+    return {
+        "model_name": utils.predicteur.nom_modele,
+        "model_version": utils.predicteur.version,
+        "threshold": utils.predicteur.threshold,
+    }
+
+
+@router.post("/reload", response_model=ReponseRechargement)
+def recharger():
+    """
+    Recharge le champion `@champion` courant sans redémarrer le service (point 27) —
+    à appeler après un `make train` qui promeut une nouvelle version.
+    """
+    try:
+        info = utils.recharger_modele()
+        return {**info, "status": "success"}
+    except Exception:
+        logger.exception("Erreur lors du rechargement du modèle")
+        raise HTTPException(status_code=500, detail="Erreur interne lors du rechargement du modèle.")
 
 
 app.include_router(router)

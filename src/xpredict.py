@@ -26,6 +26,7 @@ class Predicteur:
         self.nom_modele = nom_modele or config["mlflow"]["nom_modele"]
         self.chemin_modele_local = PROJECT_ROOT / "models" / "model_pipeline.pkl"
         self.chemin_seuil = PROJECT_ROOT / "models" / "seuil_optimal.json"
+        self.version: str = "local"
         self.pipeline = self._charger_modele()
         self.threshold = self._charger_seuil()
 
@@ -34,7 +35,12 @@ class Predicteur:
             try:
                 model_uri = f"models:/{self.nom_modele}@champion"
                 logger.info(f"Chargement depuis MLflow : {model_uri}")
-                return mlflow.sklearn.load_model(model_uri)
+                modele = mlflow.sklearn.load_model(model_uri)
+                try:
+                    self.version = str(mlflow.MlflowClient().get_model_version_by_alias(self.nom_modele, "champion").version)
+                except Exception:
+                    self.version = "champion"
+                return modele
             except Exception as e:
                 logger.warning(f"MLflow indisponible ({e}). Repli sur fichier local.")
 

@@ -20,6 +20,7 @@ payload_normal = {
     "indicateur_coupure": 0,
     "saison_benin": 1,
     "type_machine": "H",
+    "encrassement": 35.0,
 }
 
 
@@ -49,3 +50,35 @@ def test_predire_contrainte_invalide():
     payload_invalide = {**payload_normal, "niveau_activite": 1.5}
     r = client.post("/api/v1/predict", json=payload_invalide)
     assert r.status_code == 422
+
+
+def test_predire_lot():
+    r = client.post("/api/v1/predict/batch", json=[payload_normal, payload_normal])
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) == 2
+    for item in data:
+        assert item["prediction"] in [0, 1]
+        assert 0.0 <= item["probabilite_panne"] <= 1.0
+
+
+def test_predire_lot_vide():
+    r = client.post("/api/v1/predict/batch", json=[])
+    assert r.status_code == 200
+    assert r.json() == []
+
+
+def test_info_modele():
+    r = client.get("/api/v1/info")
+    assert r.status_code == 200
+    data = r.json()
+    assert isinstance(data["model_version"], str)
+    assert 0.0 <= data["threshold"] <= 1.0
+
+
+def test_recharger_modele():
+    r = client.post("/api/v1/reload")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "success"
+    assert 0.0 <= data["threshold"] <= 1.0

@@ -168,3 +168,25 @@ Chiffres du champion actuel (LightGBM calibré, seuil 0,12), mesurés sur le tes
 TWF est détecté quasi parfaitement — cohérent avec la rampe terminale de dégradation (point 8) qui donne un signal vibratoire explicite et croissant. HDF est correct sans être excellent. **OSF reste le point faible : moins d'une panne sur deux est attrapée.** Le recall global de 79 % est tiré vers le haut par TWF (57 pannes sur 115, presque la moitié du total) ; sans lui, la moyenne pondérée HDF+OSF tomberait autour de 59 %.
 
 **Verdict honnête** : le système est réellement utile — il bat les baselines, le taux de fausses alertes reste défendable, et il attrape 4 pannes sur 5. Mais deux réserves concrètes à ne pas passer sous silence si ces chiffres sont présentés à l'équipe terrain : (1) le préavis typique est de l'ordre de la demi-journée, pas de plusieurs jours — insuffisant si une intervention OSF nécessite de commander une pièce à l'avance ; (2) OSF, un mode de panne sur cinq environ, n'est correctement anticipé qu'une fois sur deux. Piste pour une itération future (hors scope ici, à instruire séparément) : un signal précurseur OSF plus riche que couple+usure (l'hazard générateur combine déjà usure outil et roulements depuis le point 11 — le modèle n'a peut-être pas assez de features spécifiques à la surcharge mécanique pour en tirer parti).
+
+---
+
+### Mise à jour — ajout de `encrassement`/`encrassement_max_24h` (cf. `docs/model-decisions.md`)
+
+Chiffres ci-dessus dépassés par l'ajout de `encrassement`/`encrassement_max_24h` comme features (variable déjà présente dans les données, jamais exposée au modèle avant ce commit — cf. `docs/model-decisions.md`). **Promotion automatique par la gate** (`_promouvoir_si_meilleur`) : recall_evenementiel 0,8435 contre 0,8087 pour l'ancien champion — version 21 promue `@champion` sans intervention manuelle.
+
+Champion actuel (LightGBM calibré, seuil 0,115), mesuré sur le test 2025 :
+
+| Métrique | Ancien champion | Nouveau champion | Δ |
+|---|---|---|---|
+| Recall événementiel | 80,9 % (93/115) | **84,3 % (97/115)** | +3,4 pts |
+| FA/machine/jour | 0,211 | 0,215 | +0,004 |
+| Préavis médian | 14h | 12,5h | -1,5h |
+
+| Mode | Ancien champion | Nouveau champion | Δ |
+|---|---|---|---|
+| TWF | 100 % (57/57) | 100 % (57/57) | — |
+| HDF | 71,4 % (20/28) | **78,6 % (22/28)** | +7,2 pts |
+| OSF | 53,3 % (16/30) | **60,0 % (18/30)** | +6,7 pts |
+
+Gain sur les deux modes les plus faibles, sans régression sur TWF ni dépassement significatif du budget de fausses alertes. OSF (60 %) reste le point le plus faible mais franchit pour la première fois la barre d'une panne sur deux détectées avec une marge confortable. Préavis médian légèrement réduit (12,5h contre 14h) — pas une dégradation en soi, plutôt le signe que le modèle détecte désormais aussi des cas HDF/OSF à signal plus tardif qu'il ratait complètement avant.

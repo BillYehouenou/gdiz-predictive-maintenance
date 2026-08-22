@@ -35,6 +35,7 @@ class DonneesMachine(BaseModel):
         examples=[1],
     )
     type_machine: str = Field(..., description="Qualité de machine (L, M, H)", examples=["M"])
+    encrassement: float = Field(..., ge=0.0, le=100.0, description="Encrassement accumulé du process (%)", examples=[35.0])
 
 
 class ReponsePrediction(BaseModel):
@@ -42,4 +43,20 @@ class ReponsePrediction(BaseModel):
 
     prediction: int = Field(..., description="0 pour Sain, 1 pour Panne")
     probabilite_panne: float = Field(..., description="Probabilité de panne entre 0 et 1")
+    status: str = Field(default="success")
+
+
+class InfoModele(BaseModel):
+    """Schéma de sortie de /api/v1/info — version et seuil du modèle actuellement chargé."""
+
+    model_name: str = Field(..., description="Nom du modèle enregistré dans MLflow")
+    model_version: str = Field(..., description="Version @champion actuellement chargée en mémoire")
+    threshold: float = Field(..., description="Seuil de décision courant (calibré, cf. docs/model-decisions.md)")
+
+
+class ReponseRechargement(BaseModel):
+    """Schéma de sortie de /api/v1/reload."""
+
+    model_version: str = Field(..., description="Version @champion chargée après rechargement")
+    threshold: float = Field(..., description="Seuil de décision après rechargement")
     status: str = Field(default="success")

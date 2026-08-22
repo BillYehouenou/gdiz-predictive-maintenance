@@ -6,14 +6,30 @@ import streamlit as st
 
 from ui.constants import _PARTS, _PROD_COEFF, _QUAL_FIX, _TECH_RATE, DB_PATH, TABLE
 
+_SQL_EVENEMENTS_COUPURE = """
+    WITH etat_reseau AS (
+        -- indicateur_coupure est une variable exogène globale (SBEE), identique pour
+        -- les 50 machines à un instant donné (cf. GenerateurContexteExogene) — DISTINCT
+        -- sur (timestamp, indicateur) déduplique avant de compter, sinon un même
+        -- délestage réseau est compté une fois par machine au lieu d'une fois.
+        SELECT DISTINCT timestamp, indicateur_coupure
+        FROM {table}
+        WHERE {filtre}
+    ),
+    transitions AS (
+        SELECT indicateur_coupure - LAG(indicateur_coupure, 1, 0) OVER (ORDER BY timestamp) AS debut
+        FROM etat_reseau
+    )
+    SELECT COUNT(*) FROM transitions WHERE debut = 1
+"""
+
 
 @st.cache_data(ttl=300)
 def q_kpis_periode(date_debut: str, date_fin: str) -> dict:
     with duckdb.connect(str(DB_PATH), read_only=True) as conn:
         g = conn.execute(
             f"""SELECT (1 - AVG(panne)) * 100 AS avail,
-                       SUM(panne)               AS failures,
-                       SUM(indicateur_coupure) AS blackouts
+                       SUM(panne)               AS failures
                 FROM {TABLE}
                 WHERE timestamp BETWEEN ? AND ?""",
             [date_debut, date_fin],
@@ -37,16 +53,20 @@ def q_kpis_periode(date_debut: str, date_fin: str) -> dict:
                   AND timestamp BETWEEN ? AND ?""",
             [date_debut, date_fin],
         ).fetchone()[0]
+        total_blackouts = conn.execute(
+            _SQL_EVENEMENTS_COUPURE.format(table=TABLE, filtre="timestamp BETWEEN ? AND ?"),
+            [date_debut, date_fin],
+        ).fetchone()[0]
         blackouts_30d = conn.execute(
-            f"""SELECT SUM(indicateur_coupure)
-                FROM {TABLE}
-                WHERE timestamp >= (SELECT MAX(timestamp) - INTERVAL 30 DAY FROM {TABLE})"""
+            _SQL_EVENEMENTS_COUPURE.format(
+                table=TABLE, filtre=f"timestamp >= (SELECT MAX(timestamp) - INTERVAL 30 DAY FROM {TABLE})"
+            )
         ).fetchone()[0]
     return dict(
         availability=float(g[0]),
         total_pannes=int(g[1]),
         mtbf_h=float(mtbf_raw or 0.0),
-        total_blackouts=int(g[2]),
+        total_blackouts=int(total_blackouts),
         pm_windows=int(pm_windows),
         blackouts_30d=int(blackouts_30d),
     )
@@ -167,7 +187,8 @@ def q_serie_complete_machine(id_machine: str, steps: int) -> "pd.DataFrame":
                        vibration, stabilite_tension, panne,
                        saison_benin, type_machine, vitesse_rotation, couple,
                        niveau_activite, humidite, concentration_poussiere,
-                       indicateur_pluie, indicateur_coupure, niveau_tension
+                       indicateur_pluie, indicateur_coupure, niveau_tension,
+                       encrassement
                 FROM {TABLE}
                 WHERE id_machine = ?
                 ORDER BY timestamp DESC LIMIT ?""",
@@ -191,7 +212,8 @@ def q_dernier_releve_machine(id_machine: str) -> dict:
                        vibration, niveau_activite, stabilite_tension,
                        indicateur_coupure, type_machine,
                        concentration_poussiere, humidite, niveau_tension,
-                       vitesse_rotation, couple, indicateur_pluie, saison_benin
+                       vitesse_rotation, couple, indicateur_pluie, saison_benin,
+                       encrassement
                 FROM {TABLE}
                 WHERE id_machine = ?
                   AND timestamp = (SELECT MAX(timestamp) FROM {TABLE} WHERE id_machine = ?)""",
@@ -214,6 +236,7 @@ def q_dernier_releve_machine(id_machine: str) -> dict:
         "couple",
         "indicateur_pluie",
         "saison_benin",
+        "encrassement",
     ]
     snap = dict(zip(keys, row))
     snap["nb_pannes"] = int(n_fail)
@@ -326,3 +349,54 @@ def obtenir_predicteur():
     from src.xpredict import Predicteur
 
     return Predicteur(utiliser_mlflow=True)
+
+
+@st.cache_resource
+def obtenir_explicateur():
+    """Explicateur SHAP (point 33) — construit une seule fois sur le pipeline du
+    champion courant, réutilisé pour toutes les machines de la vue "à traiter"."""
+    from src.explain import ExplicateurCause
+
+    return ExplicateurCause(obtenir_predicteur().pipeline)
+
+
+@st.cache_data(ttl=300)
+def q_derniers_releves_toutes_machines(fenetre_historique: int) -> pd.DataFrame:
+    """
+    Les `fenetre_historique` dernières lignes de CHAQUE machine (pas juste la
+    dernière) — nécessaire pour calculer les features glissantes (24h) avant de
+    prédire, utilisé par la vue "à traiter aujourd'hui" (point 34).
+    """
+    with duckdb.connect(str(DB_PATH), read_only=True) as conn:
+        df = conn.execute(
+            f"""SELECT * FROM (
+                    SELECT id_machine, type_machine, timestamp,
+                           temperature_process, temperature_ambiante, usure_outil,
+                           vibration, stabilite_tension, saison_benin, vitesse_rotation,
+                           couple, niveau_activite, humidite, concentration_poussiere,
+                           indicateur_pluie, indicateur_coupure, niveau_tension, encrassement,
+                           ROW_NUMBER() OVER (PARTITION BY id_machine ORDER BY timestamp DESC) AS rang
+                    FROM {TABLE}
+                )
+                WHERE rang <= ?
+                ORDER BY id_machine, timestamp""",
+            [fenetre_historique],
+        ).fetchdf()
+    return df.drop(columns="rang")
+
+
+@st.cache_data(ttl=300)
+def q_priorites_parc() -> pd.DataFrame:
+    """
+    Priorités du parc (point 34), mises en cache une seule fois — réutilisées à la
+    fois par le tableau "à traiter aujourd'hui" (tab_general) et par la sélection par
+    défaut de la Vue Machine (tab_machine), pour ne pas recalculer deux fois la même
+    boucle prédiction + SHAP sur 50 machines à chaque chargement de page.
+    """
+    from src.features import FENETRE_24H
+    from ui.priorites import calculer_priorites_parc
+
+    predicteur = obtenir_predicteur()
+    explicateur = obtenir_explicateur()
+    df_historique = q_derniers_releves_toutes_machines(FENETRE_24H + 4)
+    return calculer_priorites_parc(df_historique, predicteur, explicateur)

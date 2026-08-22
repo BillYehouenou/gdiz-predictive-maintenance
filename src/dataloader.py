@@ -5,6 +5,7 @@ import pandas as pd
 
 from src.configloader import charger_config
 from src.features import enrichir_df_entrainement
+from src.validation import valider_donnees_brutes
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ class ChargeurDonnees:
             return df
 
         logger.info(f"Données brutes chargées : {df.shape[0]:,} lignes, {df.shape[1]} colonnes.")
+        df = valider_donnees_brutes(df)
         df = enrichir_df_entrainement(df)
         logger.info(f"Dataset enrichi avec features temporelles → {df.shape[1]} colonnes totales.")
         return df

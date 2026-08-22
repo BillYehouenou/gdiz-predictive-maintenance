@@ -24,6 +24,7 @@ jeu_donnees:
     - 'indicateur_coupure'
     - 'niveau_tension'
     - 'stabilite_tension'
+    - 'encrassement'
     # Features temporelles — calculées par src/features.py
     - 'usure_outil_delta_24h'
     - 'usure_outil_delta_4h'
@@ -39,6 +40,7 @@ jeu_donnees:
     - 'poussiere_moyenne_24h'
     - 'poussiere_max_24h'
     - 'couple_max_24h'
+    - 'encrassement_max_24h'
 
 # Paramètres de tracking des expériences mlflow
 mlflow:

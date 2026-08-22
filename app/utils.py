@@ -5,6 +5,7 @@ from pathlib import Path
 import duckdb
 import mlflow
 import pandas as pd
+from fastapi import BackgroundTasks
 
 from src.configloader import charger_config
 from src.features import enrichir_point_inference
@@ -23,20 +24,32 @@ mlflow.set_tracking_uri(_tracking_uri)
 predicteur = Predicteur(utiliser_mlflow=True)
 
 
+def recharger_modele() -> dict:
+    """
+    Recharge le champion `@champion` courant sans redémarrer le processus API
+    (point 27 roadmap) — le `Predictor` global se chargeait à l'import, ce qui
+    contredisait l'intérêt de la gate de promotion : un nouveau champion promu par
+    `make train` restait invisible côté API tant que le service n'était pas relancé.
+    """
+    global predicteur
+    predicteur = Predicteur(utiliser_mlflow=True)
+    logger.info(f"Modèle rechargé : version={predicteur.version}, seuil={predicteur.threshold:.4f}")
+    return {"model_version": predicteur.version, "threshold": predicteur.threshold}
+
+
 def _recuperer_historique_machine(id_machine: str) -> pd.DataFrame:
     """
-    Charge les 240 dernières lignes d'une machine depuis DuckDB (ordre ASC, 120h) —
-    élargi depuis 48/24h pour alimenter les fenêtres 72h/120h de src/features.py
-    (auparavant hors de portée du chemin API, cf. docs/model-decisions.md).
+    Charge les 48 dernières lignes d'une machine depuis DuckDB (ordre ASC, 24h) —
+    couvre toutes les fenêtres glissantes actives de src/features.py.
     """
     try:
         with duckdb.connect(str(_DB_PATH), read_only=True) as conn:
             df = conn.execute(
                 f"""SELECT usure_outil, vibration, temperature_process, concentration_poussiere,
-                           couple, temperature_ambiante
+                           couple, temperature_ambiante, encrassement
                     FROM {_TABLE}
                     WHERE id_machine = ?
-                    ORDER BY timestamp DESC LIMIT 240""",
+                    ORDER BY timestamp DESC LIMIT 48""",
                 [id_machine],
             ).fetchdf()
         return df.iloc[::-1].reset_index(drop=True)
@@ -91,8 +104,14 @@ def _loguer_mlflow(
         logger.warning(f"MLflow monitoring log échoué silencieusement : {e}")
 
 
-def traiter_prediction(dict_donnees_machine: dict) -> dict:
-    """Valide, enrichit temporellement si id_machine fourni, prédit, log dans MLflow et retourne le résultat."""
+def traiter_prediction(dict_donnees_machine: dict, background_tasks: BackgroundTasks | None = None) -> dict:
+    """
+    Valide, enrichit temporellement si id_machine fourni, prédit, log dans MLflow et
+    retourne le résultat. `background_tasks` (point 26 roadmap) : si fourni (chemin
+    API), le log MLflow s'exécute après l'envoi de la réponse plutôt que de bloquer
+    la requête sur l'I/O MLflow ; sans lui (appel direct, scripts), le log reste
+    synchrone pour ne pas silencieusement perdre l'écriture.
+    """
     id_machine: str | None = dict_donnees_machine.pop("id_machine", None)
     features = dict(dict_donnees_machine)
 
@@ -106,6 +125,7 @@ def traiter_prediction(dict_donnees_machine: dict) -> dict:
         ambiante = float(features.get("temperature_ambiante", 0.0))
         poussiere = float(features.get("concentration_poussiere", 0.0))
         couple = float(features.get("couple", 0.0))
+        encrassement = float(features.get("encrassement", 0.0))
         ecart_thermique = temperature - ambiante
         features["usure_outil_delta_24h"] = 0.0
         features["usure_outil_delta_4h"] = 0.0
@@ -113,26 +133,15 @@ def traiter_prediction(dict_donnees_machine: dict) -> dict:
         features["vibration_moyenne_24h"] = vibration
         features["vibration_ecart_type_24h"] = 0.0
         features["vibration_delta_4h"] = 0.0
-        features["vibration_moyenne_72h"] = vibration
-        features["vibration_ecart_type_72h"] = 0.0
-        features["vibration_moyenne_120h"] = vibration
         features["temperature_process_max_24h"] = temperature
         features["temperature_process_moyenne_24h"] = temperature
         features["temperature_process_delta_4h"] = 0.0
-        features["temperature_process_moyenne_72h"] = temperature
-        features["temperature_process_moyenne_120h"] = temperature
         features["ecart_thermique"] = ecart_thermique
         features["ecart_thermique_max_24h"] = ecart_thermique
-        features["ecart_thermique_moyenne_72h"] = ecart_thermique
-        features["ecart_thermique_moyenne_120h"] = ecart_thermique
-        features["pente_ecart_thermique_72h"] = 0.0
-        features["pente_vibration_72h"] = 0.0
         features["poussiere_moyenne_24h"] = poussiere
         features["poussiere_max_24h"] = poussiere
-        features["poussiere_moyenne_72h"] = poussiere
-        features["poussiere_moyenne_120h"] = poussiere
         features["couple_max_24h"] = couple
-        features["ratio_vibration_couple"] = vibration / max(couple, 1.0)
+        features["encrassement_max_24h"] = encrassement
 
     df = pd.DataFrame([features])
     results = predicteur.predire(df)
@@ -140,13 +149,17 @@ def traiter_prediction(dict_donnees_machine: dict) -> dict:
     valeur_prediction = int(results["prediction"].iloc[0])
     valeur_probabilite = float(results["probabilite_panne"].iloc[0])
 
-    _loguer_mlflow(
+    kwargs_log = dict(
         id_machine=id_machine or "unknown",
         features=features,
         probability=valeur_probabilite,
         prediction=valeur_prediction,
         model_version=_config["mlflow"]["nom_modele"],
     )
+    if background_tasks is not None:
+        background_tasks.add_task(_loguer_mlflow, **kwargs_log)
+    else:
+        _loguer_mlflow(**kwargs_log)
 
     return {
         "prediction": valeur_prediction,

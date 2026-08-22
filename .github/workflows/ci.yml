@@ -75,7 +75,7 @@ jobs:
         env:
           MLFLOW_TRACKING_URI: sqlite:///mlflow.db
           PYTHONHASHSEED: "0"
-        run: uv run pytest tests/ -v --cov=src --cov=app --cov-report=term-missing --cov-fail-under=40
+        run: uv run pytest tests/ -v --cov=src --cov=app --cov-report=term-missing --cov-fail-under=65
 
   docker:
     name: Build Docker

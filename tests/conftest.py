@@ -45,6 +45,8 @@ def machine_normale():
             "poussiere_moyenne_24h": [42.0],
             "poussiere_max_24h": [50.0],
             "couple_max_24h": [32.0],
+            "encrassement": [25.0],
+            "encrassement_max_24h": [28.0],
         }
     )
 
@@ -84,5 +86,7 @@ def machine_en_surchauffe():
             "poussiere_moyenne_24h": [350.0],
             "poussiere_max_24h": [410.0],
             "couple_max_24h": [88.0],
+            "encrassement": [78.0],
+            "encrassement_max_24h": [82.0],
         }
     )

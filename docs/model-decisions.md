@@ -15,6 +15,9 @@ Document vivant, même esprit que `docs/data-generation.md` et `docs/experiments
 - [Ré-audit de la variable cible et de l'architecture — trois hypothèses testées, trois échecs](#ré-audit-de-la-variable-cible-et-de-larchitecture--trois-hypothèses-testées-trois-échecs)
 - [Étage 2 : diagnostic de cause (point 14)](#étage-2--diagnostic-de-cause-point-14)
 - [Fenêtres 72h/120h, pentes et ratio — trois idées testées, aucune retenue](#fenêtres-72h120h-pentes-et-ratio--trois-idées-testées-aucune-retenue)
+- [Répartition par mode des baselines — la complexité de LightGBM ne se justifie que sur HDF/OSF](#répartition-par-mode-des-baselines--la-complexité-de-lightgbm-ne-se-justifie-que-sur-hdfosf)
+- [Passage à 100 machines — testé, non concluant, on reste à 50](#passage-à-100-machines--testé-non-concluant-on-reste-à-50)
+- [encrassement et usure_roulements : deux canaux causaux présents dans les données, jamais exposés au modèle](#encrassement-et-usure_roulements--deux-canaux-causaux-présents-dans-les-données-jamais-exposés-au-modèle)
 
 ---
 
@@ -96,6 +99,16 @@ Vérifié sur le dataset final (50 machines, générateur v2) que PWF et RNF n'o
 | usure_outil | 1,089 | 1,155 |
 
 Ratios proches de 1,0 pour la plupart des capteurs (contre 2 à 4x pour TWF/HDF/OSF, cf. sections précédentes) — confirme la décision déjà actée d'exclure PWF/RNF de `MODES_PANNE_PREDICTIBLES`. Le léger excès sur `usure_outil` (1,09-1,16) n'est pas un vrai précurseur : c'est un effet de population — les machines plus usées ont simplement plus d'occasions de subir n'importe quelle panne, pas spécifiquement PWF/RNF à ce moment précis.
+
+**Angle mort de cette première vérification, corrigé a posteriori** : les 4 capteurs testés ci-dessus (temperature_process, couple, vibration, usure_outil) n'ont **aucun lien causal** avec le hasard PWF (`scripts/generate_synthetic_data.py:674` : `pwf = coeff_risque_pe * max(0, 1 - stabilite_tension/100) * sensibilite_electrique`) — la vraie variable pilote est `stabilite_tension` (et en amont, `niveau_tension`/`niveau_activite`). Re-testé avec les bonnes variables, même méthode (moyenne 24h pré-panne / référence lointaine, pas à l'arrêt exclus) :
+
+| Variable causale | Ratio PWF | Ratio RNF | n (pannes) |
+|---|---|---|---|
+| stabilite_tension | 0,999 | 1,018 | 82 / 21 |
+| niveau_tension | 1,000 | 1,002 | 82 / 21 |
+| niveau_activite | 0,992 | 0,970 | 82 / 21 |
+
+Toujours aucun signal, mais maintenant pour une raison précise plutôt qu'un test sur les mauvais capteurs : `generer_stabilite_tension`/`generer_niveau_tension` (lignes 344-354) ajoutent un bruit gaussien indépendant à chaque pas de 30 min (`np.random.normal`), sans aucune persistance temporelle. Le hasard PWF dépend de la valeur **instantanée** de la stabilité au moment de la panne, pas d'un état qui s'accumule (contrairement à `usure_outil`/`encrassement`) — moyenner sur 24h dilue systématiquement tout pic ponctuel dans ~47 autres pas normaux. Structurellement, aucune fenêtre glissante ne peut exposer ce signal : ce n'est pas un manque de feature, c'est l'absence de mémoire temporelle dans le processus lui-même. RNF reste, par construction, un risque constant (`risque_base_pa`) sans aucune variable causale (`scripts/generate_synthetic_data.py:677`) — non prédictible par définition, pas par limite de mesure. **Conclusion inchangée mais mieux fondée** : PWF/RNF restent à juste titre hors de `MODES_PANNE_PREDICTIBLES`.
 
 ---
 
@@ -233,3 +246,107 @@ Le ratio vibration/couple ressort avec une **importance de 0 dans toutes les con
 `pente_vibration_72h` (vitesse d'accumulation du broutement) est la seule des 12 nouvelles features à ressortir avec une importance notable (108, dans le top 10) dans la config "ratio + pentes" — mais son effet net sur le recall global reste dans le bruit de mesure de ce projet (46 pannes en validation, 115 en test — cf. `docs/experiments.md`), pas un gain confirmé.
 
 **Décision** : `config/config.yaml` reste sur les 14 features temporelles déjà validées — aucune des trois idées testées n'a battu le champion actuel sur le recall événementiel. Le code des 12 nouvelles features reste disponible dans `src/features.py` (`VARIABLES_TEMPORELLES`, fenêtres `FENETRE_72H`/`FENETRE_120H`) et fonctionnel de bout en bout (dashboard, API avec historique élargi à 120h) — testé, mesuré, gardé pour une ré-évaluation future si le volume de données OSF augmente, mais pas activé par défaut. Même logique que les horizons différenciés par mode (section "Horizons différenciés") : un résultat négatif mesuré vaut mieux qu'un ajout non vérifié.
+
+---
+
+## Répartition par mode des baselines — la complexité de LightGBM ne se justifie que sur HDF/OSF
+
+**La question posée** : `docs/experiments.md` (section "Baselines de référence") ne rapportait que le recall événementiel **global** pour la règle triviale (`usure_outil > seuil`) et la régression logistique — 74,8 % et 77,4 % contre 80,9 % pour LightGBM. Un écart de 3-6 points sur l'agrégat peut légitimement faire douter que la complexité de LightGBM soit justifiée. Cassé par mode de panne (`scripts/run_baseline_comparison.py`, seuil choisi sur validation, rapporté sur test, 50 machines) :
+
+| Mode | Règle (`usure_outil>seuil`) | Régression logistique | LightGBM calibré |
+|---|---|---|---|
+| TWF | 100 % (57/57) | 100 % (57/57) | 100 % (57/57) |
+| HDF | 53,6 % (15/28) | 67,9 % (19/28) | **71,4 % (20/28)** |
+| OSF | 46,7 % (14/30) | 43,3 % (13/30) | **53,3 % (16/30)** |
+
+**Ce que l'agrégat cachait** : TWF est à 100 % pour les trois méthodes sans exception — n'importe qui seuille `usure_outil` attrape toutes les pannes TWF, aucun apprentissage nécessaire (cohérent avec le fait que `usure_outil` est le seul moteur du hasard TWF, `scripts/generate_synthetic_data.py:638-651`). TWF représentant la moitié des pannes du test (57/115), le recall global de n'importe quelle méthode est automatiquement tiré vers le haut par ce mode, ce qui masquait le vrai écart.
+
+**La vraie différenciation se joue sur HDF/OSF**, les deux modes non-linéaires (seuil de surchauffe soutenue quadratique pour HDF, combinaison usure outil + usure roulements + couple pour OSF) : LightGBM bat la règle triviale de **+17,8 points sur HDF** et **+6,6 points sur OSF**. Fait notable : **la régression logistique fait pire que la règle brute sur OSF** (43,3 % contre 46,7 %) — un modèle linéaire à 14 features dégrade la performance par rapport à un seuil sur une seule variable, signe qu'elle ne combine rien d'exploitable pour ce mode (cohérent avec la section "Baselines de référence" de `docs/experiments.md`, qui notait déjà que règle et RL attrapent exactement les mêmes 86 pannes au global).
+
+**Conclusion honnête** : la complexité de LightGBM n'est pas justifiée uniformément — pour TWF seul, un seuil sur `usure_outil` suffit très largement, LightGBM n'y ajoute rien. Elle se justifie spécifiquement là où la relation n'est pas linéaire (HDF, OSF). Un système à deux étages (règle triviale pour TWF + modèle pour HDF/OSF) donnerait probablement un résultat proche avec une architecture beaucoup plus simple — piste non implémentée ici (la mutualisation reste utile pour TWF via le signal partagé, cf. ré-audit ci-dessus), mais à considérer si la simplicité prime sur le gain marginal de recall.
+
+---
+
+## Passage à 100 machines — testé, non concluant, on reste à 50
+
+**L'hypothèse** : le ré-audit ci-dessus a déjà identifié la rareté des exemples OSF (23-30 pannes selon le split) comme facteur limitant, pas l'architecture. Doubler le nombre de machines (50→100, `nb_machines` dans `ConfigDonneesSynthetiques`) devrait mécaniquement doubler le nombre de pannes OSF/HDF disponibles et améliorer leur détection.
+
+**Vérifié** : dataset régénéré à 100 machines (seed déterministe par machine via hash de son id, `scripts/generate_synthetic_data.py:434-436` — les 50 machines déjà existantes gardent des trajectoires physiques identiques, seules 50 nouvelles machines s'ajoutent), même pipeline d'entraînement (mêmes hyperparamètres LightGBM, seuil choisi sur validation) :
+
+| | | 50 machines | 100 machines | Δ |
+|---|---|---|---|---|
+| Règle | Global | 74,8 % | 73,3 % | -1,5 |
+| | HDF | 53,6 % (15/28) | 48,2 % (27/56) | -5,4 |
+| | OSF | 46,7 % (14/30) | 51,3 % (40/78) | +4,6 |
+| RL | Global | 77,4 % | 74,1 % | -3,3 |
+| | HDF | 67,9 % (19/28) | 55,4 % (31/56) | **-12,5** |
+| | OSF | 43,3 % (13/30) | 48,7 % (38/78) | +5,4 |
+| LightGBM | Global | 80,9 % | 77,3 % | -3,6 |
+| | HDF | 71,4 % (20/28) | 60,7 % (34/56) | **-10,7** |
+| | OSF | 53,3 % (16/30) | 55,1 % (43/78) | +1,8 |
+
+**Résultat inattendu, pas la confirmation espérée** : OSF s'améliore légèrement pour les trois méthodes (+1,8 à +5,4 points) — cohérent avec l'hypothèse de rareté d'exemples. Mais **HDF se dégrade nettement pour les trois méthodes, y compris la règle triviale qui n'apprend rien** — donc ce n'est pas un effet d'architecture ou de sur-apprentissage, c'est un effet de composition de l'échantillon : les 50 nouvelles machines ajoutent une population différente (nouveaux tirages aléatoires), pas des répétitions de la même distribution, et le modèle est ré-entraîné sur l'ensemble (nouveaux splits internes, nouveau seuil).
+
+**Pourquoi ne pas conclure trop vite** : les échantillons HDF/OSF restent petits (28-78 événements selon la config), dans la zone d'incertitude déjà documentée par le projet lui-même (`docs/data-generation.md` : marge ±8,7 points de recall à 50 pannes, ±6,2 à 100 — mesurée sur l'agrégat, mais l'ordre de grandeur s'applique aussi aux sous-populations par mode, plus petites). Un seul run à 100 machines (un seul jeu de nouveaux seeds) ne permet pas de distinguer un vrai effet d'un artefact d'échantillonnage.
+
+**Décision** : le dataset reste à 50 machines (`config/config.yaml`, `ConfigDonneesSynthetiques.nb_machines`). Doubler le volume n'est pas le levier qui résout OSF de façon nette — le gain mesuré est modeste et s'accompagne d'une dégradation inexpliquée sur HDF. Trancher proprement demanderait plusieurs régénérations à seeds différents pour isoler le signal du bruit d'échantillonnage, un chantier plus lourd que le gain espéré ne le justifie pour l'instant. Piste notée pour une itération future, pas abandonnée : si une autre amélioration (cf. section suivante) est adoptée, revérifier si l'effet de volume redevient positif sur le nouveau pipeline.
+
+---
+
+## encrassement et usure_roulements : deux canaux causaux présents dans les données, jamais exposés au modèle
+
+**La découverte** : `EvolueurEtatMachine.evoluer_etats` (`scripts/generate_synthetic_data.py:862-865`) écrit `encrassement` et `usure_roulements` dans le DataFrame final — ces deux colonnes existent bel et bien dans `data/raw/gdiz_dataset.parquet` — mais `config/config.yaml` (`jeu_donnees.features`) ne les liste jamais. Contrairement à `heures_exposition_rampe`, explicitement exclue par choix de conception ("pour éviter de fuiter une information que des capteurs réels n'auraient pas directement", `docs/data-generation.md:121`), rien ne documentait une raison de garder `encrassement`/`usure_roulements` hors du modèle — un oubli plutôt qu'une décision.
+
+Leur pertinence causale est pourtant directe et déjà documentée ailleurs dans ce fichier : `usure_roulements` pèse 25 % du hasard OSF, canal indépendant de `usure_outil` (corrélation mesurée 0,008, `docs/data-generation.md:131`) ; `encrassement` alimente directement la chaleur du process (`facteur_chaleur_encrassement`) donc le hasard HDF.
+
+**Testé** (ajout brut + `_max_24h`, même patron que `couple_max_24h`/`ecart_thermique_max_24h`, seuil choisi sur validation, 50 machines) :
+
+| Configuration | Global (test) | TWF | HDF | OSF | FA/machine/jour |
+|---|---|---|---|---|---|
+| Champion actuel (référence) | 80,9 % (93/115) | 100 % | 71,4 % (20/28) | 53,3 % (16/30) | 0,211 |
+| + `usure_roulements` seul | 73,9 % (85/115) | 98,2 % | 67,9 % (19/28) | **33,3 % (10/30)** | 0,239 |
+| + `encrassement` seul | **87,0 % (100/115)** | 100 % | **85,7 % (24/28)** | **63,3 % (19/30)** | 0,232 |
+| + les deux ensemble | 79,1 % (91/115) | 100 % | 60,7 % (17/28) | 56,7 % (17/30) | 0,222 |
+
+**Résultat net et à retenir** : `encrassement` seul (+ `encrassement_max_24h`) améliore les trois modes simultanément — TWF inchangé, HDF +14,3 points, OSF +10 points, global +6,1 points (7 pannes supplémentaires attrapées sur 115). C'est le plus gros gain mesuré sur ce projet depuis l'ajout initial de `poussiere_max_24h`/`couple_max_24h`. `usure_roulements` seul, à l'inverse, **dégrade tout**, y compris TWF (98,2 %, une panne ratée en plus) — hypothèse non creusée ici : `usure_roulements` accumule à un rythme quasi constant (piloté par `ratio_vitesse²`, et la vitesse varie très peu, cf. découplage vitesse/couple documenté plus haut), donc c'est un signal proche du bruit qui consomme du budget de split sans coefficient de correction retrouvé par le modèle ; combiné à `encrassement`, il dilue une partie de son bénéfice (HDF retombe à 60,7 %). **Réserve nécessaire** : FA/machine/jour (0,232) dépasse légèrement le budget de 0,20 — dans le même ordre que l'écart déjà accepté pour le champion actuel (0,211), pas disqualifiant en soi, mais à revérifier avec une recherche de seuil plus fine avant toute mise en production.
+
+**Décision — implémenté et promu** : `encrassement` et `encrassement_max_24h` ajoutés à `config/config.yaml`, propagés aux 3 chemins de calcul (`enrichir_df_entrainement`, `enrichir_serie_inference`, `enrichir_point_inference` — ce dernier a nécessité d'ajouter `encrassement` à la requête d'historique de l'API `app/utils.py::_recuperer_historique_machine` et au schéma d'entrée `app/schemas.py::DonneesMachine`, et à la requête série du dashboard `ui/queries.py::q_serie_complete_machine`), ré-entraîné via le pipeline officiel (`scripts/run_training.py`).
+
+**Résultat confirmé par la gate de promotion** (`_promouvoir_si_meilleur`, pas un test ad hoc) : recall_evenementiel 0,8435 contre 0,8087 pour l'ancien champion — version 21 promue `@champion` automatiquement. Chiffres officiels sur le test 2025 (seuil 0,115) : global 84,3 % (97/115, +3,4 pts), HDF 78,6 % (22/28, +7,2 pts), OSF 60,0 % (18/30, +6,7 pts), TWF inchangé à 100 %, FA/machine/jour 0,215 (quasi inchangé). Légèrement différent du test ad hoc ci-dessus (87,0 %/63,3 % OSF) — attendu, l'ordre des colonnes et le split exact influencent les tirages `colsample_bytree` de LightGBM ; le chiffre qui fait foi est celui du pipeline officiel, pas le script exploratoire. Détail dans `docs/experiments.md` (section "État actuel").
+
+`usure_roulements` reste non intégré — dégradait toutes les métriques dans les deux configurations testées (seul, et combiné à `encrassement`), cohérent avec l'hypothèse que son accumulation quasi constante (pilotée par `ratio_vitesse²`, peu variable) apporte plus de bruit que de signal exploitable pour LightGBM.
+
+---
+
+## Nettoyage : retrait du code expérimental gardé mais jamais activé
+
+Après plusieurs itérations, le nombre de features/cibles calculées mais non utilisées en production (fenêtres 72h/120h, pentes, ratio, horizons différenciés par mode, étage de diagnostic de cause) avait grossi au point de nuire à la lisibilité — plus de surface à maintenir que de valeur produite. Chaque idée listée ci-dessous reste **documentée dans ce fichier avec ses chiffres mesurés** (rien n'est perdu comme connaissance), seul le code a été retiré ; récupérable via l'historique git si une itération future veut le retester.
+
+Retiré :
+- `cible_h24`, `cible_h48` (`src/features.py`) — calculées à chaque entraînement, jamais consommées nulle part, aucune trace documentée : du vrai code mort, pas un résultat négatif conservé.
+- `HORIZON_PAR_MODE_PANNE`, `calculer_cible_multi_horizon`, `cible_multi_horizon` — cf. section "Horizons différenciés par mode" ci-dessus (invalidé deux fois, chiffres conservés dans ce document).
+- Fenêtres 72h/120h, pentes, ratio vibration/couple (`FENETRE_72H`, `FENETRE_120H`, `_pente`, `_pente_historique`, 12 colonnes de `VARIABLES_TEMPORELLES`) — cf. section "Fenêtres 72h/120h, pentes et ratio" ci-dessus (aucun gain confirmé). L'historique DuckDB rechargé côté API et dashboard revient à 48 lignes/24h (au lieu de 240/120h, qui n'avait plus d'utilité une fois ces fenêtres retirées).
+- `calculer_label_cause_panne` + `scripts/run_cause_classifier.py` — cf. section "Étage 2 : diagnostic de cause" ci-dessus (accuracy trop instable pour être exposée, jamais intégrée au dashboard/API).
+- Support `dict[str, int]` pour `pas_horizon` dans `src/evaluation.py` — n'existait que pour l'expérience d'horizons différenciés ci-dessus ; `metriques_evenementielles`/`trouver_seuil_pour_budget_fa` reprennent un `pas_horizon: int` simple.
+
+Non touché : le principe de conserver un résultat négatif mesuré (plutôt que de l'effacer) reste la règle du projet — ce nettoyage retire le *code* devenu mort une fois l'expérience conclue, pas la trace écrite de ce qui a été appris.
+
+---
+
+## Bloc IV de la roadmap — Industrialisation (points 26-32)
+
+Six points de la roadmap originale (`gdiz-roadmap-et-plan.md`, section F/E "API et exposition" / "MLOps") — point 29 (gate sur métrique métier) était déjà fait avant ce commit.
+
+**26 — Log MLflow asynchrone.** `traiter_prediction` (`app/utils.py`) accepte maintenant un `BackgroundTasks` optionnel (FastAPI) : si fourni (chemin `/predict`, `/predict/batch`), `_loguer_mlflow` s'exécute après l'envoi de la réponse plutôt que de bloquer la requête sur l'I/O MLflow. Sans lui (appel direct hors contexte FastAPI), le log reste synchrone — pas de perte silencieuse d'écriture pour un futur script qui appellerait `traiter_prediction` directement.
+
+**27 — Rechargement du modèle sans redémarrage.** `app/utils.py::recharger_modele()` reconstruit le `Predicteur` global (`global predicteur`) et expose `POST /api/v1/reload`. `Predicteur` garde maintenant sa version MLflow (`self.version`, résolue via `get_model_version_by_alias`) pour confirmer quelle version est effectivement chargée après un rechargement — utile pour vérifier qu'un `make train` qui promeut un nouveau champion a bien été pris en compte sans redémarrer le service.
+
+**28 — Endpoints batch et info.** `POST /api/v1/predict/batch` (liste de `DonneesMachine` → liste de prédictions, plutôt que 50 appels séparés pour un relevé de parc) et `GET /api/v1/info` (nom du modèle, version `@champion` chargée, seuil courant).
+
+**30 — Drift enrichi.** `scripts/check_drift.py` calcule maintenant un PSI (Population Stability Index, bucketé sur les quantiles de référence) en plus du KS existant — le PSI reste stable sur de petits volumes de production là où le KS est sensible à la taille d'échantillon, les deux se complètent. Ajout d'un second rapport, `verifier_derive_predictions()` : compare la distribution des probabilités *prédites* (pas seulement les features en entrée) entre la période de référence (le champion ré-exécuté sur un échantillon de la période d'entraînement) et la production loggée — un vrai drift de comportement du modèle peut se produire même quand chaque feature prise séparément semble stable (interaction entre features, dérive de calibration lente). Pas de nouvelle table DuckDB dédiée : l'expérience MLflow `GDIZ_Monitoring_Predictions` (une prédiction = un run, interrogeable via `mlflow.search_runs`) joue déjà ce rôle — dupliquer le stockage n'aurait rien apporté.
+
+**31 — Validation à l'ingestion (`src/validation.py`, pandera).** Deux régimes distincts, pas un seul schéma générique : colonnes catégorielles (`type_machine`, `saison_benin`, `panne`, `indicateur_pluie`, `indicateur_coupure`) vérifiées strictement — une valeur hors énumération est toujours un bug. Capteurs continus vérifiés avec des bornes physiques volontairement **larges** — vérifié sur le dataset officiel avant de choisir les seuils : la dérive de calibration injectée par le générateur n'est pas bornée par construction (`_appliquer_derive`, `scripts/generate_synthetic_data.py`) et pousse déjà légitimement `usure_outil` à -11 % ou `vibration` sous 0 dans les données réelles du projet. Des bornes serrées auraient fait planter la validation sur le dataset qu'on utilise déjà pour entraîner le champion actuel — piège évité en mesurant les min/max réels avant de fixer les seuils, pas en devinant. La validation logue un résumé des anomalies et ne bloque jamais le chargement : une alerte qualité n'est pas une raison d'arrêter l'entraînement.
+
+**32 — Seuil de couverture CI.** Mesuré avant de changer : couverture réelle 70 % sur `src/`+`app/` (vs 40 % affiché dans la gate CI, écart qui décrédibilisait le seuil). `--cov-fail-under` passé de 40 à **65** dans `.github/workflows/ci.yml` — pas 70, pour garder une marge de sécurité plutôt que coller exactement à la mesure du jour.
+
+**Vérifié** : tests dédiés pour chaque point (`tests/test_api.py` pour batch/info/reload, `tests/test_validation.py` pour les bornes physiques — y compris un test qui vérifie explicitement que la dérive de calibration ne fait pas planter la validation —, `tests/test_check_drift.py` pour le PSI). Suite complète 50/50, lint/format/mypy propres, couverture 70 % après ajout du nouveau code.

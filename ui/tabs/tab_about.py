@@ -46,16 +46,40 @@ def _css(C: dict) -> str:
         vertical-align: middle;
         margin-right: 6px;
     }}
-    .pipe-desc {{
+    .pipe-resume {{
+        font-size: .98rem;
+        font-weight: 650;
+        line-height: 1.4;
+        margin: 0 0 1rem;
+    }}
+    .pipe-list {{
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: .6rem;
+    }}
+    .pipe-item {{
+        display: flex;
+        align-items: flex-start;
+        gap: .65rem;
         font-size: .85rem;
-        line-height: 1.80;
+        line-height: 1.5;
         color: {C["muted"]};
     }}
-    .pipe-desc strong {{
-        color: {C["text"]};
-        font-weight: 600;
+    .pipe-item .dot {{
+        flex-shrink: 0;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        margin-top: .5rem;
     }}
-    .pipe-desc code {{
+    .pipe-item strong {{
+        color: {C["text"]};
+        font-weight: 650;
+    }}
+    .pipe-item code {{
         font-size: .78rem;
         background: {C["border"]};
         border-radius: 4px;
@@ -119,15 +143,19 @@ def _carte_kpi(icon: str, label: str, val: str, sub: str, color: str, delay: flo
     )
 
 
-def _carte_etape(idx: int, color: str, title: str, desc: str, C: dict) -> str:
+def _carte_etape(idx: int, color: str, title: str, resume: str, points: list[str], C: dict) -> str:
     bg = f"linear-gradient(160deg,{rgba(color, 0.10)} 0%,{rgba(color, 0.03)} 55%,transparent 100%)"
     # Le nom de classe varie avec idx (pipe-anim-0, pipe-anim-1, ...) pour forcer le
     # navigateur à rejouer l'animation à chaque changement d'étape — une animation CSS
     # ne se relance pas tant que le nom de classe qui la déclenche reste identique.
+    items = "".join(
+        f"<li class='pipe-item'><span class='dot' style='background:{color};'></span><span>{p}</span></li>" for p in points
+    )
     return (
         f"<div class='pipe-card pipe-anim-{idx}' style='background:{bg};'>"
         f"<p class='pipe-title' style='color:{C['text']};'>{title}</p>"
-        f"<div class='pipe-desc'>{desc}</div>"
+        f"<p class='pipe-resume' style='color:{color};'>{resume}</p>"
+        f"<ul class='pipe-list'>{items}</ul>"
         f"</div>"
     )
 
@@ -169,22 +197,22 @@ def afficher(C: dict) -> None:
         (
             "https://img.icons8.com/?size=100&id=Yt084riMRP1m&format=png&color=FFFFFF",
             "Recall événementiel",
-            "80.9%",
+            "84.3%",
             "Split temporel 2024 → 2025",
             C["blue"],
         ),
         (
             "https://img.icons8.com/?size=100&id=0ZNXJnXqu3Lh&format=png&color=FFFFFF",
             "Fausses alertes",
-            "0.21",
+            "0.22",
             "Épisodes / machine / jour",
             C["orange"],
         ),
         (
             "https://img.icons8.com/?size=100&id=hvx78MXvVF91&format=png&color=000000",
-            "Seuil de décision",
-            "0.12",
-            "Probabilités calibrées (isotonique)",
+            "Préavis médian",
+            "12.5h",
+            "Sur les pannes correctement anticipées",
             C["red"],
         ),
     ]
@@ -199,72 +227,77 @@ def afficher(C: dict) -> None:
         (
             "Données",
             C["teal"],
-            "Les données sont entièrement simulées pour reproduire fidèlement le parc textile de la "
-            "<strong>GDIZ</strong>, en s'inspirant du référentiel industriel AI4I 2020. Chaque machine évolue pas à "
-            "pas sur 2 ans (température, vibrations, usure) en tenant compte de la météo du Bénin et des coupures "
-            "électriques de la SBEE. Chaque machine a aussi son propre <strong>seuil de casse</strong> : certaines "
-            "tiennent jusqu'à 95-99 % d'usure, d'autres cassent dès 65-70 %, comme dans un vrai parc industriel "
-            "hétérogène plutôt qu'avec un seuil unique irréaliste. Une panne peut survenir pour "
-            "<strong>5 causes différentes</strong> : usure de l'outil, surchauffe, surcharge mécanique, panne "
-            "électrique ou panne purement aléatoire. Le tout est stocké dans une base de données ultra-rapide, "
-            "<strong>DuckDB</strong>, taillée pour l'analyse de gros volumes de séries temporelles.",
+            "Un jumeau numérique du parc GDIZ, pas un jeu de données générique.",
+            [
+                "<strong>50 machines textiles</strong> simulées pas à pas sur 2 ans, inspirées du référentiel "
+                "industriel AI4I 2020.",
+                "<strong>Climat béninois</strong> et coupures électriques SBEE reproduits fidèlement.",
+                "<strong>Seuil de casse individuel</strong> par machine (65 à 99 % d'usure) — un parc hétérogène, "
+                "pas un seuil unique irréaliste.",
+                "<strong>5 causes de panne</strong> possibles : usure, surchauffe, surcharge mécanique, électrique, aléatoire.",
+                "Stocké dans <code>DuckDB</code>, optimisé pour l'analyse de séries temporelles à grande échelle.",
+            ],
         ),
         (
             "Indicateurs",
             C["blue"],
-            "Pour repérer une panne avant qu'elle n'arrive, le système ne se contente pas de regarder l'instant "
-            "présent : une vibration élevée à un moment donné peut être normale ou anormale selon le contexte. Il "
-            "compare donc chaque mesure à son <strong>évolution récente</strong> sur deux fenêtres glissantes — "
-            "<strong>4 heures</strong> pour capter une accélération brutale (delta rapide d'usure ou de "
-            "température) et <strong>24 heures</strong> pour capter une tendance plus lente (moyenne, écart-type, "
-            "pic maximal). C'est cette dynamique dans le temps, plus que la valeur brute du moment, qui révèle une "
-            "machine en train de se dégrader progressivement.",
+            "La tendance récente compte plus que l'instant présent.",
+            [
+                "Chaque mesure est comparée à son <strong>évolution récente</strong>, jamais lue isolément.",
+                "<strong>Fenêtre 4h</strong> : détecte une accélération brutale (delta rapide d'usure, de température).",
+                "<strong>Fenêtre 24h</strong> : capte une tendance plus lente (moyenne, écart-type, pic).",
+                "Une dégradation progressive se voit dans la <strong>dynamique</strong>, pas dans une valeur brute.",
+            ],
         ),
         (
             "Préparation des données",
             C["orange"],
-            "Avant d'entraîner l'IA, les données brutes doivent être nettoyées automatiquement : les valeurs "
-            "manquantes (capteurs défaillants, pertes de signal IoT) sont imputées, et les variables catégorielles "
-            "comme le type de machine sont encodées nativement pour LightGBM — pas de mise à l'échelle "
-            "(inutile pour un modèle à base d'arbres) ni d'explosion en colonnes one-hot. Cette chaîne de "
-            "préparation est figée dans un artefact unique, pour garantir que le dashboard et l'API traitent "
-            "toujours les données <strong>exactement comme lors de l'entraînement</strong> — un point critique "
-            "pour éviter tout écart silencieux entre entraînement et production.",
+            "Même traitement à l'entraînement et en production — zéro écart silencieux.",
+            [
+                "<strong>Contrôle de sanité</strong> : bornes physiques vérifiées par capteur avant tout traitement.",
+                "<strong>Valeurs manquantes</strong> imputées automatiquement (capteurs défaillants, pertes IoT).",
+                "<strong>Catégories encodées nativement</strong> pour LightGBM — pas de mise à l'échelle, pas de one-hot.",
+                "Un <strong>artefact unique et figé</strong> garantit l'identité entraînement / dashboard / API.",
+            ],
         ),
         (
             "ML",
             C["red"],
-            "Le modèle utilisé est <strong>LightGBM</strong>, un algorithme d'arbres de décision en gradient "
-            "boosting reconnu pour sa rapidité sur des données tabulaires. Il est entraîné sur l'année 2024 et "
-            "testé sur 2025, pour vérifier qu'il généralise bien dans le temps plutôt que d'apprendre le passé par "
-            "cœur. Il vise spécifiquement les pannes qui ont un véritable signal annonciateur — usure, surchauffe, "
-            "surcharge mécanique — sur un horizon de <strong>5 jours</strong> ; les pannes électriques ou "
-            "purement aléatoires sont volontairement exclues de la cible, car elles n'ont, par nature, rien à "
-            "apprendre, et les inclure aurait seulement dilué le signal utile. Résultat mesuré : plus d'une panne "
-            "prévisible sur deux est détectée (recall 56 %), avec près d'une alerte sur six réellement fondée "
-            "(précision 17 %).",
+            "84 % des pannes prévisibles détectées, 5 jours à l'avance.",
+            [
+                "<code>LightGBM</code> (gradient boosting), calibré par régression isotonique pour des "
+                "probabilités interprétables.",
+                "Entraîné sur <strong>2024</strong>, testé sur <strong>2025</strong> — généralisation dans le "
+                "temps, pas par cœur.",
+                "Horizon de prédiction : <strong>5 jours</strong>, sur usure / surchauffe / surcharge mécanique.",
+                "Pannes électriques et aléatoires <strong>exclues</strong> — aucun signal précurseur, vérifié empiriquement.",
+                "<strong>84 % de recall</strong>, ~1 fausse alerte tous les 4-5 jours par machine.",
+            ],
         ),
         (
             "Moteur de calcul",
             C["green"],
-            "Une fois entraîné, le modèle est exposé via une API web (<strong>FastAPI</strong>) ultra-rapide, "
-            "indépendante du dashboard. Dès qu'une mesure de machine est envoyée, ce service recalcule à la volée "
-            "les indicateurs temporels (4h/24h), applique exactement le même pipeline de préparation que celui "
-            "utilisé à l'entraînement, puis renvoie en quelques millisecondes la probabilité de panne et la "
-            "décision de maintenance. Le modèle est chargé depuis le registre <strong>MLflow</strong> ; en cas "
-            "d'indisponibilité de celui-ci, l'API bascule automatiquement sur une copie locale du modèle pour "
-            "garantir une continuité de service.",
+            "Une API qui répond en millisecondes, sans jamais dévier du modèle entraîné.",
+            [
+                "<code>FastAPI</code>, endpoint unitaire + endpoint par lot pour un relevé de parc complet.",
+                "<strong>Bornes physiques validées</strong> à l'entrée avant toute prédiction.",
+                "Mêmes indicateurs 4h/24h, <strong>même pipeline</strong> qu'à l'entraînement.",
+                "Suivi <code>MLflow</code> asynchrone — ne ralentit jamais la réponse.",
+                "<strong>Rechargement à chaud</strong> après ré-entraînement, sans redémarrer le service.",
+                "Repli automatique sur copie locale si le registre MLflow est indisponible.",
+            ],
         ),
         (
             "Interface",
             C["blue"],
-            "Le dashboard final donne une vue d'ensemble du parc des 50 machines avec leurs alertes en temps réel, "
-            "un suivi historique détaillé par machine et des indicateurs de coût liés aux pannes (production "
-            "perdue, pièces, matière gâchée). Le risque affiché pour une machine correspond toujours à la "
-            "probabilité de panne prévisible <strong>dans les 5 prochains jours</strong> ; le sélecteur 24h/7j/30j "
-            "ne change que la période d'historique consultée pour repérer le pic de risque, jamais l'horizon de "
-            "prédiction lui-même. L'affichage reste instantané car <strong>Streamlit</strong> interroge directement "
-            "<strong>DuckDB</strong> avec des requêtes optimisées en colonnes.",
+            "Ce qu'il faut savoir, pas tout ce qu'il y a à voir.",
+            [
+                "Liste <strong>« à traiter aujourd'hui »</strong>, triée par risque décroissant.",
+                "<strong>Cause probable</strong> par alerte (SHAP) — usure, surchauffe, surcharge mécanique...",
+                "Risque toujours exprimé <strong>sur 5 jours</strong>, jamais une heure inventée.",
+                "Suivi historique détaillé par machine et coûts de panne chiffrés.",
+                "<code>Streamlit</code> + <code>DuckDB</code> en colonnes → affichage instantané.",
+            ],
         ),
     ]
 
@@ -280,9 +313,9 @@ def afficher(C: dict) -> None:
         selected = step_names[0]
 
     idx = step_names.index(selected)
-    title, color, desc = STEPS[idx]
+    title, color, resume, points = STEPS[idx]
 
     st.markdown(
-        _carte_etape(idx, color, title, desc, C),
+        _carte_etape(idx, color, title, resume, points, C),
         unsafe_allow_html=True,
     )

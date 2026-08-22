@@ -46,6 +46,7 @@ def test_charger_donnees_brutes_parquet_enrichit_features_temporelles(tmp_path, 
             "temperature_ambiante": [26.0, 26.5, 27.0],
             "concentration_poussiere": [30.0, 32.0, 35.0],
             "couple": [20.0, 22.0, 21.0],
+            "encrassement": [15.0, 16.0, 17.0],
             "panne": [0, 0, 0],
             "mode_panne": [None, None, None],
         }
@@ -60,4 +61,5 @@ def test_charger_donnees_brutes_parquet_enrichit_features_temporelles(tmp_path, 
     assert "ecart_thermique_max_24h" in df.columns
     assert "poussiere_moyenne_24h" in df.columns
     assert "couple_max_24h" in df.columns
+    assert "encrassement_max_24h" in df.columns
     assert len(df) == 3

@@ -40,9 +40,8 @@ ALIAS_CHAMPION = "champion"
 METRIQUE_PROMOTION = "recall_evenementiel"
 
 # Horizon événementiel : aligné sur cible_h120_predictible (cf. config/config.yaml).
-# Des horizons différenciés par mode (point 15, HORIZON_PAR_MODE_PANNE dans
-# src/features.py) ont été testés et invalidés empiriquement sur ce jeu_donnees — cf.
-# docs/model-decisions.md. L'horizon unique reste la cible active.
+# Des horizons différenciés par mode ont été testés et invalidés empiriquement sur ce
+# jeu_donnees — cf. docs/model-decisions.md. L'horizon unique reste la cible active.
 HEURES_HORIZON_EVENEMENT = 120
 PAS_HORIZON_EVENEMENT = HEURES_HORIZON_EVENEMENT * 2  # pas de 30 min
 
