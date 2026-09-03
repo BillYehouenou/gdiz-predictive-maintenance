@@ -1,5 +1,5 @@
 """
-Module de génération de jeu_donnees synthétique pour la maintenance prédictive textile.
+Module de génération du dataset synthétique pour la maintenance prédictive textile.
 
 Architecture hybride:
 - Étape A: Contexte exogène global (variables macro-environnementales)
@@ -32,121 +32,92 @@ class ConfigDonneesSynthetiques:
 
     # Horizon temporel
     date_debut = datetime(2024, 1, 1)
-    duree_jours = 730  # 2 ans — capture 2 cycles Harmattan + saisons des pluies
+    duree_jours = 730  # 2 ans, capture 2 cycles Harmattan + saisons des pluies
     intervalle_minutes = 30  # Pas de 30 min
 
-    # Machines — 50 : au-delà, gain marginal sur la fiabilité des métriques de test
-    # pour un coût ~x2 en temps/RAM (30 machines → marge ±11,5 pts sur le recall
-    # événementiel mesuré sur le jeu de test ; 50 → ±8,7 pts ; 100 → ±6,2 pts).
-    # Cf. docs/data-generation.md.
+    # 50 machines : au-delà, gain marginal sur les métriques pour un coût ~x2 en temps/RAM
     nb_machines = 50
     ids_machines = [f"GDIZ_TEX_M_{i:02d}" for i in range(1, nb_machines + 1)]
     qualite_type_machine = ["L", "M", "H"]
 
-    # Usure — calibré pour ~4-8 pannes / machine / 2 ans (moyenne empirique : 6.6)
+    # Usure : calibré pour ~4-8 pannes / machine / 2 ans (moyenne empirique : 6.6)
     increment_usure_base = 0.005
     plage_usure_initiale = (10, 70)
 
-    # Fragilité individuelle de chaque machine — variabilité unité-à-unité de fabrication
+    # Fragilité individuelle de chaque machine, variabilité unité-à-unité de fabrication
     forme_fragilite = 2.5
 
-    # TWF (Tool Wear Failure) — chaque machine tire son propre seuil de rupture
-    # La plupart des machines tiennent bien, certaines cassent dès 65-75 %, d'autres tiennent jusqu'à 95-99 %
-    # Le hasard ne devient significatif qu'à l'approche de CE seuil personnel — pas d'un seuil universel — via une rampe lisse
+    # TWF : chaque machine tire son propre seuil de rupture
+    # La plupart des machines tiennent bien, certaines cassent dès 65-75%, d'autres tiennent jusqu'à 95-99%
+    # Le hasard ne devient significatif qu'à l'approche de ce seuil personnel
     seuil_min_use = 65.0
     plage_seuil_use = 34.0  # seuils personnels dans [65, 99]
     beta_a_seuil_use = 4.0
     beta_b_seuil_use = 2.0
-    bande_rampe_use = 12.0  # largeur (en points d'usure) de la rampe avant le seuil personnel
+    bande_rampe_use = 12.0  # largeur de la rampe avant le seuil personnel
     exposant_rampe_use = 3.0
-    # Recalibré (0.05 -> 0.08) pour compenser la dilution de part par les nouveaux
-    # canaux HDF/OSF et par la maintenance préventive ci-dessous — cf.
-    # docs/data-generation.md pour la méthode de calibration.
     coeff_risque_use = 0.08
 
-    # HDF (Heat Dissipation Failure) — surchauffe soutenue (moyenne glissante ~4h), pas un pic instantané
+    # HDF : surchauffe soutenue (moyenne glissante ~4h), pas un pic instantané
     # Hasard nul sous le seuil, quadratique au-delà
     pas_fenetre_shd = 8  # 8 × 30 min = 4h
     seuil_surchauffe_shd = 38.0  # °C au-delà de l'ambiant en moyenne sur la fenêtre choisie
-    # Recalibré (0.0004 -> 0.00012) : la chaîne encrassement (facteur_chaleur_encrassement)
-    # ajoute une source de chaleur supplémentaire, sans baisse du coefficient HDF
-    # dominait les autres causes (jusqu'à 65 % des pannes lors du premier essai).
-    coeff_risque_shd = 0.00012
+    coeff_risque_shd = 0.00012 # la chaîne encrassement ajoute une source de chaleur supplémentaire, sans baisse du coefficient HDF
 
-    # OSF (Overstrain Failure) — surcharge mécanique : couple élevé combiné à une usure déjà significative.
-    # Recalibré (0.00038 -> 0.0007) pour compenser la dilution par le mélange avec
-    # usure_roulements (poids_roulements_osf ci-dessous).
+    # OSF : surcharge mécanique, couple élevé combiné à une usure déjà significative
     coeff_risque_sm = 0.0007
 
-    # PWF (Power Failure) — instabilité électrique routinière hors coupure franche
-    # (le choc de redémarrage après blackout est géré séparément, cf. sensibilite_panne_coupure)
-    # Recalibré (0.000024 -> 0.000015) : sa part croît mécaniquement quand les autres
-    # causes baissent (risques concurrents), sans rapport avec un changement de PWF lui-même.
+    # PWF : instabilité électrique routinière hors coupure franche
     coeff_risque_pe = 0.000015
 
-    # RNF (Random Failure) — risque résiduel irréductible, par construction sans précurseur (miroir du RNF d'AI4I 2020)
+    # RNF : risque résiduel irréductible, par construction sans précurseur (miroir du RNF d'AI4I 2020)
     risque_base_pa = 0.000018
 
     # Dérive thermique additionnelle due au frottement d'un outil usé
     facteur_chaleur_usure = 3.0  # °C additionnels max à usure = 100 %
 
-    # Rampe terminale de dégradation (TWF) — au-delà du seuil personnel, l'usure peut
+    # Rampe terminale de dégradation : au-delà du seuil personnel, l'usure peut
     # plafonner (capée à 100 %) alors que la panne n'a pas encore été tirée : sans ce
     # mécanisme, le hasard redevient un pur tirage mémoryless une fois le plafond
     # atteint, non prédictible depuis les capteurs. heures_exposition_rampe compte le temps
     # cumulé passé dans la bande de rampe et fait évoluer le hasard + la vibration/
     # chaleur même quand l'usure elle-même ne bouge plus.
-    heures_max_exposition_rampe_use = 240.0  # plafond (10 j) — au-delà, effet saturé
+    heures_max_exposition_rampe_use = 240.0  # plafond (10 j) au-delà, effet saturé
     demi_vie_heures_rampe_use = 48.0  # le hasard TWF ~double tous les 2 jours passés dans la bande
     taux_broutement_use = 0.022  # vibration additionnelle par heure d'exposition à la bande
     taux_chaleur_rampe_use = 0.014  # °C additionnels par heure d'exposition à la bande
 
-    # Encrassement (poussière → dissipation thermique réduite → HDF)
+    # Encrassement : poussière --> dissipation thermique réduite --> HDF
     taux_base_encrassement = 0.06  # % d'encrassement gagné par pas, à poussiere_locale=100 et sensibilité=1
     facteur_chaleur_encrassement = 1.8  # °C additionnels max à encrassement = 100 %
-    residu_reinitialisation_encrassement = 10.0  # % résiduel après une visite de maintenance (nettoyage partiel)
+    residu_reinitialisation_encrassement = 10.0  # % résiduel après une visite de maintenance 
 
-    # Maintenance préventive imparfaite — sans elle, les machines tournent toujours
-    # jusqu'à la panne : les indicateurs précurseurs (usure, encrassement, roulements)
-    # deviennent un prédicteur quasi certain de panne imminente, ce qui rend TWF
-    # artificiellement facile. Une visite préventive (routine + risque, jamais
-    # garantie) intercepte parfois une machine à risque avant qu'elle ne casse
-    # réellement — le hasard de panne l'emporte la plupart du temps (imparfaite).
-    probabilite_base_preventive = 0.00002  # composante routine, indépendante du risque
-    # Recalibré (0.0004 -> 0.0001) : la première valeur interceptait trop de
-    # trajectoires TWF (part TWF réduite de 32 % à 25 % des pannes, sans réaction à
-    # une hausse du hasard TWF lui-même — même signal de risque pilotant les deux
-    # mécanismes). Cf. docs/data-generation.md.
+    # Maintenance préventive imparfaite : Une visite préventive (routine + risque, jamais
+    # garantie) intercepte parfois une machine à risque avant qu'elle ne casse réellement.
+    probabilite_base_preventive = 0.00002 
     coeff_risque_preventif = 0.0001  # composante risque, ∝ max(usure, encrassement, roulements)²
     heures_mediane_duree_preventive = 2.0
     heures_max_duree_preventive = 8.0
-    reduction_usure_preventive = 0.5  # fraction d'usure/roulements retirée — service partiel, pas une remise à neuf
+    reduction_usure_preventive = 0.5  # fraction d'usure/roulements retirée : service partiel, pas une remise à neuf
 
     # Second processus de dégradation indépendant de l'usure outil : usure des
-    # roulements, pilotée par la vitesse/vibration plutôt que par la poussière ou le
-    # couple — canal de dégradation distinct, contribue à OSF.
+    # roulements, pilotée par la vitesse/vibration plutôt que par la poussière ou le couple, contribue à OSF.
     taux_base_usure_roulements = 0.004
     coeff_vibration_roulements = 2.0
-    poids_roulements_osf = 0.25  # part de usure_roulements_norm**3 dans le hasard OSF (reste : usure outil)
+    poids_roulements_osf = 0.25 
 
-    # Parts de pannes visées par cause — cibles de calibration, pas une garantie stricte
-    # (la réalisation dépend des coefficients ci-dessus, à vérifier empiriquement)
+    # Parts de pannes visées par cause : cibles de calibration, pas une garantie stricte
     parts_mode_panne = {"TWF": 0.40, "HDF": 0.20, "OSF": 0.15, "PWF": 0.20, "RNF": 0.05}
 
-    # Thermique — inertie machine forte : 30 min ≈ 60 % du chemin vers T_cible
+    # Thermique : 30 min ≈ 60 % du chemin vers T_cible
     coef_lissage_temperature = 0.55
     facteur_temperature_frottement = 25.0
 
     # Électrique et environnement
-    # 220V = norme béninoise (réseau CEB/SBEE), pas les 230V harmonisés européens.
-    tension_nominale = 220.0
+    tension_nominale = 220.0 # 220V = norme Bénin (réseau SBEE)
     plage_variation_tension = 0.15
 
-    # Température atelier de référence par mois (°C), ancrée mi-mois puis interpolée
-    # (voir generer_temperature_ambiante) — calendrier bimodal réel du Sud-Bénin :
-    # pic chaud fév-mars, creux fin juillet-août (petite saison sèche, remontée
-    # d'eau froide atlantique), léger réchauffement sept-oct, Harmattan nov-mars.
-    # Cf. docs/data-generation.md pour le détail et les sources.
+    # Température atelier de référence par mois 
     temperature_base_mensuelle = {
         1: 32.5,
         2: 34.0,
@@ -162,12 +133,7 @@ class ConfigDonneesSynthetiques:
         12: 32.0,
     }
 
-    # Erreurs capteurs IoT — rafales corrélées (perte de paquets), capteurs figés,
-    # dérive de calibration : remplace un MCAR uniforme (une cellule isolée sur deux
-    # sans lien avec les autres), le cas le plus facile à imputer et le moins
-    # réaliste pour de l'IoT industriel. Généré par (machine, capteur), pas par
-    # cellule : un capteur qui décroche reste indisponible sur une fenêtre de temps
-    # continue. Cf. docs/data-generation.md.
+    # Erreurs capteurs IoT : rafales corrélées (perte de paquets)
     probabilite_debut_rafale_nan_capteur = 0.0024  # probabilité de démarrage d'une rafale, par pas/capteur
     pas_moyens_duree_rafale_nan_capteur = 3.0
     sigma_duree_rafale_nan_capteur = 0.6
@@ -231,13 +197,8 @@ class GenerateurContexteExogene:
 
     def generer_saisons_benin(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
         """
-        Calendrier bimodal réel du Sud-Bénin (climat guinéen côtier) : deux saisons des
-        pluies et deux saisons sèches, pas le cycle unimodal du Bénin septentrional.
-            0 = grande saison des pluies    (mi-mars → mi-juillet)
-            1 = petite saison sèche         (mi-juillet → août) — la plus fraîche de l'année
-            2 = petite saison des pluies    (septembre → octobre)
-            3 = grande saison sèche/Harmattan (novembre → mi-mars)
-        Cf. docs/data-generation.md.
+        Calendrier bimodal réel du Sud-Bénin : deux saisons des pluies et deux saisons sèches, 
+        pas le cycle unimodal du Bénin septentrional.
         """
         mois = timestamps.month.values
         jours = timestamps.day.values
@@ -254,10 +215,7 @@ class GenerateurContexteExogene:
 
     def _temperature_ancrage_mensuel(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
         """
-        Interpolation linéaire circulaire entre 12 ancrages mi-mois (config.temperature_base_mensuelle) :
-        remplace l'ancien saut en escalier (jusqu'à 4°C) au changement de mois par une
-        transition continue, sans supposer une forme sinusoïdale simple (le cycle annuel
-        du Sud-Bénin est bimodal, pas une sinusoïde unique).
+        Interpolation linéaire circulaire entre 12 ancrages mi-mois.
         """
         ancrages = self.config.temperature_base_mensuelle
         jour_annee_mi_mois = np.array([15, 45, 74, 105, 135, 166, 196, 227, 258, 288, 319, 349], dtype=float)
@@ -279,7 +237,7 @@ class GenerateurContexteExogene:
 
         variation_journaliere = 4.5 * np.sin(2 * np.pi * (heures - 8) / 24)
         base_temp = self._temperature_ancrage_mensuel(timestamps)
-        # Air plus stable (moins de bruit) en saison sèche (1, 3) qu'en saison des pluies (0, 2)
+        # Air plus stable en saison sèche (1, 3) qu'en saison des pluies (0, 2)
         est_plutot_sec = np.isin(seasons, [1, 3])
         bruit = np.where(est_plutot_sec, np.random.normal(0, 1.0, len(timestamps)), np.random.normal(0, 1.8, len(timestamps)))
 
@@ -291,9 +249,7 @@ class GenerateurContexteExogene:
         )
         return np.clip(temperature_ambiante_locale, 23.0, 42.0)
 
-    # (p_debut, p_arret) par saison — cf. generer_saisons_benin pour le code des 4 saisons.
-    # La petite saison des pluies (2) est en moyenne moins intense que la grande (0) ;
-    # la petite saison sèche (1) n'est pas aussi aride que l'Harmattan (3).
+    # (p_debut, p_arret) par saison 
     PROBABILITES_TRANSITION_PLUIE = {
         0: (0.12, 0.40),  # grande saison des pluies
         1: (0.02, 0.65),  # petite saison sèche
@@ -304,7 +260,7 @@ class GenerateurContexteExogene:
     def generer_evenements_pluie(self, seasons: np.ndarray) -> np.ndarray:
         """
         Génère des épisodes de pluie cohérents via chaîne de Markov.
-        Probabilités recalibrées pour un pas de 30 min (≈ 6× les valeurs 5 min).
+        Probabilités recalibrées pour un pas de 30 min (≈ 6x les valeurs 5 min).
         """
         nb_echantillons = len(seasons)
         indicateur_pluie = np.zeros(nb_echantillons, dtype=int)
@@ -357,21 +313,18 @@ class GenerateurContexteExogene:
         """
         Simule des délestages SBEE et coupures de secteur.
         Probabilités recalibrées pour un pas de 30 min.
-        Réseau volontairement clément (hypothèse : alimentation dédiée GDIZ, cf.
-        docs/data-generation.md) mais légèrement durci par rapport à la version
-        précédente : coupures en moyenne ~67 min (continuation = 0.55), toujours
-        loin des 10-15h que peut atteindre une coupure SBEE non dédiée.
+        Réseau volontairement clément (hypothèse : alimentation dédiée GDIZ).
         """
         heures = timestamps.hour.values
         nb_echantillons = len(timestamps)
 
-        probabilite_base = 0.0006  # ≈ 6× la valeur 5 min (0.0001)
+        probabilite_base = 0.0006  # ≈ 6x la valeur 5 min (0.0001)
         heures_pointe = np.isin(heures, [11, 12, 13, 14, 19, 20, 21, 22])
         probabilite_panne = np.where(heures_pointe, probabilite_base * 8, probabilite_base)
 
         coupure = (np.random.random(nb_echantillons) < probabilite_panne).astype(int)
 
-        # E[durée] = 1/(1-p) pas ≈ 2.2 pas ≈ 67 min (contre ~50 min avant durcissement)
+        # E[durée] = 1/(1-p) pas ≈ 2.2 pas ≈ 67 min
         for i in range(1, nb_echantillons):
             if coupure[i - 1] == 1 and np.random.random() < 0.55:
                 coupure[i] = 1
@@ -427,21 +380,15 @@ class EvolueurEtatMachine:
         self.df_global = df_global
         self.config = config or ConfigDonneesSynthetiques()
 
-        # RNG isolé par machine — évite toute pollution croisée des flux aléatoires
-        # Hash déterministe (md5) plutôt que hash() builtin : hash() est salé
-        # aléatoirement par process (PYTHONHASHSEED) sauf s'il est fixé explicitement,
-        # ce qui casserait la reproductibilité entre deux exécutions.
+        # RNG isolé par machine pour éviter toute pollution croisée des flux aléatoires
         hash_machine = int(hashlib.md5(id_machine.encode("utf-8")).hexdigest(), 16) % 10000
         graine_machine = self.config.graine_globale + hash_machine
         self.rng = np.random.default_rng(graine_machine)
 
-        # Fragilité individuelle (fragilite model) — tirée une fois par machine,
-        # n'affecte que le hasard de panne TWF, pas la vitesse d'usure elle-même.
         forme = self.config.forme_fragilite
         self.fragilite = float(self.rng.gamma(forme, 1.0 / forme))
 
-        # Seuil de rupture personnel (TWF) — variabilité unité-à-unité de fabrication :
-        # certaines machines cassent dès 65-75 % d'usure, d'autres tiennent jusqu'à 95-99 %.
+        # Seuil de rupture personnel (TWF) 
         self.seuil_use = self.config.seuil_min_use + self.config.plage_seuil_use * self.rng.beta(
             self.config.beta_a_seuil_use, self.config.beta_b_seuil_use
         )
@@ -460,7 +407,7 @@ class EvolueurEtatMachine:
 
     def _definir_parametres_machine(self):
         parametres_type = {
-            "L": {  # Entrée de gamme / Rustique — aucune protection électronique
+            "L": {  # Entrée de gamme / Rustique : aucune protection électronique
                 "multiplicateur_usure": 1.3,
                 "decalage_temperature_cible": 3.0,
                 "bruit_vibration": 0.25,
@@ -484,14 +431,10 @@ class EvolueurEtatMachine:
                 "decalage_temperature_cible": -2.0,
                 "bruit_vibration": 0.08,
                 "sensibilite_poussiere": 0.4,
-                # sensibilite_tension conservé pour la physique (usure, chaleur) :
-                # l'UPS ne supprime pas les effets physiques, il protège des pannes.
                 "sensibilite_tension": 2.0,
                 "malus_redemarrage_coupure": 0.2,
-                # Coupure réseau : l'UPS amortit la surtension → panne sur blackout rare
+                # Coupure réseau : l'UPS amortit la surtension -> panne sur blackout rare
                 "sensibilite_panne_coupure": 0.2,
-                # Instabilité routinière : l'onduleur absorbe les creux < blackout total
-                # sensibilité effective aux pannes électriques spontanées quasi nulle
                 "sensibilite_electrique_onduleur": 0.1,
             },
         }
@@ -506,12 +449,10 @@ class EvolueurEtatMachine:
         self.failure = np.zeros(self.nb_echantillons, dtype=int)
         self.mode_panne = np.full(self.nb_echantillons, "", dtype=object)
 
-        # Encrassement (point 7) et usure des roulements (point 11) : mêmes limites
-        # 0-100 % que usure_outil, mais accumulation et remise à neuf indépendantes.
+        # Encrassement et usure des roulements : mêmes limites, 
+        # mais accumulation et remise à neuf indépendantes
         self.encrassement = np.zeros(self.nb_echantillons)
         self.usure_roulements = np.zeros(self.nb_echantillons)
-        # Temps cumulé (h) passé dans la bande de rampe TWF (point 8) — remis à zéro
-        # à chaque visite de maintenance, quelle que soit la cause de la panne.
         self.heures_exposition_rampe = np.zeros(self.nb_echantillons)
 
         self.usure_outil[0] = self.rng.uniform(*self.config.plage_usure_initiale)
@@ -523,11 +464,7 @@ class EvolueurEtatMachine:
         pourcentage_stabilite = self.tableau_stabilite[idx] / 100.0
         ecart_tension = max(0, self.config.tension_nominale - self.tableau_tension[idx])
 
-        # 1. Vitesse & Couple — découplés : dans un atelier textile réel, la vitesse
-        # est gouvernée par le moteur et reste quasi constante une fois la machine
-        # lancée ; c'est la CHARGE (couple) qui varie avec l'activité/production, pas
-        # le régime moteur. (Avant : les deux étaient pilotés par niveau_activite,
-        # corrélation mesurée +0.94 — cf. docs/data-generation.md.)
+        # 1. Vitesse & Couple 
         vitesse_base = 1500.0
         self.vitesse_rotation[idx] = vitesse_base * (0.97 + 0.03 * pourcentage_stabilite)
         self.vitesse_rotation[idx] += self.rng.normal(0, 12)
@@ -538,7 +475,7 @@ class EvolueurEtatMachine:
         self.couple[idx] += self.rng.normal(0, 3)
         self.couple[idx] = max(0, self.couple[idx])
 
-        # 2. Usure cumulative (outil)
+        # 2a. Usure cumulative 
         usure_precedente = self.usure_outil[idx - 1]
         if redemarre_apres_coupure:
             usure_precedente = min(usure_precedente + self.params["malus_redemarrage_coupure"], 100)
@@ -549,30 +486,20 @@ class EvolueurEtatMachine:
         increment_usure *= dust_factor * voltage_factor
         self.usure_outil[idx] = min(usure_precedente + increment_usure, 100)
 
-        # 2b. Encrassement — accumulation indépendante liée à l'exposition à la
-        # poussière, remise à un résidu (residu_reinitialisation_encrassement) à chaque visite de
-        # maintenance (cf. _gerer_phase_arret). Alimente la chaleur, pas l'usure
-        # outil : deux canaux physiques distincts vers HDF vs TWF.
+        # 2b. Encrassement 
         increment_encrassement = (
             self.config.taux_base_encrassement * (self.tableau_poussiere[idx] / 100.0) * self.params["sensibilite_poussiere"]
         )
         self.encrassement[idx] = min(self.encrassement[idx - 1] + increment_encrassement, 100.0)
 
-        # 2c. Usure des roulements — second processus de dégradation, indépendant de
-        # l'usure outil : piloté par la vitesse (fatigue mécanique), pas la poussière
-        # ni le couple. Remis à zéro seulement quand OSF est la cause réparée
-        # (cf. _gerer_phase_arret).
+        # 2c. Usure des roulements
         ratio_vitesse = self.vitesse_rotation[idx] / vitesse_base
         increment_usure_roulements = (
             self.config.taux_base_usure_roulements * (ratio_vitesse**2) * self.params["multiplicateur_usure"]
         )
         self.usure_roulements[idx] = min(self.usure_roulements[idx - 1] + increment_usure_roulements, 100.0)
 
-        # 2d. Rampe terminale — temps cumulé passé dans la bande de rampe TWF (autour
-        # du seuil personnel). Continue de s'accumuler même quand usure_outil plafonne à
-        # 100 % : sans ça, le hasard de panne redevient un pur tirage mémoryless une
-        # fois l'usure saturée, invisible depuis les capteurs (cf. point 8 — condition
-        # nécessaire pour tout modèle de survie futur).
+        # 2d. Rampe terminale 
         dans_bande_rampe = self.usure_outil[idx] >= (self.seuil_use - self.config.bande_rampe_use)
         if dans_bande_rampe:
             step_hours = self.config.intervalle_minutes / 60.0
@@ -585,13 +512,11 @@ class EvolueurEtatMachine:
         # 3. Température Machine
         temperature_precedente = self.temperature_process[idx - 1]
         chaleur_electrique = (ecart_tension * 0.15) * self.params["sensibilite_tension"]
-        # Frottement accru par l'usure : dérive thermique supplémentaire, corrélée à
-        # la vibration — donne deux indicateurs précurseurs conjoints pour TWF.
         chaleur_usure = self.config.facteur_chaleur_usure * (self.usure_outil[idx] / 100.0)
         # Encrassement : dissipation thermique réduite par la poussière accumulée.
         chaleur_encrassement = self.config.facteur_chaleur_encrassement * (self.encrassement[idx] / 100.0)
         # Rampe terminale : chaleur additionnelle qui continue de croître avec le
-        # temps passé en zone critique, même quand usure_outil a plafonné.
+        # temps passé en zone critique, même quand usure outil a plafonné.
         chaleur_rampe = self.config.taux_chaleur_rampe_use * self.heures_exposition_rampe[idx]
         temperature_cible = (
             self.tableau_temperature_ambiante[idx]
@@ -613,9 +538,7 @@ class EvolueurEtatMachine:
             vibration_base += self.rng.uniform(3.0, 5.0) * self.params["multiplicateur_usure"]
         effet_usure = 4.5 * (usure_normalisee**2)
         effet_roulements = self.config.coeff_vibration_roulements * (usure_roulements_normalisee**2)
-        # Broutement d'outil (chatter) : s'amplifie avec le temps passé en zone
-        # critique — signal observable qui continue de monter même quand effet_usure
-        # a plafonné (point 8).
+
         effet_broutement = self.config.taux_broutement_use * self.heures_exposition_rampe[idx]
         bruit = self.rng.normal(0, self.params["bruit_vibration"])
         self.vibration[idx] = np.clip(vibration_base + effet_usure + effet_roulements + effet_broutement + bruit, 0.05, 15.0)
@@ -631,16 +554,9 @@ class EvolueurEtatMachine:
         couple = self.couple[idx]
         pourcentage_stabilite = self.tableau_stabilite[idx] / 100.0
 
-        # TWF — rampe lisse autour du seuil de rupture personnel de la machine
-        # (self.seuil_use, tiré une fois à l'initialisation) : pas de seuil
-        # universel, étalement réel du moment de panne entre machines fragiles et
-        # robustes. La fragilité (self.fragilite) module l'intensité de la rampe.
+        # TWF : rampe lisse autour du seuil de rupture personnel de la machine
         band = self.config.bande_rampe_use
         excess = max(0.0, (wear - (self.seuil_use - band)) / band)
-        # Facteur temporel : le hasard continue de croître avec le temps cumulé passé
-        # dans la bande de rampe, même quand `excess` a plafonné parce que l'usure est
-        # saturée à 100 % — sans ça, une fois saturée, la panne redevient un pur
-        # tirage mémoryless (cf. heures_exposition_rampe dans _mettre_a_jour_physique, point 8).
         facteur_temps = 1.0 + self.heures_exposition_rampe[idx] / self.config.demi_vie_heures_rampe_use
         twf = (
             self.config.coeff_risque_use
@@ -650,30 +566,24 @@ class EvolueurEtatMachine:
             * self.params["multiplicateur_usure"]
         )
 
-        # HDF — surchauffe soutenue sur une fenêtre glissante de ~4h, pas un pic
-        # instantané : la dissipation thermique insuffisante est un phénomène lent.
+        # HDF : surchauffe soutenue sur une fenêtre glissante de ~4h
         window = min(idx, self.config.pas_fenetre_shd)
         overheat = self.temperature_process[idx - window : idx + 1] - self.tableau_temperature_ambiante[idx - window : idx + 1]
         surchauffe_soutenue = max(0.0, float(overheat.mean()) - self.config.seuil_surchauffe_shd)
         hdf = self.config.coeff_risque_shd * surchauffe_soutenue**2
 
-        # OSF — surcharge mécanique : couple élevé combiné à une usure déjà
-        # significative. usure_normalisee**3 supprime naturellement le hasard à usure
-        # faible, sans seuil dur explicite. Combine usure outil et usure des
-        # roulements (second processus de dégradation indépendant, point 11) — pas
-        # seulement l'usure outil, sinon OSF ne fait que dupliquer le signal TWF.
+        # OSF : surcharge mécanique couple élevé combiné à une usure déjà significative
         usure_roulements_normalisee = self.usure_roulements[idx] / 100.0
         terme_usure_osf = (
             1.0 - self.config.poids_roulements_osf
         ) * usure_normalisee**3 + self.config.poids_roulements_osf * usure_roulements_normalisee**3
         osf = self.config.coeff_risque_sm * (couple / 45.0) * terme_usure_osf
 
-        # PWF — instabilité électrique routinière hors coupure franche (le choc
-        # de redémarrage après blackout est géré séparément dans evoluer_etats).
+        # PWF : instabilité électrique routinière hors coupure franche 
         sensibilite_electrique = self.params.get("sensibilite_electrique_onduleur", self.params["sensibilite_tension"])
         pwf = self.config.coeff_risque_pe * max(0.0, 1.0 - pourcentage_stabilite) * sensibilite_electrique
 
-        # RNF — risque résiduel irréductible, par construction sans précurseur.
+        # RNF : risque résiduel irréductible
         rnf = self.config.risque_base_pa
 
         return {"TWF": twf, "HDF": hdf, "OSF": osf, "PWF": pwf, "RNF": rnf}
@@ -712,21 +622,10 @@ class EvolueurEtatMachine:
 
         if fin_arret < self.nb_echantillons:
             cause = self.mode_panne[index_panne]
-            # Remise à neuf de l'outil — seulement si la panne réparée est l'outil
-            # lui-même (TWF). Les autres causes réparent un autre composant : l'usure
-            # de l'outil continue de s'accumuler sans être remise à zéro, sinon les
-            # pannes non-mécaniques interrompraient indéfiniment la montée en usure et
-            # TWF ne se déclencherait jamais.
             if cause == "TWF":
                 self.usure_outil[fin_arret - 1] = 0.0
-            # Remise à neuf des roulements — seulement si OSF est la cause réparée
-            # (même logique que TWF/usure_outil, second processus indépendant).
             if cause == "OSF":
                 self.usure_roulements[fin_arret - 1] = 0.0
-            # Toute visite de maintenance inclut un entretien de base, quelle que soit
-            # la cause : nettoyage partiel (encrassement ramené au plus à un résidu,
-            # jamais remonté artificiellement) et contrôle de sécurité (zone de rampe
-            # réinitialisée).
             self.encrassement[fin_arret - 1] = min(
                 self.encrassement[fin_arret - 1], self.config.residu_reinitialisation_encrassement
             )
@@ -736,10 +635,7 @@ class EvolueurEtatMachine:
 
     def _probabilite_maintenance_preventive(self, idx: int) -> float:
         """
-        Probabilité qu'une visite de maintenance préventive intercepte la machine à
-        ce pas — composante routine (calendaire, indépendante du risque) + composante
-        risque (usure/encrassement/roulements). Reste délibérément faible devant le
-        hasard de panne réel : l'interception est possible, pas garantie (imparfaite).
+        Probabilité qu'une visite de maintenance préventive intercepte la machine à ce pas.
         """
         score_risque = max(self.usure_outil[idx], self.encrassement[idx], self.usure_roulements[idx]) / 100.0
         return self.config.probabilite_base_preventive + self.config.coeff_risque_preventif * score_risque**2
@@ -774,8 +670,7 @@ class EvolueurEtatMachine:
             )
 
         if end < self.nb_echantillons:
-            # Service partiel — réduit sans remettre à neuf (contrairement à une
-            # réparation de panne, cf. _gerer_phase_arret).
+            # Service partiel 
             self.usure_outil[end - 1] *= 1.0 - self.config.reduction_usure_preventive
             self.usure_roulements[end - 1] *= 1.0 - self.config.reduction_usure_preventive
             self.encrassement[end - 1] = min(self.encrassement[end - 1], self.config.residu_reinitialisation_encrassement)
@@ -808,7 +703,7 @@ class EvolueurEtatMachine:
                 )
 
                 if self.tableau_coupures[idx - 1] == 0:
-                    # L=4%, M=3.2%, H=0.8% — H protégé par l'UPS au choc de coupure
+                    # L=4%, M=3.2%, H=0.8% : H protégé par l'UPS au choc de coupure
                     probabilite_choc_electrique = 0.04 * self.params["sensibilite_panne_coupure"]
                     if self.rng.random() < probabilite_choc_electrique:
                         self.failure[idx] = 1
@@ -818,7 +713,7 @@ class EvolueurEtatMachine:
 
             redemarre_apres_coupure = self.tableau_coupures[idx - 1] == 1
 
-            # Arrêts planifiés (week-end, activité nulle)
+            # Arrêts planifiés : week-end, activité nulle
             if self.tableau_niveau_activite[idx] == 0.0:
                 self.vitesse_rotation[idx] = 0.0
                 self.couple[idx] = 0.0
@@ -905,7 +800,7 @@ class AgregateurDonnees:
             end = min(s + duration, n)
             if mode == "nan":
                 out[s:end] = np.nan
-            else:  # "stuck" — valeur d'origine (pré-corruption) au début de la rafale
+            else:  # "stuck" : valeur d'origine au début de la rafale
                 out[s:end] = values[s]
             affected += end - s
         return out, affected
@@ -914,7 +809,7 @@ class AgregateurDonnees:
         """
         Dérive de calibration : biais qui croît linéairement (rampe 0 → max) sur la
         durée de l'événement, signe aléatoire, amplitude proportionnelle à l'écart-type
-        du capteur — pas de valeur manquante, un biais silencieux, plus difficile à
+        du capteur. pas de valeur manquante, un biais silencieux, plus difficile à
         repérer qu'un NaN.
         """
         n = len(values)
@@ -946,7 +841,7 @@ class AgregateurDonnees:
         Simule des défaillances de capteurs IoT réalistes plutôt qu'un MCAR uniforme
         (une cellule isolée sur deux sans lien avec les autres, le cas le plus facile
         à imputer) : rafales de paquets perdus, capteurs figés, dérive de calibration.
-        Généré indépendamment par (machine, capteur) — pas par cellule.
+        Généré indépendamment par (machine, capteur).
         """
         df_copy = df.copy()
         colonnes_capteurs = [
@@ -964,9 +859,6 @@ class AgregateurDonnees:
         if not colonnes_capteurs or "id_machine" not in df_copy.columns or df_copy.empty:
             return df_copy
 
-        # Extraction explicite en float → corruption → réassignation propre. copy=True :
-        # sous pandas 3.x (copy-on-write par défaut), to_numpy() sans copie explicite
-        # peut renvoyer un tableau read-only et faire échouer l'affectation ci-dessous.
         donnees_capteurs = df_copy[colonnes_capteurs].to_numpy(dtype=float, copy=True)
 
         n_nan = n_stuck = n_drift = 0
@@ -1052,16 +944,12 @@ class OrchestrateurDatasetSynthetique:
         self.config = ConfigDonneesSynthetiques()
         if graine_aleatoire is not None:
             self.config.graine_globale = graine_aleatoire
-        # Pas de np.random.seed() ici : GenerateurContexteExogene.__init__ reseed
-        # déjà avec self.config.graine_globale juste après — l'appel ici était redondant
-        # et source de confusion sur la source de vérité du seed.
 
     def generer(self) -> pd.DataFrame:
         generateur_exogene = GenerateurContexteExogene(self.config)
         df_global = generateur_exogene.generer_contexte_global()
 
-        # Distribution déterministe, aussi équilibrée que possible entre les 3 types
-        # (L, M, H) : 17/17/16 pour 50 machines (50 n'est pas un multiple de 3).
+        # (L, M, H) : 17/17/16 pour 50 machines.
         cycle_types_machine = ["L", "M", "H"]
         qualite_type_machine = {mid: cycle_types_machine[i % 3] for i, mid in enumerate(self.config.ids_machines)}
 

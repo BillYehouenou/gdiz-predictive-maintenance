@@ -1,9 +1,8 @@
 """
-Baselines de référence — uv run python scripts/run_baseline_comparison.py
+Baselines de référence 
 
-Point 23 : le modèle LightGBM doit battre une règle triviale ("usure > seuil") et
-une régression logistique, sur la métrique événementielle (recall @ budget de
-fausses alertes) — pas juste exister. Résultats dans docs/experiments.md.
+Le modèle LightGBM doit battre une règle triviale et une régression logistique, 
+sur la métrique événementielle (recall @ budget de fausses alertes).
 """
 
 import logging
@@ -27,7 +26,7 @@ from src.train import (
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-GRILLE_SEUILS_REGLE = np.arange(5.0, 100.0, 1.0)  # sur l'échelle brute de usure_outil (%), pas une probabilité
+GRILLE_SEUILS_REGLE = np.arange(5.0, 100.0, 1.0)  # sur l'échelle brute de usure_outil, pas une probabilité
 GRILLE_SEUILS_RL = np.arange(0.005, 0.95, 0.005)
 
 
@@ -79,7 +78,7 @@ def main():
     probas_val_regle = X_val["usure_outil"].to_numpy()
     probas_test_regle = X_test["usure_outil"].to_numpy()
     evaluer_baseline(
-        "Règle (usure_outil > seuil)", probas_val_regle, probas_test_regle, meta_validation, meta_test, GRILLE_SEUILS_REGLE
+        "Règle triviale", probas_val_regle, probas_test_regle, meta_validation, meta_test, GRILLE_SEUILS_REGLE
     )
 
     # 2. Régression logistique : même preprocessing que le modèle principal, pas

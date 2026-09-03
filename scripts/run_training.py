@@ -9,7 +9,7 @@ if __name__ == "__main__":
     chargeur = ChargeurDonnees()
     df = chargeur.charger_donnees_brutes()
 
-    # Calibré pour cible_h120_predictible : sans class_weight (le rééquilibrage "balanced" dégradait le F2 sur ce label),
+    # Calibré pour cible_h120_predictible : sans class_weight,
     # peu de feuilles + forte régularisation pour éviter l'overfit sur un signal rare.
     model = LGBMClassifier(
         n_estimators=150,

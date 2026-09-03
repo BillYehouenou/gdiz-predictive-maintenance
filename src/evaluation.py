@@ -3,10 +3,9 @@ Métrique événementielle : remplace le F2 par-pas de temps comme boussole du p
 
 Deux chiffres qui comptent, pas un score composite abstrait :
 - recall événementiel : part des pannes réelles précédées d'au moins une alerte
-  dans les `pas_horizon` pas qui précèdent.
+  dans les X pas qui précèdent.
 - taux de fausses alertes par machine-jour, compté en épisodes (une alerte continue
-  sur une même machine = un seul événement, correspondant à une intervention), pas
-  en pas de temps — un épisode de 10h ne pèse pas 20 "fausses alertes".
+  sur une même machine = un seul événement, correspondant à une intervention).
 """
 
 import numpy as np
@@ -15,12 +14,8 @@ import pandas as pd
 from src.features import MODES_PANNE_PREDICTIBLES
 
 # Délai de réarmement par défaut (24h = 48 pas de 30 min) : au-delà de cette durée,
-# un épisode d'alerte continu est redécoupé en plusieurs épisodes. Sans ça, un
-# modèle qui reste bloqué en alerte pendant des mois ne compte jamais que comme UN
-# épisode — angle mort vérifié empiriquement (cf. docs/model-decisions.md) qui
-# permet à un modèle inutilisable (alerte quasi permanente) d'obtenir un taux de
-# fausses alertes proche de zéro. 24h = un technicien qui n'a pas résolu l'alerte
-# en une journée justifie un nouveau signalement, pas un silence indéfini.
+# un épisode d'alerte continu est redécoupé en plusieurs épisodes. Sans ça, un modèle 
+# qui reste bloqué en alerte pendant des mois ne compte jamais que comme UN épisode.
 PAS_MAX_EPISODE_DEFAUT = 48
 
 
@@ -28,9 +23,9 @@ def _episodes_alerte(
     indicateurs_alerte: np.ndarray, pas_max_episode: int | None = PAS_MAX_EPISODE_DEFAUT
 ) -> list[tuple[int, int]]:
     """
-    Runs consécutifs à 1 dans un vecteur binaire trié par temps — (start_idx, end_idx)
-    inclusifs. `pas_max_episode` : redécoupe tout run plus long que cette durée
-    (délai de réarmement, cf. commentaire du module) ; None désactive le redécoupage.
+    Runs consécutifs à 1 dans un vecteur binaire trié par temps.
+    pas_max_episode : redécoupe tout run plus long que cette durée.
+    None : désactive le redécoupage.
     """
     if indicateurs_alerte.sum() == 0:
         return []
@@ -62,17 +57,15 @@ def metriques_evenementielles(
     pas_max_episode: int | None = PAS_MAX_EPISODE_DEFAUT,
 ) -> dict:
     """
-    df : doit contenir id_machine, timestamp, panne, mode_panne, aligné index à
-    index avec `probas` (même longueur, même ordre — pas besoin d'être pré-trié).
+    df : doit contenir id_machine, timestamp, panne, mode_panne, aligné index à index avec probas.
 
     Pour chaque panne réelle, cherche le dernier épisode d'alerte qui chevauche la
     fenêtre [panne - pas_horizon, panne] sur la même machine : s'il existe, la
     panne est "attrapée" et le préavis = temps entre le début de cet épisode et la
     panne. Les épisodes non associés à une panne sont des fausses alertes.
 
-    `pas_max_episode` : délai de réarmement (cf. PAS_MAX_EPISODE_DEFAUT) — un
-    épisode continu plus long est redécoupé, pour qu'un modèle en alerte quasi
-    permanente ne soit pas artificiellement bien noté.
+    pas_max_episode : délai de réarmement - un épisode continu plus long est redécoupé, 
+    pour qu'un modèle en alerte quasi permanente ne soit pas artificiellement bien noté.
     """
     if len(df) != len(probas):
         raise ValueError(f"df et probas doivent avoir la même longueur ({len(df)} vs {len(probas)}).")

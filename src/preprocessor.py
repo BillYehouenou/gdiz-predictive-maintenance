@@ -36,16 +36,11 @@ class Preprocesseur(BaseEstimator, TransformerMixin):
         """
         logger.info("Fitting du pipeline de preprocessing en cours...")
 
-        # 1. Variables numériques : imputation seule. Pas de StandardScaler — les
-        # arbres de décision (LightGBM) sont invariants à toute transformation
-        # monotone des features numériques, la standardisation n'apporte rien et
-        # ajoute un artefact inutile à maintenir/expliquer.
+        # Variables numériques : imputation seule.
         transformateur_numerique = SimpleImputer(strategy="median")
 
-        # 2. Variables catégorielles : encodage ordinal + dtype 'category' plutôt que
-        # one-hot — LightGBM gère nativement les colonnes catégorielles (meilleurs
-        # splits, pas d'explosion de dimension). unknown_value=-1 gère les catégories
-        # jamais vues à l'entraînement sans lever d'erreur.
+        # Variables catégorielles : encodage ordinal + dtype 'category' plutôt que
+        # one-hot. LightGBM gère nativement les colonnes catégorielles
         transformateur_categoriel = Pipeline(
             steps=[
                 ("imputer", SimpleImputer(strategy="most_frequent")),
@@ -64,11 +59,6 @@ class Preprocesseur(BaseEstimator, TransformerMixin):
         variables_existantes = [col for col in self.all_features if col in X.columns]
         self.pipeline.fit(X[variables_existantes])
 
-        # Catégories figées à l'issue du fit : LightGBM interprète les *codes* pandas
-        # 'category' pour choisir ses splits, qui doivent rester stables d'un appel à
-        # l'autre — sans ça, un lot de prédiction ne contenant qu'un sous-ensemble des
-        # catégories vues à l'entraînement se retrouverait ré-indexé différemment
-        # (bug silencieux, pas une erreur).
         encodeur_ordinal = self.pipeline.named_transformers_["cat"].named_steps["ordinal"]
         self._types_categoriels = {
             f"cat__{col}": pd.CategoricalDtype(categories=list(range(len(categories))) + [-1])
@@ -89,10 +79,7 @@ class Preprocesseur(BaseEstimator, TransformerMixin):
         logger.info("Transformation des données en cours...")
         variables_existantes = [col for col in self.all_features if col in X.columns]
         result = self.pipeline.transform(X[variables_existantes])
-        # getattr défensif : un modèle sérialisé par une version antérieure de cette
-        # classe (avant l'ajout du typage catégoriel natif) n'a pas cet attribut sur
-        # l'instance restaurée par pickle — sans ce filet, tout modèle déjà déployé
-        # planterait à la première prédiction suivant un déploiement de ce fichier.
+        
         for col, dtype in getattr(self, "_types_categoriels", {}).items():
             result[col] = result[col].astype(int).astype(dtype)
         result.index = X[variables_existantes].index

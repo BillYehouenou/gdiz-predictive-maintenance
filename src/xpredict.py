@@ -55,18 +55,10 @@ class Predicteur:
                 t = json.load(f)["threshold"]
             logger.info(f"Seuil de décision chargé : {t:.4f}")
             return float(t)
-        logger.warning(f"Seuil non trouvé dans {self.chemin_seuil} — utilisation du seuil par défaut 0.5")
+        logger.warning(f"Seuil non trouvé dans {self.chemin_seuil}. Utilisation du seuil par défaut 0.5")
         return SEUIL_DEFAUT
 
     def predire(self, data: pd.DataFrame) -> pd.DataFrame:
-        """
-        Le pipeline chargé produit déjà des probabilités calibrées (calibration
-        isotonique ajustée en entraînement sur la validation, cf. src/train.py) —
-        pas de recentrage logit ad hoc ici : `probabilite_panne` est directement
-        interprétable, `prediction` est la décision au seuil optimal (choisi pour
-        respecter le budget de fausses alertes, pas nécessairement proche de 0,5 —
-        les pannes restent un événement rare).
-        """
         if self.pipeline is None:
             raise ValueError("Le modèle n'est pas chargé.")
 

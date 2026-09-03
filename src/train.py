@@ -30,25 +30,19 @@ from src.preprocessor import Preprocesseur
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# Validation : sert uniquement à choisir le seuil, jamais à entraîner ni à rapporter
-# les métriques finales — le split à 3 voies évite le biais optimiste d'un seuil
-# ajusté sur les données mêmes qui servent à le rapporter (point 16 de la roadmap).
+# Validation : sert uniquement à choisir le seuil
 DATE_COUPURE_VALIDATION = "2024-10-01"
 DATE_COUPURE = "2025-01-01"
 CHEMIN_SEUIL = "models/seuil_optimal.json"
 ALIAS_CHAMPION = "champion"
 METRIQUE_PROMOTION = "recall_evenementiel"
 
-# Horizon événementiel : aligné sur cible_h120_predictible (cf. config/config.yaml).
-# Des horizons différenciés par mode ont été testés et invalidés empiriquement sur ce
-# jeu_donnees — cf. docs/model-decisions.md. L'horizon unique reste la cible active.
+# Horizon événementiel : aligné sur cible_h120_predictible
 HEURES_HORIZON_EVENEMENT = 120
 PAS_HORIZON_EVENEMENT = HEURES_HORIZON_EVENEMENT * 2  # pas de 30 min
 
 # Budget de fausses alertes : combien de dérangements par machine et par jour
-# l'équipe de maintenance accepte pour une alerte qui ne mène à rien. Remplace le
-# F2 comme objectif de sélection du seuil (point 17/24) — cf. docs/experiments.md
-# pour la courbe recall/FA mesurée qui justifie cette valeur.
+# l'équipe de maintenance accepte pour une alerte qui ne mène à rien
 BUDGET_FAUSSES_ALERTES_PAR_MACHINE_JOUR = 0.2
 GRILLE_SEUILS = np.arange(0.005, 0.50, 0.005)
 
@@ -64,11 +58,7 @@ class PipelineModele:
 
     def _split_temporel(self, df: pd.DataFrame):
         """
-        Split temporel à 3 voies : train (< DATE_COUPURE_VALIDATION), validation
-        ([DATE_COUPURE_VALIDATION, DATE_COUPURE) — sert uniquement à choisir le seuil),
-        test (>= DATE_COUPURE — jamais vu avant le rapport final). Le seuil est choisi
-        sur la validation, pas sur le test, pour éviter le biais optimiste d'un seuil
-        ajusté sur les données mêmes qui servent à le rapporter.
+        Split temporel à 3 voies : train, validation et test.
         """
         if "timestamp" not in df.columns:
             raise ValueError("La colonne 'timestamp' est requise pour le split temporel.")
@@ -115,8 +105,8 @@ class PipelineModele:
     def _promouvoir_si_meilleur(self, nom_modele: str, nouvelle_version: str, nouveau_score: float) -> bool:
         """
         Gate de promotion : la nouvelle version ne devient '@champion' que si elle égale
-        ou dépasse le champion actuel sur METRIQUE_PROMOTION. Sans champion existant
-        (premier entraînement), la promotion est automatique. Évite qu'un ré-entraînement
+        ou dépasse le champion actuel sur la métrique de promotion. Sans champion existant
+        (1er entraînement), la promotion est automatique. Évite qu'un ré-entraînement
         dégradé ne remplace silencieusement le modèle servi en production.
         """
         try:
@@ -135,15 +125,15 @@ class PipelineModele:
 
         logger.warning(
             f"Version {nouvelle_version} ({METRIQUE_PROMOTION}={nouveau_score:.4f}) n'a pas dépassé le champion actuel "
-            f"(version {champion.version}, {METRIQUE_PROMOTION}={score_champion:.4f}) — champion conservé."
+            f"(version {champion.version}, {METRIQUE_PROMOTION}={score_champion:.4f}) - champion conservé."
         )
         return False
 
     def lancer_entrainement(self, model, train_df: pd.DataFrame, nom_modele: str, hyperparametres: dict):
         """
-        Pipeline d'entraînement complet : split temporel à 3 voies - fit - seuil choisi
-        sur validation (recall événementiel sous budget de fausses alertes) - métriques
-        rapportées sur test - MLflow.
+        Pipeline d'entraînement complet : split temporel à 3 voies --> fit --> seuil choisi
+        sur validation (recall événementiel sous budget de fausses alertes) --> métriques
+        rapportées sur test --> MLflow.
         """
         mlflow.set_experiment(self.config["mlflow"]["nom_experience"])
         logger.info("Début du pipeline d'entraînement...")
@@ -163,12 +153,7 @@ class PipelineModele:
 
             probas_brutes_test = pipeline_complet.predict_proba(X_test)[:, 1]
 
-            # Calibration isotonique des probabilités, ajustée sur la validation —
-            # remplace le recentrage logit ad hoc de Predicteur._normalize_probability
-            # (qui ne faisait que déplacer artificiellement le seuil sur 50 %, sans
-            # rendre les probabilités elles-mêmes interprétables). FrozenEstimator :
-            # le pipeline est déjà entraîné, seule la calibration doit être fittée
-            # (point 22).
+            # Calibration isotonique des probabilités, ajustée sur la validation
             calibreur = CalibratedClassifierCV(FrozenEstimator(pipeline_complet), method="isotonic")
             calibreur.fit(X_val, y_val)
 
@@ -179,7 +164,7 @@ class PipelineModele:
             brier_calibre = brier_score_loss(y_test, probas_test)
             logger.info(f"Brier score (test) — brut: {brier_brut:.4f} | calibré: {brier_calibre:.4f}")
 
-            # Seuil choisi sur la validation, jamais sur le test (point 16).
+            # Seuil choisi sur la validation, jamais sur le test
             meta_validation = train_df.loc[X_val.index, ["id_machine", "timestamp", "panne", "mode_panne"]]
             seuil_optimal, metriques_evenement_validation = trouver_seuil_pour_budget_fa(
                 meta_validation, probas_validation, GRILLE_SEUILS, PAS_HORIZON_EVENEMENT, BUDGET_FAUSSES_ALERTES_PAR_MACHINE_JOUR
@@ -190,7 +175,7 @@ class PipelineModele:
                 f"FA/machine/jour={metriques_evenement_validation['taux_fausses_alertes_par_machine_jour']:.3f}"
             )
 
-            # Métriques rapportées sur le test, jamais utilisé pour choisir le seuil.
+            # Métriques rapportées sur le test, jamais utilisé pour choisir le seuil
             meta_test = train_df.loc[X_test.index, ["id_machine", "timestamp", "panne", "mode_panne"]]
             metriques_evenement_test = metriques_evenementielles(meta_test, probas_test, seuil_optimal, PAS_HORIZON_EVENEMENT)
             y_predit = (probas_test >= seuil_optimal).astype(int)
@@ -228,9 +213,6 @@ class PipelineModele:
             self._loguer_matrice_confusion(y_test.values, y_predit)
             self._loguer_importances_variables(pipeline_complet)
 
-            # C'est le pipeline CALIBRÉ qui est sauvegardé/loggé — predict_proba()
-            # dessus renvoie déjà des probabilités calibrées, plus besoin du
-            # recentrage logit ad hoc côté service (cf. src/xpredict.py).
             info_modele = mlflow.sklearn.log_model(
                 sk_model=calibreur,
                 name="model_pipeline",

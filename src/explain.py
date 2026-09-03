@@ -1,9 +1,7 @@
 import pandas as pd
 import shap
 
-# Regroupement des 31 features techniques en familles physiques lisibles — la
-# question métier n'est pas "quelle colonne a le plus contribué" mais "quel
-# phénomène physique pousse cette alerte" (usure, surchauffe, surcharge...).
+# Quel phénomène physique pousse cette alerte ? (usure, surchauffe, surcharge...)
 FAMILLES_FEATURES: dict[str, list[str]] = {
     "Usure de l'outil": ["usure_outil", "usure_outil_delta_24h", "usure_outil_delta_4h"],
     "Surchauffe": [
@@ -41,14 +39,8 @@ FAMILLES_FEATURES: dict[str, list[str]] = {
 class ExplicateurCause:
     """
     Explique une alerte par contribution SHAP agrégée en familles physiques
-    (point 33 de la roadmap) — délibérément PAS un diagnostic TWF/HDF/OSF : l'étage
-    2 testé séparément pour ça (classifieur multi-classe sur les lignes pré-panne)
-    est trop instable pour être exposé (accuracy validation 46,8 %, OSF quasi jamais
-    reconnu à 5 % de recall — cf. docs/model-decisions.md, section "Étage 2"), et son
-    code a depuis été retiré. SHAP répond à une question différente et toujours
-    fiable : "qu'est-ce qui, dans les capteurs de CETTE machine, pousse le modèle
-    vers panne ?" — disponible pour toute prédiction, pas seulement pour les modes
-    de panne bien représentés dans les données d'entraînement.
+    SHAP répond à cette question : "qu'est-ce qui, dans les capteurs de 
+    CETTE machine, pousse le modèle vers CETTE panne ?".
     """
 
     def __init__(self, pipeline_calibre):
