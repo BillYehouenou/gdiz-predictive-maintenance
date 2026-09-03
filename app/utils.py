@@ -26,10 +26,7 @@ predicteur = Predicteur(utiliser_mlflow=True)
 
 def recharger_modele() -> dict:
     """
-    Recharge le champion `@champion` courant sans redémarrer le processus API
-    (point 27 roadmap) — le `Predictor` global se chargeait à l'import, ce qui
-    contredisait l'intérêt de la gate de promotion : un nouveau champion promu par
-    `make train` restait invisible côté API tant que le service n'était pas relancé.
+    Recharge le champion `@champion` courant sans redémarrer le processus API.
     """
     global predicteur
     predicteur = Predicteur(utiliser_mlflow=True)
@@ -39,8 +36,7 @@ def recharger_modele() -> dict:
 
 def _recuperer_historique_machine(id_machine: str) -> pd.DataFrame:
     """
-    Charge les 48 dernières lignes d'une machine depuis DuckDB (ordre ASC, 24h) —
-    couvre toutes les fenêtres glissantes actives de src/features.py.
+    Charge les 48 dernières lignes d'une machine depuis DuckDB.
     """
     try:
         with duckdb.connect(str(_DB_PATH), read_only=True) as conn:
@@ -67,15 +63,12 @@ def _loguer_mlflow(
 ) -> None:
     """
     Log une prédiction dans MLflow.
-    Expérience dédiée au monitoring — séparée de l'expérience d'entraînement.
+    Expérience dédiée au monitoring. Séparée de l'expérience d'entraînement.
     Tags id_machine + niveau_alerte permettent un filtrage direct dans l'UI.
     """
     try:
         mlflow.set_experiment("GDIZ_Monitoring_Predictions")
-        # Seuils dérivés du seuil de décision réel (probabilités calibrées, cf.
-        # docs/model-decisions.md) plutôt que des bornes fixes 0,35/0,50 — un modèle
-        # calibré sur un événement rare (~3 % de base) a un seuil optimal typiquement
-        # bien plus bas que 0,5.
+        # Seuils dérivés du seuil de décision réel 
         threshold = predicteur.threshold
         niveau_alerte = "high" if probability >= threshold * 3 else ("medium" if probability >= threshold else "normal")
         with mlflow.start_run(
@@ -94,7 +87,7 @@ def _loguer_mlflow(
                     "usure_outil": float(features.get("usure_outil", 0)),
                     "vibration": float(features.get("vibration", 0)),
                     "temperature_process": float(features.get("temperature_process", 0)),
-                    # Features temporelles — signal de dégradation
+                    # Features temporelles + signal de dégradation
                     "usure_outil_delta_24h": float(features.get("usure_outil_delta_24h", 0)),
                     "vibration_max_24h": float(features.get("vibration_max_24h", 0)),
                     "temperature_process_max_24h": float(features.get("temperature_process_max_24h", 0)),
@@ -106,11 +99,9 @@ def _loguer_mlflow(
 
 def traiter_prediction(dict_donnees_machine: dict, background_tasks: BackgroundTasks | None = None) -> dict:
     """
-    Valide, enrichit temporellement si id_machine fourni, prédit, log dans MLflow et
-    retourne le résultat. `background_tasks` (point 26 roadmap) : si fourni (chemin
-    API), le log MLflow s'exécute après l'envoi de la réponse plutôt que de bloquer
-    la requête sur l'I/O MLflow ; sans lui (appel direct, scripts), le log reste
-    synchrone pour ne pas silencieusement perdre l'écriture.
+    Valide, enrichit temporellement si id_machine fourni, prédit, log dans MLflow et retourne le résultat.
+    Background_tasks : si fourni, le log MLflow s'exécute après l'envoi de la réponse plutôt que de bloquer
+    la requête sur l'I/O MLflow. Sans lui, le log reste synchrone pour ne pas perdre l'écriture.
     """
     id_machine: str | None = dict_donnees_machine.pop("id_machine", None)
     features = dict(dict_donnees_machine)

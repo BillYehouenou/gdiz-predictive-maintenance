@@ -1,7 +1,5 @@
 import logging
-
 from fastapi import APIRouter, BackgroundTasks, FastAPI, HTTPException
-
 from app import utils
 from app.schemas import DonneesMachine, InfoModele, ReponsePrediction, ReponseRechargement
 
@@ -10,7 +8,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="GDIZ Maintenance Prédictive API",
     description="API de maintenance prédictive pour les machines textiles GDIZ Bénin",
-    version="1.0.0",
+    version="2.0.0",
 )
 
 router = APIRouter(prefix="/api/v1")
@@ -35,8 +33,7 @@ def predire(data: DonneesMachine, background_tasks: BackgroundTasks):
 @router.post("/predict/batch", response_model=list[ReponsePrediction])
 def predire_lot(donnees: list[DonneesMachine], background_tasks: BackgroundTasks):
     """
-    Prédit sur plusieurs machines en un seul appel — usage naturel pour un parc de
-    50 machines relevées toutes les 30 min plutôt que 50 appels /predict séparés.
+    Prédit sur plusieurs machines en un seul appel.
     """
     try:
         return [utils.traiter_prediction(d.model_dump(), background_tasks=background_tasks) for d in donnees]
@@ -58,8 +55,8 @@ def info_modele():
 @router.post("/reload", response_model=ReponseRechargement)
 def recharger():
     """
-    Recharge le champion `@champion` courant sans redémarrer le service (point 27) —
-    à appeler après un `make train` qui promeut une nouvelle version.
+    Recharge le champion `@champion` courant sans redémarrer le service.
+    A appeler après un `make train` qui promeut une nouvelle version.
     """
     try:
         info = utils.recharger_modele()
