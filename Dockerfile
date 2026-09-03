@@ -20,8 +20,7 @@ RUN uv sync --frozen --no-cache
 # Copie de tout le code source et des dossiers nécessaires
 COPY . .
 
-# Exécution en utilisateur non-root (hardening) — /app/mlflow accueille le volume
-# nommé mlflow_data du service mlflow, créé ici pour qu'il hérite du bon propriétaire.
+# Exécution en utilisateur non-root (hardening) 
 RUN mkdir -p /app/mlflow && \
     useradd --create-home --shell /bin/bash appuser && \
     chown -R appuser:appuser /app

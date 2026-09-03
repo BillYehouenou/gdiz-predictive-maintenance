@@ -1,8 +1,6 @@
 # Variables d'environnement
 PROJECT_ROOT := $(shell pwd)
 PYTHONPATH   := $(PROJECT_ROOT)
-# PYTHONHASHSEED fixé : défense en profondeur pour la reproductibilité de la
-# génération de données (cf. scripts/generate_synthetic_data.py, hash md5 déterministe).
 UV_RUN       := PYTHONHASHSEED=0 PYTHONPATH=$(PYTHONPATH) uv run
 PORT         ?= 8501
 
@@ -23,7 +21,7 @@ help:  ## Affiche ce message d'aide
 install:  # installe les dépendances de production
 	uv sync --frozen
 
-install-dev:  # installe toutes les dépendances (dont dev/test)
+install-dev:  # installe toutes les dépendances (dont ceux de l'environnement de dev)
 	uv sync --frozen --group dev
 
 # Données & Entraînement
@@ -33,9 +31,9 @@ generate-data:  # Génère le dataset synthétique GDIZ (DuckDB + Parquet)
 train:  # Entraîne le modèle LightGBM et enregistre l'expérience MLflow
 	$(UV_RUN) python scripts/run_training.py
 
-pipeline: generate-data train  # Régénère les données puis entraîne le modèle (CI complet)
+pipeline: generate-data train  # Régénère les données puis entraîne le modèle
 
-check-drift:  # Compare la distribution des features en production à celle de l'entraînement (KS-test)
+check-drift:  # Compare la distribution des features en production à celle de l'entraînement
 	$(UV_RUN) python scripts/check_drift.py
 
 # Qualité du code 
@@ -51,16 +49,16 @@ format:  # formate le code automatiquement (ruff)
 test:  # lance la suite de tests avec coverage
 	$(UV_RUN) pytest tests/ -v --cov=src --cov=app --cov-report=term-missing
 
-check: lint test  # lint + tests — gate CI avant merge
+check: lint test  # lint + tests : gate CI avant merge
 
 # Serveurs locaux
-serve:  # Démarre l'API FastAPI en mode développement (port 8000)
+serve:  # Démarre l'API FastAPI en mode développement
 	$(UV_RUN) uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-dashboard:  # Démarre le dashboard Streamlit (port $(PORT), surchargeable avec PORT=8502)
+dashboard:  # Démarre le dashboard Streamlit 
 	$(UV_RUN) streamlit run dashboard.py --server.port $(PORT)
 
-mlflow-ui:  # Ouvre l'UI MLflow en lecture (port 5000)
+mlflow-ui:  # Ouvre l'UI MLflow en lecture 
 	$(UV_RUN) mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5000
 
 # Docker
