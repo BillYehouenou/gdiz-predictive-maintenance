@@ -13,9 +13,8 @@ def test_valider_donnees_brutes_laisse_passer_donnees_saines():
 
 def test_valider_donnees_brutes_tolere_derive_de_calibration():
     """
-    La dérive de calibration injectée par le générateur n'est pas bornée par
-    construction (cf. docs/data-generation.md) — usure_outil peut légitimement
-    passer sous 0 dans le dataset officiel. La validation ne doit pas planter dessus.
+    La dérive de calibration injectée par le générateur n'est pas bornée par construction. 
+    usure_outil peut légitimement passer sous 0 dans le dataset officiel. La validation ne doit pas planter dessus.
     """
     df = pd.DataFrame({"usure_outil": [-11.4, 50.0], "vibration": [-0.8, 2.0]})
     resultat = valider_donnees_brutes(df)

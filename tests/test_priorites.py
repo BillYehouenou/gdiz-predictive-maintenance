@@ -37,8 +37,6 @@ def _predicteur_factice(seuil: float, proba_par_machine: dict) -> MagicMock:
     predicteur.threshold = seuil
 
     def predire(df):
-        # Le test contrôle la probabilité renvoyée en la faisant dépendre de l'usure
-        # de la dernière ligne, pour que chaque machine du test ait une proba distincte.
         usure = float(df["usure_outil"].iloc[0])
         proba = proba_par_machine.get(round(usure, 4), 0.01)
         return pd.DataFrame({"prediction": [int(proba >= seuil)], "probabilite_panne": [proba]})
@@ -83,8 +81,6 @@ def test_calculer_priorites_parc_trie_par_risque_decroissant():
 
 
 def test_calculer_priorites_parc_fenetre_qualitative_pas_dheure_precise():
-    """Point 34 roadmap : jamais d'heure/délai précis inventé — seulement une
-    fenêtre qualitative, différenciée par intensité du risque."""
     m1 = _historique_machine("M1", "L")
     proba = round(m1["usure_outil"].iloc[-1], 4)
     predicteur = _predicteur_factice(seuil=0.1, proba_par_machine={proba: 0.9})
@@ -94,7 +90,7 @@ def test_calculer_priorites_parc_fenetre_qualitative_pas_dheure_precise():
 
     fenetre = resultat.iloc[0]["fenetre"]
     assert "Risque élevé" in fenetre
-    # Aucune heure précise (ex. "37h", "14:32") — seulement une fenêtre qualitative en jours.
+    # Aucune heure précise (ex. "37h", "14:32"), seulement une fenêtre qualitative en jours.
     assert not re.search(r"\d+\s*h\b|\d+:\d+", fenetre)
 
 

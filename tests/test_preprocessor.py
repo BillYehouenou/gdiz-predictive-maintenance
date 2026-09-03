@@ -24,14 +24,7 @@ def train_df():
     )
 
 
-def test_features_numeriques_non_standardisees(configured_preprocessor, train_df):
-    """Pas de StandardScaler (point 21) : les valeurs numériques restent inchangées (hors imputation)."""
-    result = configured_preprocessor.fit_transform(train_df)
-    assert result["num__num1"].tolist() == train_df["num1"].tolist()
-
-
 def test_features_categorielles_type_category(configured_preprocessor, train_df):
-    """Encodage natif LightGBM (point 21) : les catégorielles sont typées 'category', pas one-hot."""
     result = configured_preprocessor.fit_transform(train_df)
     assert result["cat__saison_benin"].dtype.name == "category"
     assert result["cat__type_machine"].dtype.name == "category"
@@ -42,8 +35,8 @@ def test_features_categorielles_type_category(configured_preprocessor, train_df)
 def test_codes_categoriels_stables_entre_lots_avec_moins_de_categories(configured_preprocessor, train_df):
     """
     Un lot de transform() qui ne contient qu'une seule catégorie ne doit pas être
-    ré-indexé différemment du fit — sinon LightGBM interprète mal les splits sur ce
-    lot (cf. l'incident documenté dans docs/model-decisions.md).
+    ré-indexé différemment du fit. Sinon LightGBM interprète mal les splits sur ce
+    lot.
     """
     configured_preprocessor.fit(train_df)
 

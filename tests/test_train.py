@@ -12,10 +12,6 @@ def pipeline():
 
 
 def test_split_temporel_sans_fuite(pipeline):
-    """Le split à 3 voies doit être strictement chronologique : train avant
-    DATE_COUPURE_VALIDATION, validation entre les deux bornes, test à partir de
-    DATE_COUPURE — sinon le modèle apprend sur le futur ou le seuil est choisi
-    sur des données qui servent aussi à le rapporter."""
     pipeline.colonnes_features = ["capteur"]
     pipeline.colonne_cible = "panne"
     df = pd.DataFrame(
@@ -76,9 +72,9 @@ def test_promouvoir_si_meilleur_promeut_si_strictement_meilleur(pipeline):
     pipeline.client = MagicMock()
     champion_version = MagicMock(run_id="run-abc", version="3")
     pipeline.client.get_model_version_by_alias.return_value = champion_version
-    pipeline.client.get_run.return_value.data.metrics = {"recall_evenementiel": 0.30}
+    pipeline.client.get_run.return_value.data.metrics = {"recall_evenementiel": 0.80}
 
-    promu = pipeline._promouvoir_si_meilleur("ModelTest", nouvelle_version="4", nouveau_score=0.45)
+    promu = pipeline._promouvoir_si_meilleur("ModelTest", nouvelle_version="4", nouveau_score=0.95)
 
     assert promu is True
     pipeline.client.set_registered_model_alias.assert_called_once_with("ModelTest", "champion", "4")

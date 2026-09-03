@@ -1,5 +1,5 @@
 """
-Tests de la métrique événementielle — logique isolée du reste du pipeline
+Tests de la métrique événementielle : logique isolée du reste du pipeline
 d'entraînement, donc vérifiable par calcul manuel plutôt que par supposition.
 """
 
@@ -24,12 +24,6 @@ def test_episodes_alerte_plusieurs_series():
 
 
 def test_episodes_alerte_rearm_scinde_series_longues():
-    """
-    Délai de réarmement : un run continu plus long que pas_max_episode est
-    redécoupé — sinon un modèle bloqué en alerte pendant des mois ne compterait
-    jamais que comme UN épisode (angle mort vérifié empiriquement, cf.
-    docs/model-decisions.md).
-    """
     a = np.ones(10, dtype=int)
     assert _episodes_alerte(a, pas_max_episode=4) == [(0, 3), (4, 7), (8, 9)]
     # pas_max_episode=None désactive explicitement le redécoupage

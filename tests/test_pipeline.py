@@ -28,11 +28,6 @@ def test_robustesse_colonnes_absentes(predicteur):
 
 def test_sensibilite_surchauffe(predicteur, machine_en_surchauffe):
     """Non régression : LightGBM doit détecter un cas de panne évident.
-
-    Seuil relatif au seuil de décision réel (calibration isotonique, cf.
-    docs/model-decisions.md) plutôt qu'un 0,5 codé en dur : un modèle calibré sur un
-    événement rare (~3 % de base) a un seuil optimal typiquement bien plus bas que 0,5,
-    donc "nettement au-dessus du seuil d'alerte" est le bon test, pas "au-dessus de 0,5".
     """
     res = predicteur.predire(machine_en_surchauffe)
     assert res["probabilite_panne"].iloc[0] > predicteur.threshold * 2

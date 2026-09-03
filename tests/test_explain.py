@@ -48,8 +48,7 @@ def test_cause_probable_une_seule_ligne(explicateur, echantillon):
 
 
 def test_familles_features_couvrent_les_features_actives():
-    """Chaque feature listée dans une famille doit exister dans le dataset — sinon
-    une contribution SHAP réelle serait silencieusement ignorée (clé absente)."""
+    """Chaque feature listée dans une famille doit exister dans le dataset actif, sinon la famille est mal définie."""
     config = charger_config()
     colonnes_actives = set(config["jeu_donnees"]["features"])
     for famille, colonnes in FAMILLES_FEATURES.items():
