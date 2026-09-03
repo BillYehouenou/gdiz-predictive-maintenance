@@ -1,3 +1,7 @@
+"""
+Batterie de fonctions utiles pour l'interface.
+"""
+
 def disposition_graphique(C: dict, **kw) -> dict:
     base = dict(
         paper_bgcolor="rgba(0,0,0,0)",
@@ -43,9 +47,9 @@ def formater_fcfa(amount: float) -> str:
 
 def html_delta_cout(C: dict, delta: float, prev_label: str) -> str:
     if delta > 0:
-        col, sym = C["red"], "▲"
+        col, sym = C["red"], "↑"
     else:
-        col, sym = C["green"], "▼"
+        col, sym = C["green"], "↓"
     return (
         f"<div style='font-size:.72rem;color:{col};margin-top:-.15rem;line-height:0.9;'>"
         f"{sym} {formater_fcfa(abs(delta))} vs {prev_label}</div>"

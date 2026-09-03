@@ -80,7 +80,7 @@ def appliquer_styles(C: dict, DARK: bool) -> None:
     transition: transform 0.3s cubic-bezier(.4,0,.2,1) !important;
   }}
 
-  /* CSS custom properties — force Streamlit native theme à matcher notre C dict */
+  /* CSS custom properties : force Streamlit native theme à matcher notre C dict */
   :root {{
     --primary-color: {C["blue"]};
     --background-color: {C["bg"]};

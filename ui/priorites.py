@@ -7,16 +7,6 @@ COLONNES_PRIORITES = ["id_machine", "type_machine", "probabilite_panne", "cause_
 
 
 def calculer_priorites_parc(df_historique: pd.DataFrame, predicteur, explicateur) -> pd.DataFrame:
-    """
-    Vue "à traiter aujourd'hui" (point 34 roadmap) : pour chaque machine de
-    `df_historique` (plusieurs lignes/machine, triées), prédit sur son dernier point
-    disponible et ne garde que celles au-dessus du seuil de surveillance, triées par
-    risque décroissant. La fenêtre affichée reste volontairement qualitative ("2 à
-    5 jours", pas "panne dans 37h12") — le générateur physique lui-même rend le temps
-    restant non prévisible avec précision une fois dans la zone à risque (rampe
-    terminale de dégradation, cf. docs/data-generation.md) ; inventer une heure
-    précise serait une fausse promesse, pas une feature.
-    """
     lignes = []
     for id_machine, g in df_historique.groupby("id_machine", sort=False):
         g = g.sort_values("timestamp")

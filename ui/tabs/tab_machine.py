@@ -23,12 +23,7 @@ FENETRE_AFFICHAGE = "30j"
 
 def _predire_serie(predicteur, df_serie_tampon: pd.DataFrame, display_steps: int) -> pd.DataFrame:
     """
-    Enrichit temporellement puis prédit sur toute la série, puis ne garde que les
-    `display_steps` dernières lignes. `df_serie_tampon` doit contenir display_steps +
-    FENETRE_24H lignes : sans ce tampon, les features glissantes (jusqu'à 24h) des
-    premières lignes de la fenêtre affichée seraient calculées avec un historique
-    tronqué (ex. usure_outil_delta_24h=0 par défaut faute de point 24h en arrière
-    disponible), ce qui fausse la probabilité affichée.
+    Enrichit temporellement puis prédit sur toute la série, puis ne garde que les dernières lignes.
     """
     df_enriched = enrichir_serie_inference(df_serie_tampon)
     feat_df = df_enriched[[k for k in FEAT_COLS if k in df_enriched.columns]].dropna()
@@ -44,8 +39,7 @@ def _predire_serie(predicteur, df_serie_tampon: pd.DataFrame, display_steps: int
 def _index_machine_prioritaire(machines: list[str]) -> int:
     """
     Machine sélectionnée par défaut = la plus prioritaire de "à traiter aujourd'hui"
-    (ui/priorites.py), pas systématiquement la première de la liste — sinon la vue
-    s'ouvre sur une machine saine pendant qu'une autre est réellement en alerte.
+    (ui/priorites.py), pas systématiquement la première de la liste.
     """
     try:
         priorites = q_priorites_parc()
@@ -94,8 +88,7 @@ def afficher(C: dict) -> None:
 
     try:
         predicteur = obtenir_predicteur()
-        # +FENETRE_24H lignes de tampon : sans elles, les features glissantes (jusqu'à
-        # 24h) des premières lignes de la fenêtre affichée seraient tronquées (cf. _predire_serie).
+        # +FENETRE_24H lignes de tampon : sans elles, les features glissantes des premières lignes de la fenêtre affichée seraient tronquées
         df_serie_tampon = q_serie_complete_machine(id_selectionne, steps + FENETRE_24H)
         df_predictions = _predire_serie(predicteur, df_serie_tampon, steps)
         if len(df_predictions) > 0:
@@ -111,13 +104,9 @@ def afficher(C: dict) -> None:
     except Exception as e:
         logger.warning(f"Prédiction indisponible pour {id_selectionne} : {e}")
 
-    # Probabilité ACTUELLE (dernier point disponible) = métrique principale — pas le
-    # pic historique sur la fenêtre d'affichage. Un pic à 63 % survenu il y a 3
+    # On affiche la probailité actuelle. Un pic à 63 % survenu il y a 3
     # semaines mais retombé depuis ne doit pas afficher "risque élevé" aujourd'hui :
-    # ce serait incohérent avec la vue "à traiter aujourd'hui" (ui/priorites.py), qui
-    # se base elle aussi sur le dernier point, pas sur un maximum historique.
-    # Seuils dérivés du seuil de décision réel du modèle (probabilités calibrées,
-    # cf. docs/model-decisions.md) plutôt que des bornes fixes 0,35/0,50 : avec un
+    # Seuils dérivés du seuil de décision réel du modèle : avec un
     # seuil optimal typiquement bas (pannes rares, ~3 % de base), des bornes fixes
     # afficheraient "Normal" pour une machine que le modèle alerte réellement.
     probabilite_affichee = probabilite_actuelle if probabilite_actuelle is not None else 0.0
@@ -200,7 +189,7 @@ def afficher(C: dict) -> None:
 
         fig = go.Figure()
 
-        # Probabilité de panne — lissée avec spline
+        # Probabilité de panne, lissée avec spline
         fig.add_trace(
             go.Scatter(
                 x=df_predictions["timestamp"],

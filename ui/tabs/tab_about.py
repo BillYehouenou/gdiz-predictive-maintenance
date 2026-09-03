@@ -52,39 +52,22 @@ def _css(C: dict) -> str:
         line-height: 1.4;
         margin: 0 0 1rem;
     }}
-    .pipe-list {{
-        list-style: none;
-        margin: 0;
-        padding: 0;
-        display: flex;
-        flex-direction: column;
-        gap: .6rem;
-    }}
-    .pipe-item {{
-        display: flex;
-        align-items: flex-start;
-        gap: .65rem;
-        font-size: .85rem;
-        line-height: 1.5;
-        color: {C["muted"]};
-    }}
-    .pipe-item .dot {{
-        flex-shrink: 0;
-        width: 7px;
-        height: 7px;
-        border-radius: 50%;
-        margin-top: .5rem;
-    }}
-    .pipe-item strong {{
+    .pipe-para strong {{
         color: {C["text"]};
         font-weight: 650;
     }}
-    .pipe-item code {{
+    .pipe-para code {{
         font-size: .78rem;
         background: {C["border"]};
         border-radius: 4px;
         padding: .05rem .3rem;
         color: {C["text"]};
+    }}
+    .pipe-para {{
+        font-size: .85rem;
+        line-height: 1.6;
+        color: {C["muted"]};
+        margin: 0;
     }}
     .pipe-card {{
         position: relative;
@@ -143,19 +126,13 @@ def _carte_kpi(icon: str, label: str, val: str, sub: str, color: str, delay: flo
     )
 
 
-def _carte_etape(idx: int, color: str, title: str, resume: str, points: list[str], C: dict) -> str:
+def _carte_etape(idx: int, color: str, title: str, resume: str, paragraphe: str, C: dict) -> str:
     bg = f"linear-gradient(160deg,{rgba(color, 0.10)} 0%,{rgba(color, 0.03)} 55%,transparent 100%)"
-    # Le nom de classe varie avec idx (pipe-anim-0, pipe-anim-1, ...) pour forcer le
-    # navigateur à rejouer l'animation à chaque changement d'étape — une animation CSS
-    # ne se relance pas tant que le nom de classe qui la déclenche reste identique.
-    items = "".join(
-        f"<li class='pipe-item'><span class='dot' style='background:{color};'></span><span>{p}</span></li>" for p in points
-    )
     return (
         f"<div class='pipe-card pipe-anim-{idx}' style='background:{bg};'>"
         f"<p class='pipe-title' style='color:{C['text']};'>{title}</p>"
         f"<p class='pipe-resume' style='color:{color};'>{resume}</p>"
-        f"<ul class='pipe-list'>{items}</ul>"
+        f"<p class='pipe-para'>{paragraphe}</p>"
         f"</div>"
     )
 
@@ -163,19 +140,18 @@ def _carte_etape(idx: int, color: str, title: str, resume: str, points: list[str
 def afficher(C: dict) -> None:
     st.markdown(_css(C), unsafe_allow_html=True)
 
-    # ── Hero ──────────────────────────────────────────────────────────────────
+    # Section metriques
     st.markdown("<p class='sec-label' style='margin-top:0;'>Modèle</p>", unsafe_allow_html=True)
 
     st.markdown(
         f"<div style='margin:.4rem 0 1.5rem;'>"
         f"<p style='color:{C['muted']};font-size:.87rem;margin:0;'>"
         f"<span class='live-dot'></span>"
-        f"Pipeline de maintenance prédictive par IA"
+        f"Pipeline de maintenance prédictive"
         f"</p></div>",
         unsafe_allow_html=True,
     )
 
-    # ── Rangée 1 : Contexte (Machines + Données) ──────────────────────────────
     row1 = [
         ("https://img.icons8.com/?size=100&id=Ouhuf6HfyHeJ&format=png&color=FFFFFF", "Machines", "50", "Textiles", C["green"]),
         (
@@ -192,7 +168,6 @@ def afficher(C: dict) -> None:
 
     st.markdown("<div style='margin:.5rem 0;'></div>", unsafe_allow_html=True)
 
-    # ── Rangée 2 : Métriques (recall événementiel + fausses alertes + seuil) ──
     row2 = [
         (
             "https://img.icons8.com/?size=100&id=Yt084riMRP1m&format=png&color=FFFFFF",
@@ -220,7 +195,7 @@ def afficher(C: dict) -> None:
     for col, (icon, label, val, sub, color), delay in zip([m1, m2, m3], row2, [0.14, 0.21, 0.28]):
         col.markdown(_carte_kpi(icon, label, val, sub, color, delay, C), unsafe_allow_html=True)
 
-    # ── Pipeline interactif ────────────────────────────────────────────────────
+    # Pipeline interactif
     st.markdown("<p class='sec-label' style='margin-top:1.8rem;'>Pipeline</p>", unsafe_allow_html=True)
 
     STEPS = [
@@ -228,76 +203,51 @@ def afficher(C: dict) -> None:
             "Données",
             C["teal"],
             "Un jumeau numérique du parc GDIZ, pas un jeu de données générique.",
-            [
-                "<strong>50 machines textiles</strong> simulées pas à pas sur 2 ans, inspirées du référentiel "
-                "industriel AI4I 2020.",
-                "<strong>Climat béninois</strong> et coupures électriques SBEE reproduits fidèlement.",
-                "<strong>Seuil de casse individuel</strong> par machine (65 à 99 % d'usure) — un parc hétérogène, "
-                "pas un seuil unique irréaliste.",
-                "<strong>5 causes de panne</strong> possibles : usure, surchauffe, surcharge mécanique, électrique, aléatoire.",
-                "Stocké dans <code>DuckDB</code>, optimisé pour l'analyse de séries temporelles à grande échelle.",
-            ],
+            "Plusieurs machines textiles sont simulées pas à pas sur 2 ans, avec le climat béninois et les coupures SBEE reproduits fidèlement. Chaque machine casse à son propre <strong>seuil "
+            "d'usure</strong>, pour un parc hétérogène et réaliste, avec 5 causes de panne possibles (usure, surchauffe, surcharge mécanique, électrique, aléatoire). Le tout est stocké dans "
+            "une base DuckDB, taillé pour l'analyse de grandes séries temporelles.",
         ),
         (
             "Indicateurs",
             C["blue"],
             "La tendance récente compte plus que l'instant présent.",
-            [
-                "Chaque mesure est comparée à son <strong>évolution récente</strong>, jamais lue isolément.",
-                "<strong>Fenêtre 4h</strong> : détecte une accélération brutale (delta rapide d'usure, de température).",
-                "<strong>Fenêtre 24h</strong> : capte une tendance plus lente (moyenne, écart-type, pic).",
-                "Une dégradation progressive se voit dans la <strong>dynamique</strong>, pas dans une valeur brute.",
-            ],
+            "Plutôt qu'une mesure isolée, le modèle regarde <strong>l'évolution récente </strong> des mesures récupérées sur chaque machine : une fenêtre "
+            "de <strong>4h</strong> pour repérer une accélération brutale (usure ou température qui grimpe vite), et une fenêtre de <strong>24h</strong> "
+            "pour capter une tendance plus lente. C'est cette dynamique, plus que la valeur brute, qui trahit une dégradation progressive.",
         ),
         (
             "Préparation des données",
             C["orange"],
-            "Même traitement à l'entraînement et en production — zéro écart silencieux.",
-            [
-                "<strong>Contrôle de sanité</strong> : bornes physiques vérifiées par capteur avant tout traitement.",
-                "<strong>Valeurs manquantes</strong> imputées automatiquement (capteurs défaillants, pertes IoT).",
-                "<strong>Catégories encodées nativement</strong> pour LightGBM — pas de mise à l'échelle, pas de one-hot.",
-                "Un <strong>artefact unique et figé</strong> garantit l'identité entraînement / dashboard / API.",
-            ],
+            "Même traitement à l'entraînement et en production pour éviter un quelconque écart silencieux.",
+            "Avant tout traitement, chaque capteur passe un <strong>contrôle de sanité</strong> (bornes physiques "
+            "vérifiées) et les valeurs manquantes sont imputées automatiquement. Les catégories sont encodées "
+            "nativement pour LightGBM, sans mise à l'échelle superflue. Un <strong>artefact unique et figé</strong> "
+            "garantit que l'entraînement, le dashboard et l'API appliquent exactement le même traitement.",
         ),
         (
             "ML",
             C["red"],
             "84 % des pannes prévisibles détectées, 5 jours à l'avance.",
-            [
-                "<code>LightGBM</code> (gradient boosting), calibré par régression isotonique pour des "
-                "probabilités interprétables.",
-                "Entraîné sur <strong>2024</strong>, testé sur <strong>2025</strong> — généralisation dans le "
-                "temps, pas par cœur.",
-                "Horizon de prédiction : <strong>5 jours</strong>, sur usure / surchauffe / surcharge mécanique.",
-                "Pannes électriques et aléatoires <strong>exclues</strong> — aucun signal précurseur, vérifié empiriquement.",
-                "<strong>84 % de recall</strong>, ~1 fausse alerte tous les 4-5 jours par machine.",
-            ],
+            "Le modèle est un LightGBM, calibré pour donner des probabilités fiables et interprétables. "
+            "Entraîné sur 2024 et testé sur 2025, il apprend à généraliser dans le temps plutôt qu'à retenir par cœur, et prédit les pannes d'usure, de "
+            "surchauffe et de surcharge mécanique. Les pannes électriques et aléatoires étant exclues pour l'instant du périmètre détectable car sans "
+            "signal précurseur. Le recall est mis en face d'une métrique de coût d'exploitation du modèle. Ici, on accepte une fausse alerte tous les 4 à 5 jours par machine.",
         ),
         (
             "Moteur de calcul",
             C["green"],
             "Une API qui répond en millisecondes, sans jamais dévier du modèle entraîné.",
-            [
-                "<code>FastAPI</code>, endpoint unitaire + endpoint par lot pour un relevé de parc complet.",
-                "<strong>Bornes physiques validées</strong> à l'entrée avant toute prédiction.",
-                "Mêmes indicateurs 4h/24h, <strong>même pipeline</strong> qu'à l'entraînement.",
-                "Suivi <code>MLflow</code> asynchrone — ne ralentit jamais la réponse.",
-                "<strong>Rechargement à chaud</strong> après ré-entraînement, sans redémarrer le service.",
-                "Repli automatique sur copie locale si le registre MLflow est indisponible.",
-            ],
+            "L'API répond en millisecondes, avec un mode unitaire et un mode par lot pour analyser tout le parc d'un coup. Chaque valeur reçue est validée avant toute prédiction, avec "
+            "exactement le même pipeline qu'à l'entraînement. Le modèle peut être <strong>rechargé à chaud</strong>  après un ré-entraînement, sans jamais interrompre le service, et bascule automatiquement sur une "
+            "copie locale si le registre MLflow est indisponible.",
         ),
         (
             "Interface",
             C["blue"],
             "Ce qu'il faut savoir, pas tout ce qu'il y a à voir.",
-            [
-                "Liste <strong>« à traiter aujourd'hui »</strong>, triée par risque décroissant.",
-                "<strong>Cause probable</strong> par alerte (SHAP) — usure, surchauffe, surcharge mécanique...",
-                "Risque toujours exprimé <strong>sur 5 jours</strong>, jamais une heure inventée.",
-                "Suivi historique détaillé par machine et coûts de panne chiffrés.",
-                "<code>Streamlit</code> + <code>DuckDB</code> en colonnes → affichage instantané.",
-            ],
+            "Le dashboard affiche une liste <strong>« à traiter aujourd'hui »</strong>, triée par risque décroissant, avec pour chaque alerte sa <strong>cause probable</strong>. "
+            "Le risque est toujours exprimé sur l'horizon de <strong>5 jours</strong> du modèle, et chaque machine dispose d'un historique détaillé avec ses coûts de "
+            "panne chiffrés.",
         ),
     ]
 

@@ -19,8 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 def _afficher_priorites_du_jour(C: dict) -> None:
-    """Vue "à traiter aujourd'hui" (point 34) : machines actuellement en alerte,
-    triées par risque, avec cause probable (SHAP, point 33) — pas d'heure inventée."""
+    """Vue "à traiter aujourd'hui" : machines actuellement en alerte, triées par risque, avec cause probable."""
     st.markdown(
         f"<p style='color:{C['muted']};font-size:1.3rem;font-weight:660;letter-spacing:0;margin:0;'>À traiter aujourd'hui</p>",
         unsafe_allow_html=True,
@@ -125,9 +124,6 @@ def afficher(C: dict) -> None:
     )
     df_fail = q_pannes_par_type_cause_periode(date_debut, date_fin)
     types = ["L", "M", "H"]
-    # Causes façon AI4I 2020 : TWF=usure, HDF=dissipation thermique, OSF=surcharge
-    # mécanique, PWF=électrique, RNF=aléatoire (sans précurseur, par construction).
-    # Libellés en français + sigle technique entre parenthèses (cohérent avec tab_about).
     cause_labels = {
         "TWF": "Usure",
         "HDF": "Surchauffe",
@@ -135,10 +131,7 @@ def afficher(C: dict) -> None:
         "PWF": "Électrique",
         "RNF": "Aléatoire",
     }
-    # Palette dédiée à ce graphique plutôt que la palette sémantique de l'app
-    # (rouge/orange/vert y signifient danger/attention/normal ailleurs dans le
-    # dashboard — les réutiliser ici pour des catégories arbitraires n'a pas de
-    # sens et l'orange du thème clair (#bc4c00) rend brun une fois désaturé).
+    
     cause_colors = {
         "TWF": rgba("#f2a900", 0.75),  # Usure — ambre
         "HDF": rgba("#e5484d", 0.75),  # Surchauffe — rouge (chaleur)

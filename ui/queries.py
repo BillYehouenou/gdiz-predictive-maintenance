@@ -8,10 +8,6 @@ from ui.constants import _PARTS, _PROD_COEFF, _QUAL_FIX, _TECH_RATE, DB_PATH, TA
 
 _SQL_EVENEMENTS_COUPURE = """
     WITH etat_reseau AS (
-        -- indicateur_coupure est une variable exogène globale (SBEE), identique pour
-        -- les 50 machines à un instant donné (cf. GenerateurContexteExogene) — DISTINCT
-        -- sur (timestamp, indicateur) déduplique avant de compter, sinon un même
-        -- délestage réseau est compté une fois par machine au lieu d'une fois.
         SELECT DISTINCT timestamp, indicateur_coupure
         FROM {table}
         WHERE {filtre}
@@ -28,17 +24,14 @@ _SQL_EVENEMENTS_COUPURE = """
 def q_kpis_periode(date_debut: str, date_fin: str) -> dict:
     with duckdb.connect(str(DB_PATH), read_only=True) as conn:
         g = conn.execute(
-            f"""SELECT (1 - AVG(panne)) * 100 AS avail,
-                       SUM(panne)               AS failures
+            f"""SELECT (1 - AVG(panne)) * 100 AS avail, SUM(panne) AS failures
                 FROM {TABLE}
                 WHERE timestamp BETWEEN ? AND ?""",
             [date_debut, date_fin],
         ).fetchone()
         mtbf_raw = conn.execute(
             f"""WITH m AS (
-                    SELECT id_machine,
-                           DATEDIFF('hour', MIN(timestamp), MAX(timestamp)) * 1.0
-                           / NULLIF(SUM(panne), 0) AS h
+                    SELECT id_machine, DATEDIFF('hour', MIN(timestamp), MAX(timestamp)) * 1.0 / NULLIF(SUM(panne), 0) AS h
                     FROM {TABLE}
                     WHERE timestamp BETWEEN ? AND ?
                     GROUP BY id_machine
@@ -76,8 +69,7 @@ def q_kpis_periode(date_debut: str, date_fin: str) -> dict:
 def q_cout_periode(date_debut: str, date_fin: str) -> dict:
     """
     C_panne = C_production + C_technique + C_qualite, par événement de panne.
-    Les pannes consécutives (même machine, intervalles de 30 min) sont regroupées
-    en un seul événement dont la durée = n_steps × 0.5 h.
+    Les pannes consécutives (même machine, intervalles de 30 min) sont regroupées en 1 seul événement.
     """
     Lv = _PROD_COEFF["L"] + _TECH_RATE
     Lf = _PARTS["L"] + _QUAL_FIX["L"]
