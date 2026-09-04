@@ -62,7 +62,9 @@ class ConfigDonneesSynthetiques:
     # Hasard nul sous le seuil, quadratique au-delà
     pas_fenetre_shd = 8  # 8 × 30 min = 4h
     seuil_surchauffe_shd = 38.0  # °C au-delà de l'ambiant en moyenne sur la fenêtre choisie
-    coeff_risque_shd = 0.00012 # la chaîne encrassement ajoute une source de chaleur supplémentaire, sans baisse du coefficient HDF
+    coeff_risque_shd = (
+        0.00012  # la chaîne encrassement ajoute une source de chaleur supplémentaire, sans baisse du coefficient HDF
+    )
 
     # OSF : surcharge mécanique, couple élevé combiné à une usure déjà significative
     coeff_risque_sm = 0.0007
@@ -90,11 +92,11 @@ class ConfigDonneesSynthetiques:
     # Encrassement : poussière --> dissipation thermique réduite --> HDF
     taux_base_encrassement = 0.06  # % d'encrassement gagné par pas, à poussiere_locale=100 et sensibilité=1
     facteur_chaleur_encrassement = 1.8  # °C additionnels max à encrassement = 100 %
-    residu_reinitialisation_encrassement = 10.0  # % résiduel après une visite de maintenance 
+    residu_reinitialisation_encrassement = 10.0  # % résiduel après une visite de maintenance
 
     # Maintenance préventive imparfaite : Une visite préventive (routine + risque, jamais
     # garantie) intercepte parfois une machine à risque avant qu'elle ne casse réellement.
-    probabilite_base_preventive = 0.00002 
+    probabilite_base_preventive = 0.00002
     coeff_risque_preventif = 0.0001  # composante risque, ∝ max(usure, encrassement, roulements)²
     heures_mediane_duree_preventive = 2.0
     heures_max_duree_preventive = 8.0
@@ -104,7 +106,7 @@ class ConfigDonneesSynthetiques:
     # roulements, pilotée par la vitesse/vibration plutôt que par la poussière ou le couple, contribue à OSF.
     taux_base_usure_roulements = 0.004
     coeff_vibration_roulements = 2.0
-    poids_roulements_osf = 0.25 
+    poids_roulements_osf = 0.25
 
     # Parts de pannes visées par cause : cibles de calibration, pas une garantie stricte
     parts_mode_panne = {"TWF": 0.40, "HDF": 0.20, "OSF": 0.15, "PWF": 0.20, "RNF": 0.05}
@@ -114,10 +116,10 @@ class ConfigDonneesSynthetiques:
     facteur_temperature_frottement = 25.0
 
     # Électrique et environnement
-    tension_nominale = 220.0 # 220V = norme Bénin (réseau SBEE)
+    tension_nominale = 220.0  # 220V = norme Bénin (réseau SBEE)
     plage_variation_tension = 0.15
 
-    # Température atelier de référence par mois 
+    # Température atelier de référence par mois
     temperature_base_mensuelle = {
         1: 32.5,
         2: 34.0,
@@ -197,7 +199,7 @@ class GenerateurContexteExogene:
 
     def generer_saisons_benin(self, timestamps: pd.DatetimeIndex) -> np.ndarray:
         """
-        Calendrier bimodal réel du Sud-Bénin : deux saisons des pluies et deux saisons sèches, 
+        Calendrier bimodal réel du Sud-Bénin : deux saisons des pluies et deux saisons sèches,
         pas le cycle unimodal du Bénin septentrional.
         """
         mois = timestamps.month.values
@@ -249,7 +251,7 @@ class GenerateurContexteExogene:
         )
         return np.clip(temperature_ambiante_locale, 23.0, 42.0)
 
-    # (p_debut, p_arret) par saison 
+    # (p_debut, p_arret) par saison
     PROBABILITES_TRANSITION_PLUIE = {
         0: (0.12, 0.40),  # grande saison des pluies
         1: (0.02, 0.65),  # petite saison sèche
@@ -388,7 +390,7 @@ class EvolueurEtatMachine:
         forme = self.config.forme_fragilite
         self.fragilite = float(self.rng.gamma(forme, 1.0 / forme))
 
-        # Seuil de rupture personnel (TWF) 
+        # Seuil de rupture personnel (TWF)
         self.seuil_use = self.config.seuil_min_use + self.config.plage_seuil_use * self.rng.beta(
             self.config.beta_a_seuil_use, self.config.beta_b_seuil_use
         )
@@ -449,7 +451,7 @@ class EvolueurEtatMachine:
         self.failure = np.zeros(self.nb_echantillons, dtype=int)
         self.mode_panne = np.full(self.nb_echantillons, "", dtype=object)
 
-        # Encrassement et usure des roulements : mêmes limites, 
+        # Encrassement et usure des roulements : mêmes limites,
         # mais accumulation et remise à neuf indépendantes
         self.encrassement = np.zeros(self.nb_echantillons)
         self.usure_roulements = np.zeros(self.nb_echantillons)
@@ -464,7 +466,7 @@ class EvolueurEtatMachine:
         pourcentage_stabilite = self.tableau_stabilite[idx] / 100.0
         ecart_tension = max(0, self.config.tension_nominale - self.tableau_tension[idx])
 
-        # 1. Vitesse & Couple 
+        # 1. Vitesse & Couple
         vitesse_base = 1500.0
         self.vitesse_rotation[idx] = vitesse_base * (0.97 + 0.03 * pourcentage_stabilite)
         self.vitesse_rotation[idx] += self.rng.normal(0, 12)
@@ -475,7 +477,7 @@ class EvolueurEtatMachine:
         self.couple[idx] += self.rng.normal(0, 3)
         self.couple[idx] = max(0, self.couple[idx])
 
-        # 2a. Usure cumulative 
+        # 2a. Usure cumulative
         usure_precedente = self.usure_outil[idx - 1]
         if redemarre_apres_coupure:
             usure_precedente = min(usure_precedente + self.params["malus_redemarrage_coupure"], 100)
@@ -486,7 +488,7 @@ class EvolueurEtatMachine:
         increment_usure *= dust_factor * voltage_factor
         self.usure_outil[idx] = min(usure_precedente + increment_usure, 100)
 
-        # 2b. Encrassement 
+        # 2b. Encrassement
         increment_encrassement = (
             self.config.taux_base_encrassement * (self.tableau_poussiere[idx] / 100.0) * self.params["sensibilite_poussiere"]
         )
@@ -499,7 +501,7 @@ class EvolueurEtatMachine:
         )
         self.usure_roulements[idx] = min(self.usure_roulements[idx - 1] + increment_usure_roulements, 100.0)
 
-        # 2d. Rampe terminale 
+        # 2d. Rampe terminale
         dans_bande_rampe = self.usure_outil[idx] >= (self.seuil_use - self.config.bande_rampe_use)
         if dans_bande_rampe:
             step_hours = self.config.intervalle_minutes / 60.0
@@ -579,7 +581,7 @@ class EvolueurEtatMachine:
         ) * usure_normalisee**3 + self.config.poids_roulements_osf * usure_roulements_normalisee**3
         osf = self.config.coeff_risque_sm * (couple / 45.0) * terme_usure_osf
 
-        # PWF : instabilité électrique routinière hors coupure franche 
+        # PWF : instabilité électrique routinière hors coupure franche
         sensibilite_electrique = self.params.get("sensibilite_electrique_onduleur", self.params["sensibilite_tension"])
         pwf = self.config.coeff_risque_pe * max(0.0, 1.0 - pourcentage_stabilite) * sensibilite_electrique
 
@@ -670,7 +672,7 @@ class EvolueurEtatMachine:
             )
 
         if end < self.nb_echantillons:
-            # Service partiel 
+            # Service partiel
             self.usure_outil[end - 1] *= 1.0 - self.config.reduction_usure_preventive
             self.usure_roulements[end - 1] *= 1.0 - self.config.reduction_usure_preventive
             self.encrassement[end - 1] = min(self.encrassement[end - 1], self.config.residu_reinitialisation_encrassement)

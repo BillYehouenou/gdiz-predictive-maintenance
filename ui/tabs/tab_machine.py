@@ -88,7 +88,8 @@ def afficher(C: dict) -> None:
 
     try:
         predicteur = obtenir_predicteur()
-        # +FENETRE_24H lignes de tampon : sans elles, les features glissantes des premières lignes de la fenêtre affichée seraient tronquées
+        # +FENETRE_24H lignes de tampon : sans elles, les features glissantes des premières lignes
+        # de la fenêtre affichée seraient tronquées
         df_serie_tampon = q_serie_complete_machine(id_selectionne, steps + FENETRE_24H)
         df_predictions = _predire_serie(predicteur, df_serie_tampon, steps)
         if len(df_predictions) > 0:

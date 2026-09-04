@@ -1,4 +1,5 @@
 from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -21,12 +22,13 @@ class DonneesMachine(BaseModel):
     indicateur_coupure: int = Field(..., ge=0, le=1, description="Délestage SBEE (0/1)", examples=[0])
     saison_benin: int = Field(
         ...,
-        ge=0, le=3,
+        ge=0,
+        le=3,
         description=(
             "Saison béninoise : 0=grande saison des pluies, 1=petite saison sèche, "
             "2=petite saison des pluies, 3=grande saison sèche/Harmattan"
-        ), 
-        examples=[1]
+        ),
+        examples=[1],
     )
     type_machine: str = Field(..., description="Qualité de machine (L, M, H)", examples=["M"])
     encrassement: float = Field(..., ge=0.0, le=100.0, description="Encrassement accumulé du process (%)", examples=[35.0])

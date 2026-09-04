@@ -131,7 +131,7 @@ def afficher(C: dict) -> None:
         "PWF": "Électrique",
         "RNF": "Aléatoire",
     }
-    
+
     cause_colors = {
         "TWF": rgba("#f2a900", 0.75),  # Usure — ambre
         "HDF": rgba("#e5484d", 0.75),  # Surchauffe — rouge (chaleur)

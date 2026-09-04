@@ -1,7 +1,3 @@
-import os
-import subprocess
-import sys
-
 import numpy as np
 import pandas as pd
 import pytest
@@ -68,5 +64,5 @@ def test_injecter_donnees_manquantes_produit_rafales_correlees(df_capteur_factic
     ends = np.flatnonzero(diff == -1)
     run_lengths = ends - starts
 
-    # La majorité des rafales doivent durer plus d'un pas 
+    # La majorité des rafales doivent durer plus d'un pas
     assert (run_lengths > 1).mean() > 0.5

@@ -68,7 +68,7 @@ def _loguer_mlflow(
     """
     try:
         mlflow.set_experiment("GDIZ_Monitoring_Predictions")
-        # Seuils dérivés du seuil de décision réel 
+        # Seuils dérivés du seuil de décision réel
         threshold = predicteur.threshold
         niveau_alerte = "high" if probability >= threshold * 3 else ("medium" if probability >= threshold else "normal")
         with mlflow.start_run(

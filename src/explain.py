@@ -39,7 +39,7 @@ FAMILLES_FEATURES: dict[str, list[str]] = {
 class ExplicateurCause:
     """
     Explique une alerte par contribution SHAP agrégée en familles physiques
-    SHAP répond à cette question : "qu'est-ce qui, dans les capteurs de 
+    SHAP répond à cette question : "qu'est-ce qui, dans les capteurs de
     CETTE machine, pousse le modèle vers CETTE panne ?".
     """
 

@@ -79,7 +79,7 @@ class Preprocesseur(BaseEstimator, TransformerMixin):
         logger.info("Transformation des données en cours...")
         variables_existantes = [col for col in self.all_features if col in X.columns]
         result = self.pipeline.transform(X[variables_existantes])
-        
+
         for col, dtype in getattr(self, "_types_categoriels", {}).items():
             result[col] = result[col].astype(int).astype(dtype)
         result.index = X[variables_existantes].index

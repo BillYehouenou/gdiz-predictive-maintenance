@@ -1,5 +1,7 @@
 import logging
+
 from fastapi import APIRouter, BackgroundTasks, FastAPI, HTTPException
+
 from app import utils
 from app.schemas import DonneesMachine, InfoModele, ReponsePrediction, ReponseRechargement
 

@@ -1,7 +1,7 @@
 """
-Baselines de référence 
+Baselines de référence
 
-Le modèle LightGBM doit battre une règle triviale et une régression logistique, 
+Le modèle LightGBM doit battre une règle triviale et une régression logistique,
 sur la métrique événementielle (recall @ budget de fausses alertes).
 """
 
@@ -77,9 +77,7 @@ def main():
     # seuil sur usure_outil directement (même infrastructure d'évaluation que le modèle).
     probas_val_regle = X_val["usure_outil"].to_numpy()
     probas_test_regle = X_test["usure_outil"].to_numpy()
-    evaluer_baseline(
-        "Règle triviale", probas_val_regle, probas_test_regle, meta_validation, meta_test, GRILLE_SEUILS_REGLE
-    )
+    evaluer_baseline("Règle triviale", probas_val_regle, probas_test_regle, meta_validation, meta_test, GRILLE_SEUILS_REGLE)
 
     # 2. Régression logistique : même preprocessing que le modèle principal, pas
     # d'ingénierie spécifique — le point de comparaison le plus juste.

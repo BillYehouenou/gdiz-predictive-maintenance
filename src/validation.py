@@ -32,7 +32,7 @@ SCHEMA_DONNEES_BRUTES = pa.DataFrameSchema(
 
 def valider_donnees_brutes(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Valide les colonnes présentes par rapport aux schémas et logue unrésumé des anomalies. 
+    Valide les colonnes présentes par rapport aux schémas et logue unrésumé des anomalies.
     Ne bloque jamais le chargement, on signale juste un problème de qualité de données.
     """
     try:

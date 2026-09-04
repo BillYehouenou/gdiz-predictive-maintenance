@@ -203,17 +203,19 @@ def afficher(C: dict) -> None:
             "Données",
             C["teal"],
             "Un jumeau numérique du parc GDIZ, pas un jeu de données générique.",
-            "Plusieurs machines textiles sont simulées pas à pas sur 2 ans, avec le climat béninois et les coupures SBEE reproduits fidèlement. Chaque machine casse à son propre <strong>seuil "
-            "d'usure</strong>, pour un parc hétérogène et réaliste, avec 5 causes de panne possibles (usure, surchauffe, surcharge mécanique, électrique, aléatoire). Le tout est stocké dans "
-            "une base DuckDB, taillé pour l'analyse de grandes séries temporelles.",
+            "Plusieurs machines textiles sont simulées pas à pas sur 2 ans, avec le climat béninois et les coupures SBEE "
+            "reproduits fidèlement. Chaque machine casse à son propre <strong>seuil d'usure</strong>, pour un parc hétérogène "
+            "et réaliste, avec 5 causes de panne possibles (usure, surchauffe, surcharge mécanique, électrique, aléatoire). "
+            "Le tout est stocké dans une base DuckDB, taillé pour l'analyse de grandes séries temporelles.",
         ),
         (
             "Indicateurs",
             C["blue"],
             "La tendance récente compte plus que l'instant présent.",
-            "Plutôt qu'une mesure isolée, le modèle regarde <strong>l'évolution récente </strong> des mesures récupérées sur chaque machine : une fenêtre "
-            "de <strong>4h</strong> pour repérer une accélération brutale (usure ou température qui grimpe vite), et une fenêtre de <strong>24h</strong> "
-            "pour capter une tendance plus lente. C'est cette dynamique, plus que la valeur brute, qui trahit une dégradation progressive.",
+            "Plutôt qu'une mesure isolée, le modèle regarde <strong>l'évolution récente </strong> des mesures récupérées sur "
+            "chaque machine : une fenêtre de <strong>4h</strong> pour repérer une accélération brutale (usure ou température "
+            "qui grimpe vite), et une fenêtre de <strong>24h</strong> pour capter une tendance plus lente. C'est cette "
+            "dynamique, plus que la valeur brute, qui trahit une dégradation progressive.",
         ),
         (
             "Préparation des données",
@@ -228,26 +230,29 @@ def afficher(C: dict) -> None:
             "ML",
             C["red"],
             "84 % des pannes prévisibles détectées, 5 jours à l'avance.",
-            "Le modèle est un LightGBM, calibré pour donner des probabilités fiables et interprétables. "
-            "Entraîné sur 2024 et testé sur 2025, il apprend à généraliser dans le temps plutôt qu'à retenir par cœur, et prédit les pannes d'usure, de "
-            "surchauffe et de surcharge mécanique. Les pannes électriques et aléatoires étant exclues pour l'instant du périmètre détectable car sans "
-            "signal précurseur. Le recall est mis en face d'une métrique de coût d'exploitation du modèle. Ici, on accepte une fausse alerte tous les 4 à 5 jours par machine.",
+            "Le modèle est un LightGBM, calibré pour donner des probabilités fiables et interprétables. Entraîné sur 2024 et "
+            "testé sur 2025, il apprend à généraliser dans le temps plutôt qu'à retenir par cœur, et prédit les pannes "
+            "d'usure, de surchauffe et de surcharge mécanique. Les pannes électriques et aléatoires étant exclues pour "
+            "l'instant du périmètre détectable car sans signal précurseur. Le recall est mis en face d'une métrique de coût "
+            "d'exploitation du modèle. Ici, on accepte une fausse alerte tous les 4 à 5 jours par machine.",
         ),
         (
             "Moteur de calcul",
             C["green"],
             "Une API qui répond en millisecondes, sans jamais dévier du modèle entraîné.",
-            "L'API répond en millisecondes, avec un mode unitaire et un mode par lot pour analyser tout le parc d'un coup. Chaque valeur reçue est validée avant toute prédiction, avec "
-            "exactement le même pipeline qu'à l'entraînement. Le modèle peut être <strong>rechargé à chaud</strong>  après un ré-entraînement, sans jamais interrompre le service, et bascule automatiquement sur une "
-            "copie locale si le registre MLflow est indisponible.",
+            "L'API répond en millisecondes, avec un mode unitaire et un mode par lot pour analyser tout le parc d'un coup. "
+            "Chaque valeur reçue est validée avant toute prédiction, avec exactement le même pipeline qu'à l'entraînement. "
+            "Le modèle peut être <strong>rechargé à chaud</strong> après un ré-entraînement, sans jamais interrompre le "
+            "service, et bascule automatiquement sur une copie locale si le registre MLflow est indisponible.",
         ),
         (
             "Interface",
             C["blue"],
             "Ce qu'il faut savoir, pas tout ce qu'il y a à voir.",
-            "Le dashboard affiche une liste <strong>« à traiter aujourd'hui »</strong>, triée par risque décroissant, avec pour chaque alerte sa <strong>cause probable</strong>. "
-            "Le risque est toujours exprimé sur l'horizon de <strong>5 jours</strong> du modèle, et chaque machine dispose d'un historique détaillé avec ses coûts de "
-            "panne chiffrés.",
+            "Le dashboard affiche une liste <strong>« à traiter aujourd'hui »</strong>, triée par risque décroissant, avec "
+            "pour chaque alerte sa <strong>cause probable</strong>. Le risque est toujours exprimé sur l'horizon de "
+            "<strong>5 jours</strong> du modèle, et chaque machine dispose d'un historique détaillé avec ses coûts de panne "
+            "chiffrés.",
         ),
     ]
 

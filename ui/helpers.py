@@ -2,6 +2,7 @@
 Batterie de fonctions utiles pour l'interface.
 """
 
+
 def disposition_graphique(C: dict, **kw) -> dict:
     base = dict(
         paper_bgcolor="rgba(0,0,0,0)",

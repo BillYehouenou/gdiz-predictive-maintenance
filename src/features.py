@@ -76,8 +76,8 @@ MODES_PANNE_PREDICTIBLES = ("TWF", "HDF", "OSF")
 
 def calculer_cible_horizon(df: pd.DataFrame, heures_horizon: int = 24, modes_panne: tuple | None = None) -> pd.Series:
     """
-    Label ML à horizon : 1 sur les lignes situées dans les `heures_horizon` précédant une panne brute (panne==1), sinon 0.
-    La panne réelle reste un événement rare, ce label élargit juste la fenêtre exploitable par le modèle pour apprendre 
+    Label ML à horizon : 1 sur les lignes situées dans les X heures précédant une panne brute (panne==1), sinon 0.
+    La panne réelle reste un événement rare, ce label élargit juste la fenêtre exploitable par le modèle pour apprendre
     le signal de dégradation qui précède l'événement.
     """
     pas_horizon = heures_horizon * 2  # pas de 30 min
@@ -166,8 +166,7 @@ def enrichir_point_inference(current: dict, history_df: pd.DataFrame) -> dict:
         return max(0.0, current_value - float(hist.iloc[-window]))
 
     def _stats_24h(historique: list[float], valeur_actuelle: float) -> dict[str, float]:
-        """Moyenne/écart-type/max sur les 24h réellement disponibles — dégrade
-        proprement avec moins d'historique plutôt que de planter."""
+        """Moyenne/écart-type/max sur les 24h réellement disponibles."""
         serie = (historique + [valeur_actuelle])[-FENETRE_24H:]
         return {
             "moyenne": float(np.mean(serie)),

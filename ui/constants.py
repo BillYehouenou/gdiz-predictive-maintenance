@@ -39,7 +39,7 @@ FEAT_COLS: list[str] = [
 # C_panne = C_production + C_technique + C_qualite
 
 # Tissu Type H : 15 m semble conservateur à 35 m/h (inertie mécanique ~26 min).
-_TECH_RATE: int = 3_250  # XOF/h : taux horaire technicien 
+_TECH_RATE: int = 3_250  # XOF/h : taux horaire technicien
 _MAT_COST: int = 800  # XOF/m : coût de revient matière textile
 
 # C_production : capacité × marge nette par mètre
@@ -86,7 +86,7 @@ PERIOD_PREV_LABEL: dict[str, str] = {
 STEPS_MAP: dict[str, int] = {"24h": 48, "7j": 336, "30j": 1440}
 
 # Seuils environnementaux
-HARMATTAN_THRESHOLD = 480  # µg/m³ : seuil extrême 
+HARMATTAN_THRESHOLD = 480  # µg/m³ : seuil extrême
 HARMATTAN_WARN = 225  # µg/m³ : alerte Harmattan fort
 
 # Palettes

@@ -14,7 +14,7 @@ import pandas as pd
 from src.features import MODES_PANNE_PREDICTIBLES
 
 # Délai de réarmement par défaut (24h = 48 pas de 30 min) : au-delà de cette durée,
-# un épisode d'alerte continu est redécoupé en plusieurs épisodes. Sans ça, un modèle 
+# un épisode d'alerte continu est redécoupé en plusieurs épisodes. Sans ça, un modèle
 # qui reste bloqué en alerte pendant des mois ne compte jamais que comme UN épisode.
 PAS_MAX_EPISODE_DEFAUT = 48
 
@@ -64,7 +64,7 @@ def metriques_evenementielles(
     panne est "attrapée" et le préavis = temps entre le début de cet épisode et la
     panne. Les épisodes non associés à une panne sont des fausses alertes.
 
-    pas_max_episode : délai de réarmement - un épisode continu plus long est redécoupé, 
+    pas_max_episode : délai de réarmement - un épisode continu plus long est redécoupé,
     pour qu'un modèle en alerte quasi permanente ne soit pas artificiellement bien noté.
     """
     if len(df) != len(probas):
