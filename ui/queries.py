@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from src.config import CHEMIN_DB as DB_PATH
-from src.config import TABLE
+from src.config import TABLE, TABLE_PREDICTIONS
 from ui.constants import _PARTS, _PROD_COEFF, _QUAL_FIX, _TECH_RATE
 
 _SQL_EVENEMENTS_COUPURE = """
@@ -319,53 +319,31 @@ def q_chronologie_cout(date_debut: str, date_fin: str) -> "pd.DataFrame":
     return df
 
 
-@st.cache_resource
-def obtenir_predicteur():
-    from src.predicteur import Predicteur
-
-    return Predicteur(utiliser_mlflow=True)
-
-
-@st.cache_resource
-def obtenir_explicateur():
-    """Explicateur SHAP du champion courant, construit une seule fois."""
-    from src.explain import ExplicateurCause
-
-    return ExplicateurCause(obtenir_predicteur().modele)
-
-
-@st.cache_data(ttl=300)
-def q_derniers_releves_toutes_machines(fenetre_historique: int) -> pd.DataFrame:
-    """
-    Les `fenetre_historique` dernières lignes de CHAQUE machine (pas juste la
-    dernière) — nécessaire pour calculer les features glissantes (24h) avant de
-    prédire, utilisé par la vue "à traiter aujourd'hui" (point 34).
-    """
-    with duckdb.connect(str(DB_PATH), read_only=True) as conn:
-        df = conn.execute(
-            f"""SELECT * FROM (
-                    SELECT *, ROW_NUMBER() OVER (PARTITION BY id_machine ORDER BY timestamp DESC) AS rang
-                    FROM {TABLE}
-                )
-                WHERE rang <= ?
-                ORDER BY id_machine, timestamp""",
-            [fenetre_historique],
-        ).fetchdf()
-    return df.drop(columns="rang")
-
-
 @st.cache_data(ttl=300)
 def q_priorites_parc() -> pd.DataFrame:
-    """
-    Priorités du parc (point 34), mises en cache une seule fois — réutilisées à la
-    fois par le tableau "à traiter aujourd'hui" (tab_general) et par la sélection par
-    défaut de la Vue Machine (tab_machine), pour ne pas recalculer deux fois la même
-    boucle prédiction + SHAP sur 50 machines à chaque chargement de page.
-    """
-    from src.features import LIGNES_HISTORIQUE
-    from ui.priorites import calculer_priorites_parc
+    """Machines en alerte sur leur dernier relevé (table predictions), de la plus à la moins risquée."""
+    with duckdb.connect(str(DB_PATH), read_only=True) as conn:
+        df = conn.execute(
+            f"""SELECT p.id_machine, t.type_machine, p.probabilite_panne, p.niveau, p.cause_principale
+                FROM {TABLE_PREDICTIONS} p JOIN {TABLE} t USING (id_machine, timestamp)
+                QUALIFY ROW_NUMBER() OVER (PARTITION BY p.id_machine ORDER BY p.timestamp DESC) = 1"""
+        ).fetchdf()
+    df = df[df["niveau"] != "normal"].sort_values("probabilite_panne", ascending=False).reset_index(drop=True)
+    df["fenetre"] = df["niveau"].map(
+        {"eleve": "Risque élevé — à traiter en priorité (2 à 5 jours)", "surveillance": "À surveiller (dans la semaine)"}
+    )
+    return df
 
-    predicteur = obtenir_predicteur()
-    explicateur = obtenir_explicateur()
-    df_historique = q_derniers_releves_toutes_machines(LIGNES_HISTORIQUE)
-    return calculer_priorites_parc(df_historique, predicteur, explicateur)
+
+@st.cache_data(ttl=300)
+def q_risque_machine(id_machine: str, steps: int) -> pd.DataFrame:
+    """Risque prédit (table predictions) sur les `steps` derniers pas, avec les pannes constatées."""
+    with duckdb.connect(str(DB_PATH), read_only=True) as conn:
+        df = conn.execute(
+            f"""SELECT p.timestamp, p.probabilite_panne, p.niveau, p.cause_principale, t.panne
+                FROM {TABLE_PREDICTIONS} p JOIN {TABLE} t USING (id_machine, timestamp)
+                WHERE p.id_machine = ?
+                ORDER BY p.timestamp DESC LIMIT ?""",
+            [id_machine, steps],
+        ).fetchdf()
+    return df.sort_values("timestamp").reset_index(drop=True)

@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -49,3 +50,26 @@ class ReponseRechargement(BaseModel):
     model_version: str = Field(..., description="Version @champion chargée après rechargement")
     threshold: float = Field(..., description="Seuil de décision après rechargement")
     status: str = Field(default="success")
+
+
+class EtatMachine(BaseModel):
+    """Dernier relevé d'une machine et son risque (table predictions)."""
+
+    id_machine: str
+    type_machine: str
+    timestamp: datetime
+    probabilite_panne: float
+    niveau: str = Field(..., description="normal, surveillance ou eleve")
+    cause_principale: Optional[str] = Field(default=None, description="Famille physique dominante, si en alerte")
+    heures_depuis_changement_outil: float
+    heures_depuis_maintenance: float
+
+
+class PointSerie(BaseModel):
+    timestamp: datetime
+    probabilite_panne: float
+    vibration: Optional[float]
+    temperature_process: Optional[float]
+    couple: Optional[float]
+    concentration_poussiere: Optional[float]
+    panne: int

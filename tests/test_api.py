@@ -80,3 +80,28 @@ def test_recharger_modele():
     data = r.json()
     assert data["status"] == "success"
     assert 0.0 <= data["threshold"] <= 1.0
+
+
+def test_machines_retourne_le_dernier_etat_de_chaque_machine():
+    r = client.get("/api/v1/machines")
+    assert r.status_code == 200
+    etats = r.json()
+    assert len(etats) == 50
+    assert {e["niveau"] for e in etats} <= {"normal", "surveillance", "eleve"}
+
+
+def test_priorites_triees_et_en_alerte():
+    priorites = client.get("/api/v1/priorites").json()
+    assert all(p["niveau"] != "normal" and p["cause_principale"] for p in priorites)
+    probas = [p["probabilite_panne"] for p in priorites]
+    assert probas == sorted(probas, reverse=True)
+
+
+def test_serie_machine():
+    r = client.get("/api/v1/machines/GDIZ_TEX_M_01/serie", params={"jours": 7})
+    assert r.status_code == 200
+    assert len(r.json()) == 7 * 48
+
+
+def test_serie_machine_inconnue():
+    assert client.get("/api/v1/machines/INCONNUE/serie").status_code == 404

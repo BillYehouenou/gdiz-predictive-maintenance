@@ -4,41 +4,19 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.features import LIGNES_HISTORIQUE, calculer_features
 from ui.constants import STEPS_MAP
 from ui.helpers import axe_graphique, disposition_graphique
-from ui.queries import (
-    obtenir_explicateur,
-    obtenir_predicteur,
-    q_dernier_releve_machine,
-    q_liste_machines,
-    q_priorites_parc,
-    q_serie_complete_machine,
-)
+from ui.queries import q_dernier_releve_machine, q_liste_machines, q_priorites_parc, q_risque_machine, q_serie_complete_machine
 
 logger = logging.getLogger(__name__)
 
 FENETRE_AFFICHAGE = "30j"
 
 
-def _predire_serie(predicteur, df_serie_tampon: pd.DataFrame, display_steps: int) -> pd.DataFrame:
-    """
-    Enrichit temporellement puis prédit sur toute la série, puis ne garde que les dernières lignes.
-    """
-    df_enriched = calculer_features(df_serie_tampon)
-    if df_enriched.empty:
-        return pd.DataFrame()
-    preds = predicteur.predire(df_enriched)
-    out = df_enriched[["timestamp", "vibration", "panne"]].copy()
-    out["probabilite_panne"] = preds["probabilite_panne"].values
-    out["prediction"] = preds["prediction"].values
-    return out.reset_index(drop=True).tail(display_steps).reset_index(drop=True)
-
-
 def _index_machine_prioritaire(machines: list[str]) -> int:
     """
-    Machine sélectionnée par défaut = la plus prioritaire de "à traiter aujourd'hui"
-    (ui/priorites.py), pas systématiquement la première de la liste.
+    Machine sélectionnée par défaut = la plus prioritaire de "à traiter aujourd'hui",
+    pas systématiquement la première de la liste.
     """
     try:
         priorites = q_priorites_parc()
@@ -75,48 +53,30 @@ def afficher(C: dict) -> None:
     n_fail_period = int(df_serie["panne"].sum()) if has_ts else 0
     poussiere_max = float(df_serie["concentration_poussiere"].max()) if has_ts else snap["concentration_poussiere"]
 
-    # Prédictions sur la série complète (enrichie temporellement)
-    probabilite_pic: float = 0.0
+    # Risque lu dans la table predictions (calculée par `make score`)
+    df_predictions = q_risque_machine(id_selectionne, steps)
     horodatage_pic = None
-    probabilite_actuelle: float | None = None
-    df_predictions = pd.DataFrame()
-    cause_probable: str | None = None
-    predicteur = None
+    probabilite_pic = probabilite_affichee = 0.0
+    niveau, cause_probable = "normal", None
+    if len(df_predictions) > 0:
+        peak_idx = int(df_predictions["probabilite_panne"].idxmax())
+        probabilite_pic = float(df_predictions.loc[peak_idx, "probabilite_panne"])
+        horodatage_pic = df_predictions.loc[peak_idx, "timestamp"]
+        derniere = df_predictions.iloc[-1]
+        probabilite_affichee, niveau = float(derniere["probabilite_panne"]), derniere["niveau"]
+        cause_probable = derniere["cause_principale"] if pd.notna(derniere["cause_principale"]) else None
 
-    try:
-        predicteur = obtenir_predicteur()
-        # 24h de tampon : sans elles, les features glissantes du début de la fenêtre seraient tronquées
-        df_serie_tampon = q_serie_complete_machine(id_selectionne, steps + LIGNES_HISTORIQUE)
-        df_predictions = _predire_serie(predicteur, df_serie_tampon, steps)
-        if len(df_predictions) > 0:
-            peak_idx = int(df_predictions["probabilite_panne"].idxmax())
-            probabilite_pic = float(df_predictions.loc[peak_idx, "probabilite_panne"])
-            horodatage_pic = df_predictions.loc[peak_idx, "timestamp"]
-            probabilite_actuelle = float(df_predictions.iloc[-1]["probabilite_panne"])
-            if probabilite_actuelle >= predicteur.threshold:
-                derniere = calculer_features(df_serie_tampon).iloc[[-1]]
-                cause_probable = obtenir_explicateur().cause_probable(derniere)[0]["cause_principale"]
-    except Exception as e:
-        logger.warning(f"Prédiction indisponible pour {id_selectionne} : {e}")
-
-    # On affiche la probailité actuelle. Un pic à 63 % survenu il y a 3
-    # semaines mais retombé depuis ne doit pas afficher "risque élevé" aujourd'hui :
-    # Seuils dérivés du seuil de décision réel du modèle : avec un
-    # seuil optimal typiquement bas (pannes rares, ~3 % de base), des bornes fixes
-    # afficheraient "Normal" pour une machine que le modèle alerte réellement.
-    probabilite_affichee = probabilite_actuelle if probabilite_actuelle is not None else 0.0
-    threshold = predicteur.threshold if predicteur is not None else 0.5
-    if probabilite_affichee < threshold:
-        p_color, p_label = C["green"], "Normal"
-    elif probabilite_affichee < threshold * 3:
-        p_color, p_label = C["orange"], "Surveillance"
-    else:
-        p_color, p_label = C["red"], "Risque élevé"
+    # On affiche le risque actuel : un pic passé et retombé ne doit pas afficher "risque élevé" aujourd'hui
+    p_color, p_label = {
+        "normal": (C["green"], "Normal"),
+        "surveillance": (C["orange"], "Surveillance"),
+        "eleve": (C["red"], "Risque élevé"),
+    }[niveau]
 
     _peak_line = (
         f"Pic sur 30j : {probabilite_pic * 100:.1f}% le {pd.Timestamp(horodatage_pic).strftime('%d/%m %H:%M')}"
         if horodatage_pic is not None
-        else "Modèle non disponible"
+        else "Prédictions absentes : lancer make score"
     )
     _cause_html = (
         f'<div style="font-size:.72rem;color:{p_color};margin-top:.3rem;font-weight:600;">Cause probable : {cause_probable}</div>'
