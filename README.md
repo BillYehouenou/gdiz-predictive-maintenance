@@ -64,6 +64,24 @@ make serve ; make mlflow-ui
 ```
 
 
+## Choix du modèle
+
+Recall événementiel au budget de 0,2 fausse alerte par machine et par jour (`make compare`) :
+
+| Modèle | Validation (T2-T4 2024, 65 pannes) | Test 2025 (115 pannes) | Taille |
+|---|---|---|---|
+| Règle : heures d'outil | 59 % | 50 % | 0,2 Ko |
+| Régression logistique | 58 % | 28 % | 6 Ko |
+| Arbre de décision | 53 % | 48 % | 10 Ko |
+| HistGradientBoosting | 69 % | 53 % | 338 Ko |
+| **LightGBM (déployé)** | **71 %** | **60 %** | 266 Ko |
+
+Incertitude : ±6 points en validation, ±5 au test. Le boosting bat nettement les modèles simples ; entre variantes
+de boosting (y compris des LightGBM plus petits), les écarts restent dans le bruit, et la validation et le test ne
+s'accordent pas. LightGBM 150 arbres est donc conservé. Départager plus finement demanderait plus de pannes
+(plus de machines simulées).
+
+
 ## Déploiement Docker
 
 La stack Compose orchestre trois services dans des conteneurs :
@@ -93,14 +111,14 @@ gdiz-predictive-maintenance/
 │   ├── observation.py      # Défaillances capteurs IoT + écriture DuckDB
 │   └── generer.py          # Orchestration
 ├── scripts/
-│   ├── run_baseline_comparison.py  # Règle triviale + régression logistique, à battre par LightGBM
 │   └── check_drift.py      # Drift KS + PSI des features et des prédictions
 ├── src/                    # Pipeline ML : python -m src.train
 │   ├── config.py           # Chemins, schéma des données, MLflow
 │   ├── donnees.py          # Chargement DuckDB, cible à horizon, split avec tampon et machines réservées
 │   ├── features.py         # Features glissantes (une seule fonction pour l'entraînement et l'inférence)
 │   ├── evaluation.py       # Métrique événementielle : recall @ budget de fausses alertes
-│   ├── train.py            # LightGBM + calibration + seuil + promotion @champion
+│   ├── modeles.py          # Candidats et comparaison : python -m src.modeles (make compare)
+│   ├── train.py            # Modèle retenu + calibration + seuil + promotion @champion
 │   ├── predicteur.py       # Chargement du @champion et prédiction
 │   └── explain.py          # Cause probable par famille physique (SHAP)
 ├── tests/                  # Suite pytest

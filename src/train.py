@@ -1,54 +1,44 @@
 """
-Entraînement : LightGBM --> calibration sigmoïde et seuil choisis sur la validation --> métriques sur le test
---> MLflow. Le @champion n'est remplacé que si le recall événementiel ne régresse pas.
+Entraînement du modèle retenu (src/modeles.py) --> calibration sigmoïde et seuil choisis sur la validation
+--> métriques sur le test --> MLflow. Le @champion n'est remplacé que si le recall événementiel ne régresse pas.
 Usage : python -m src.train
 """
 
 import json
 import logging
-from typing import Any
 
 import joblib
 import mlflow
 import mlflow.sklearn
 import numpy as np
 import pandas as pd
-from lightgbm import LGBMClassifier
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.frozen import FrozenEstimator
 from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
 
-from src.config import CIBLE, DOSSIER_MODELES, NOM_EXPERIENCE, NOM_MODELE, PAS, URI_MLFLOW
+from src.config import CIBLE, DOSSIER_MODELES, NOM_EXPERIENCE, NOM_MODELE, URI_MLFLOW
 from src.donnees import DATE_TEST, DATE_VALIDATION, HORIZON, MACHINES_RESERVEES, charger, decouper
-from src.evaluation import grille_seuils, metriques_evenementielles, trouver_seuil_pour_budget_fa
+from src.evaluation import (
+    BUDGET_FAUSSES_ALERTES_PAR_MACHINE_JOUR,
+    PAS_HORIZON,
+    grille_seuils,
+    metriques_evenementielles,
+    trouver_seuil_pour_budget_fa,
+)
 from src.features import preparer_X
+from src.modeles import CANDIDATS, MODELE_RETENU
 
 logger = logging.getLogger(__name__)
 
 ALIAS_CHAMPION = "champion"
 METRIQUE_PROMOTION = "recall_evenementiel"
-PAS_HORIZON = int(HORIZON / PAS)
-BUDGET_FAUSSES_ALERTES_PAR_MACHINE_JOUR = 0.2  # dérangements inutiles acceptés par l'équipe de maintenance
-
-# Peu de feuilles et forte régularisation : le signal de panne est rare
-HYPERPARAMETRES: dict[str, Any] = {
-    "n_estimators": 150,
-    "learning_rate": 0.1,
-    "num_leaves": 15,
-    "min_child_samples": 80,
-    "subsample": 0.7,
-    "colsample_bytree": 0.7,
-    "reg_alpha": 0.3,
-    "reg_lambda": 0.3,
-}
 
 
 def entrainer(df: pd.DataFrame) -> tuple[CalibratedClassifierCV, float, dict]:
     train, validation, test = decouper(df)
     logger.info(f"Train {len(train):,} | validation {len(validation):,} | test {len(test):,} lignes")
 
-    modele = LGBMClassifier(**HYPERPARAMETRES, random_state=42, n_jobs=-1, verbose=-1)
-    modele.fit(preparer_X(train), train[CIBLE])
+    modele = CANDIDATS[MODELE_RETENU]().fit(preparer_X(train), train[CIBLE])
     # Sigmoïde plutôt qu'isotonique : des probabilités continues permettent de régler finement le seuil
     calibre = CalibratedClassifierCV(FrozenEstimator(modele), method="sigmoid").fit(preparer_X(validation), validation[CIBLE])
 
@@ -78,6 +68,11 @@ def entrainer(df: pd.DataFrame) -> tuple[CalibratedClassifierCV, float, dict]:
     return calibre, seuil, metriques
 
 
+def modele_params(calibre: CalibratedClassifierCV) -> dict:
+    """Hyperparamètres du modèle sous-jacent (non vides), pour MLflow."""
+    return {k: v for k, v in calibre.estimator.estimator.get_params(deep=False).items() if v is not None}
+
+
 def promouvoir_si_meilleur(client: mlflow.MlflowClient, version: str, score: float) -> bool:
     """Promeut la version en @champion si elle égale ou dépasse le champion actuel (automatique s'il n'y en a pas)."""
     try:
@@ -99,10 +94,11 @@ def main():
     mlflow.set_experiment(NOM_EXPERIENCE)
     calibre, seuil, metriques = entrainer(charger())
 
-    with mlflow.start_run(run_name="LGBM_Training"):
+    with mlflow.start_run(run_name=f"{MODELE_RETENU}_entrainement"):
         mlflow.log_params(
             {
-                **HYPERPARAMETRES,
+                "modele": MODELE_RETENU,
+                **modele_params(calibre),
                 "seuil_optimal": round(seuil, 4),
                 "budget_fa_machine_jour": BUDGET_FAUSSES_ALERTES_PAR_MACHINE_JOUR,
                 "horizon_heures": HORIZON / pd.Timedelta("1h"),
