@@ -98,9 +98,9 @@ def afficher(C: dict) -> None:
     )
     c2.metric("MTBF moyen", f"{kpi['mtbf_h']:,.0f} h", help="Temps moyen entre deux défaillances")
     c3.metric(
-        "Fenêtres PM",
-        f"{kpi['pm_windows']:,}",
-        help="Fenêtres 24h avec usure 82–90% sans défaillance.",
+        "Préventives",
+        f"{kpi['preventives']:,}",
+        help="Interventions de maintenance préventive réalisées sur la période (compteur GMAO remis à zéro sans panne).",
     )
     c4.metric("Délestages (30j)", f"{kpi['blackouts_30d']:,}", help="Événements SBEE sur les 30 derniers jours du jeu_donnees")
 

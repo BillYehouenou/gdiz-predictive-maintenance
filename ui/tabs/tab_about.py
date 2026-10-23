@@ -203,10 +203,11 @@ def afficher(C: dict) -> None:
             "Données",
             C["teal"],
             "Un jumeau numérique du parc GDIZ, pas un jeu de données générique.",
-            "Plusieurs machines textiles sont simulées pas à pas sur 2 ans, avec le climat béninois et les coupures SBEE "
-            "reproduits fidèlement. Chaque machine casse à son propre <strong>seuil d'usure</strong>, pour un parc hétérogène "
-            "et réaliste, avec 5 causes de panne possibles (usure, surchauffe, surcharge mécanique, électrique, aléatoire). "
-            "Le tout est stocké dans une base DuckDB, taillé pour l'analyse de grandes séries temporelles.",
+            "Plusieurs machines textiles sont simulées pas à pas sur 2 ans, sous la <strong>météo réelle</strong> de Glo-Djigbé "
+            "(Open-Meteo : température, humidité, pluie, poussière d'Harmattan) et des coupures SBEE simulées. Chaque machine "
+            "casse à son propre seuil d'usure, avec 5 causes de panne possibles (usure, surchauffe, surcharge mécanique, "
+            "électrique, aléatoire). L'usure elle-même reste <strong>cachée</strong> : comme en usine, le modèle ne voit que "
+            "les capteurs et les compteurs de maintenance. Le tout est stocké dans une base DuckDB.",
         ),
         (
             "Indicateurs",
@@ -229,7 +230,7 @@ def afficher(C: dict) -> None:
         (
             "ML",
             C["red"],
-            "84 % des pannes prévisibles détectées, 5 jours à l'avance.",
+            "65 % des pannes prévisibles détectées, jusqu'à 5 jours à l'avance.",
             "Le modèle est un LightGBM, calibré pour donner des probabilités fiables et interprétables. Entraîné sur 2024 et "
             "testé sur 2025, il apprend à généraliser dans le temps plutôt qu'à retenir par cœur, et prédit les pannes "
             "d'usure, de surchauffe et de surcharge mécanique. Les pannes électriques et aléatoires étant exclues pour "

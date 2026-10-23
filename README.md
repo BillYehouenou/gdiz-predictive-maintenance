@@ -13,10 +13,12 @@ La cible tente de répondre à la question : **cette machine tombera-t-elle en p
 ## Pipeline
 
 ```
-scripts/generate_synthetic_data.py   - Données IoT synthétiques (framework AI4I 2020, adapté GDIZ)
+Open-Meteo (réel)                    - Météo de Glo-Djigbé 2024-2025 : température, humidité, pluie, poussière (CAMS)
         │
+simulation/                          - Physique des machines (framework AI4I 2020, adapté GDIZ) --> défauts capteurs IoT
+        │                              L'usure et l'encrassement restent cachés : seuls capteurs + compteurs GMAO sont exportés
         │
-data/raw/gdiz_maintenance.db         - DuckDB : 1,75M lignes, indexé sur (id_machine, timestamp)
+data/raw/gdiz_maintenance.db         - DuckDB : télémétrie 1,75M lignes (id_machine, timestamp) + cache météo
         │
 src/features.py  (rolling temporel)  src/preprocessor.py  (imputation + catégorielles natives LightGBM)
         │                                     │
@@ -51,7 +53,7 @@ git clone <url-du-repo>
 cd gdiz-predictive-maintenance
 uv sync --frozen
 
-# Génère le dataset synthétique (une seule fois)
+# Génère le dataset (télécharge la météo Open-Meteo au premier lancement, puis cache DuckDB)
 make generate-data
 
 # Entraîne le modèle et l'enregistre dans MLflow
@@ -89,8 +91,12 @@ gdiz-predictive-maintenance/
 │   └── utils.py            # Orchestration des prédictions, log MLflow async, rechargement à chaud
 ├── config/config.yaml      # Chemins, spec dataset, URIs MLflow
 ├── dashboard.py            # Point d'entrée Streamlit
+├── simulation/             # Générateur : python -m simulation.generer
+│   ├── meteo.py            # Météo réelle Open-Meteo (ERA5 + CAMS), cache DuckDB
+│   ├── physique.py         # Atelier (extérieur --> intérieur) + état caché et risques de panne des machines
+│   ├── observation.py      # Défaillances capteurs IoT + écriture DuckDB
+│   └── generer.py          # Orchestration
 ├── scripts/
-│   ├── generate_synthetic_data.py
 │   ├── run_training.py
 │   ├── run_baseline_comparison.py  # Règle triviale + régression logistique, à battre par LightGBM
 │   └── check_drift.py      # Drift KS + PSI (features) et drift des prédictions elles-mêmes

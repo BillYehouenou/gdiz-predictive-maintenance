@@ -39,11 +39,18 @@ def q_kpis_periode(date_debut: str, date_fin: str) -> dict:
                 SELECT AVG(h) FROM m""",
             [date_debut, date_fin],
         ).fetchone()[0]
-        pm_windows = conn.execute(
-            f"""SELECT COUNT(*) / 48
-                FROM {TABLE}
-                WHERE usure_outil BETWEEN 82 AND 90 AND panne = 0
-                  AND timestamp BETWEEN ? AND ?""",
+        # Intervention préventive = remise à zéro du compteur GMAO sans panne dans les 48h précédentes
+        # (une réparation de panne dure au plus 48h = 96 pas)
+        preventives = conn.execute(
+            f"""WITH t AS (
+                    SELECT timestamp,
+                           heures_depuis_maintenance < LAG(heures_depuis_maintenance) OVER w AS remise_a_zero,
+                           MAX(panne) OVER (w ROWS BETWEEN 97 PRECEDING AND CURRENT ROW) AS panne_recente
+                    FROM {TABLE}
+                    WINDOW w AS (PARTITION BY id_machine ORDER BY timestamp)
+                )
+                SELECT COUNT(*) FROM t
+                WHERE remise_a_zero AND panne_recente = 0 AND timestamp BETWEEN ? AND ?""",
             [date_debut, date_fin],
         ).fetchone()[0]
         total_blackouts = conn.execute(
@@ -60,7 +67,7 @@ def q_kpis_periode(date_debut: str, date_fin: str) -> dict:
         total_pannes=int(g[1]),
         mtbf_h=float(mtbf_raw or 0.0),
         total_blackouts=int(total_blackouts),
-        pm_windows=int(pm_windows),
+        preventives=int(preventives),
         blackouts_30d=int(blackouts_30d),
     )
 
@@ -174,13 +181,7 @@ def q_serie_complete_machine(id_machine: str, steps: int) -> "pd.DataFrame":
     """Retourne la série temporelle complète avec toutes les features ML + indicateurs visuels."""
     with duckdb.connect(str(DB_PATH), read_only=True) as conn:
         df = conn.execute(
-            f"""SELECT timestamp,
-                       temperature_process, temperature_ambiante, usure_outil,
-                       vibration, stabilite_tension, panne,
-                       saison_benin, type_machine, vitesse_rotation, couple,
-                       niveau_activite, humidite, concentration_poussiere,
-                       indicateur_pluie, indicateur_coupure, niveau_tension,
-                       encrassement
+            f"""SELECT * EXCLUDE (id_machine)
                 FROM {TABLE}
                 WHERE id_machine = ?
                 ORDER BY timestamp DESC LIMIT ?""",
@@ -199,38 +200,18 @@ def q_liste_machines() -> list:
 @st.cache_data(ttl=300)
 def q_dernier_releve_machine(id_machine: str) -> dict:
     with duckdb.connect(str(DB_PATH), read_only=True) as conn:
-        row = conn.execute(
-            f"""SELECT usure_outil, temperature_process, temperature_ambiante,
-                       vibration, niveau_activite, stabilite_tension,
-                       indicateur_coupure, type_machine,
-                       concentration_poussiere, humidite, niveau_tension,
-                       vitesse_rotation, couple, indicateur_pluie, saison_benin,
-                       encrassement
-                FROM {TABLE}
-                WHERE id_machine = ?
-                  AND timestamp = (SELECT MAX(timestamp) FROM {TABLE} WHERE id_machine = ?)""",
-            [id_machine, id_machine],
-        ).fetchone()
+        snap = (
+            conn.execute(
+                f"""SELECT * FROM {TABLE}
+                    WHERE id_machine = ?
+                    ORDER BY timestamp DESC LIMIT 1""",
+                [id_machine],
+            )
+            .fetchdf()
+            .iloc[0]
+            .to_dict()
+        )
         n_fail = conn.execute(f"SELECT SUM(panne) FROM {TABLE} WHERE id_machine = ?", [id_machine]).fetchone()[0]
-    keys = [
-        "usure_outil",
-        "temperature_process",
-        "temperature_ambiante",
-        "vibration",
-        "niveau_activite",
-        "stabilite_tension",
-        "indicateur_coupure",
-        "type_machine",
-        "concentration_poussiere",
-        "humidite",
-        "niveau_tension",
-        "vitesse_rotation",
-        "couple",
-        "indicateur_pluie",
-        "saison_benin",
-        "encrassement",
-    ]
-    snap = dict(zip(keys, row))
     snap["nb_pannes"] = int(n_fail)
     return snap
 
@@ -362,12 +343,7 @@ def q_derniers_releves_toutes_machines(fenetre_historique: int) -> pd.DataFrame:
     with duckdb.connect(str(DB_PATH), read_only=True) as conn:
         df = conn.execute(
             f"""SELECT * FROM (
-                    SELECT id_machine, type_machine, timestamp,
-                           temperature_process, temperature_ambiante, usure_outil,
-                           vibration, stabilite_tension, saison_benin, vitesse_rotation,
-                           couple, niveau_activite, humidite, concentration_poussiere,
-                           indicateur_pluie, indicateur_coupure, niveau_tension, encrassement,
-                           ROW_NUMBER() OVER (PARTITION BY id_machine ORDER BY timestamp DESC) AS rang
+                    SELECT *, ROW_NUMBER() OVER (PARTITION BY id_machine ORDER BY timestamp DESC) AS rang
                     FROM {TABLE}
                 )
                 WHERE rang <= ?

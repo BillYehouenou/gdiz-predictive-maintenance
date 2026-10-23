@@ -30,7 +30,7 @@ def _predire_serie(predicteur, df_serie_tampon: pd.DataFrame, display_steps: int
     if len(feat_df) == 0:
         return pd.DataFrame()
     preds = predicteur.predire(feat_df)
-    out = df_enriched.loc[feat_df.index, ["timestamp", "usure_outil", "vibration", "panne"]].copy()
+    out = df_enriched.loc[feat_df.index, ["timestamp", "vibration", "panne"]].copy()
     out["probabilite_panne"] = preds["probabilite_panne"].values
     out["prediction"] = preds["prediction"].values
     return out.reset_index(drop=True).tail(display_steps).reset_index(drop=True)
@@ -69,14 +69,12 @@ def afficher(C: dict) -> None:
 
     # Métriques agrégées sur la fenêtre d'affichage
     has_ts = len(df_serie) > 0
-    wear_max = float(df_serie["usure_outil"].max()) if has_ts else snap["usure_outil"]
     temp_max = float(df_serie["temperature_process"].max()) if has_ts else snap["temperature_process"]
     vibr_max = float(df_serie["vibration"].max()) if has_ts else snap["vibration"]
-    vstab_min = float(df_serie["stabilite_tension"].min()) if has_ts else snap["stabilite_tension"]
+    tension_min = float(df_serie["niveau_tension"].min()) if has_ts else snap["niveau_tension"]
     torque_max = float(df_serie["couple"].max()) if has_ts else snap["couple"]
     n_fail_period = int(df_serie["panne"].sum()) if has_ts else 0
     poussiere_max = float(df_serie["concentration_poussiere"].max()) if has_ts else snap["concentration_poussiere"]
-    encrassement_max = float(df_serie["encrassement"].max()) if has_ts else snap["encrassement"]
 
     # Prédictions sur la série complète (enrichie temporellement)
     probabilite_pic: float = 0.0
@@ -152,7 +150,11 @@ def afficher(C: dict) -> None:
         )
 
     with col_m1:
-        st.metric(f"Usure max - {FENETRE_AFFICHAGE}", f"{wear_max:.1f} %", help="Maximum d'usure outil observé sur la période")
+        st.metric(
+            "Heures outil",
+            f"{snap['heures_depuis_changement_outil']:,.0f} h",
+            help="Heures de fonctionnement depuis le dernier changement d'outil (GMAO)",
+        )
         st.metric(
             f"Couple max - {FENETRE_AFFICHAGE}", f"{torque_max:.1f} Nm", help="Couple maximal — indicateur de surcharge mécanique"
         )
@@ -168,13 +170,17 @@ def afficher(C: dict) -> None:
         )
         st.metric(f"Vibration max - {FENETRE_AFFICHAGE}", f"{vibr_max:.2f} mm/s", help="Vibration maximale enregistrée")
         st.metric(
-            f"Encrassement max - {FENETRE_AFFICHAGE}", f"{encrassement_max:.0f} %", help="Encrassement maximal du process observé"
+            "Dernière maintenance",
+            f"il y a {snap['heures_depuis_maintenance'] / 24:,.0f} j",
+            help="Temps écoulé depuis la dernière intervention (panne ou préventive)",
         )
 
     with col_m3:
         st.metric("Type machine", snap["type_machine"])
         st.metric(f"Pannes - {FENETRE_AFFICHAGE}", str(n_fail_period), help="Nombre de pannes constatées sur la période")
-        st.metric(f"Stab. tension min - {FENETRE_AFFICHAGE}", f"{vstab_min:.1f} %", help="Stabilité réseau SBEE minimale")
+        st.metric(
+            f"Tension min - {FENETRE_AFFICHAGE}", f"{tension_min:.0f} V", help="Tension réseau SBEE minimale (nominale : 220 V)"
+        )
 
     st.markdown("<br>", unsafe_allow_html=True)
 
