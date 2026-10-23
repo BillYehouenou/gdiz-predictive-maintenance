@@ -9,6 +9,7 @@ RACINE = Path(__file__).resolve().parent.parent
 CHEMIN_DB = RACINE / "data" / "raw" / "gdiz_maintenance.db"
 DOSSIER_MODELES = RACINE / "models"
 TABLE = "factory_telemetry"
+TABLE_PREDICTIONS = "predictions"
 PAS = pd.Timedelta("30min")
 
 # Mesures brutes vues par le modèle : capteurs + compteurs GMAO (les features glissantes sont dans src/features.py)

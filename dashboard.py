@@ -5,7 +5,8 @@ Usage : streamlit run dashboard.py
 
 import streamlit as st
 
-from ui.constants import _DARK, _LIGHT, DB_PATH
+from src.config import CHEMIN_DB as DB_PATH
+from ui.constants import _DARK, _LIGHT
 from ui.styles import appliquer_styles
 from ui.tabs import tab_about, tab_general, tab_machine
 

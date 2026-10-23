@@ -70,6 +70,7 @@ jobs:
         run: |
           uv run python -m simulation.generer
           uv run python -m src.train
+          uv run python -m src.score
 
       - name: Lancer les tests avec couverture
         env:
