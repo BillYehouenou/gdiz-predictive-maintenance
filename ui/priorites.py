@@ -1,7 +1,6 @@
 import pandas as pd
 
-from src.features import enrichir_serie_inference
-from ui.constants import FEAT_COLS
+from src.features import calculer_features
 
 COLONNES_PRIORITES = ["id_machine", "type_machine", "probabilite_panne", "cause_principale", "fenetre"]
 
@@ -12,12 +11,7 @@ def calculer_priorites_parc(df_historique: pd.DataFrame, predicteur, explicateur
         g = g.sort_values("timestamp")
         if len(g) < 2:
             continue
-        enrichi = enrichir_serie_inference(g)
-        feat_df = enrichi[[k for k in FEAT_COLS if k in enrichi.columns]].dropna()
-        if feat_df.empty:
-            continue
-
-        derniere = feat_df.iloc[[-1]]
+        derniere = calculer_features(g).iloc[[-1]]
         proba = float(predicteur.predire(derniere)["probabilite_panne"].iloc[0])
         if proba < predicteur.threshold:
             continue

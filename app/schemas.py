@@ -40,7 +40,7 @@ class InfoModele(BaseModel):
 
     model_name: str = Field(..., description="Nom du modèle enregistré dans MLflow")
     model_version: str = Field(..., description="Version @champion actuellement chargée en mémoire")
-    threshold: float = Field(..., description="Seuil de décision courant (calibré, cf. docs/model-decisions.md)")
+    threshold: float = Field(..., description="Seuil de décision courant")
 
 
 class ReponseRechargement(BaseModel):

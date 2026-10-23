@@ -29,7 +29,7 @@ generate-data:  # Génère le dataset GDIZ (météo réelle Open-Meteo + simulat
 	$(UV_RUN) python -m simulation.generer
 
 train:  # Entraîne le modèle LightGBM et enregistre l'expérience MLflow
-	$(UV_RUN) python scripts/run_training.py
+	$(UV_RUN) python -m src.train
 
 pipeline: generate-data train  # Régénère les données puis entraîne le modèle
 

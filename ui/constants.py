@@ -1,10 +1,3 @@
-from pathlib import Path
-
-from src.configloader import charger_config
-
-# Features ML : source unique dans config/config.yaml
-FEAT_COLS: list[str] = charger_config()["jeu_donnees"]["features"]
-
 # Coûts de maintenance
 # C_panne = C_production + C_technique + C_qualite
 
@@ -26,10 +19,6 @@ _WASTE: dict = {"L": 5, "M": 8, "H": 15}  # mètres perdus
 # Coefficients précalculés
 _PROD_COEFF = {t: _PROD[t]["capacity_m_per_h"] * _PROD[t]["margin_xof_per_m"] for t in ("L", "M", "H")}
 _QUAL_FIX = {t: _WASTE[t] * _MAT_COST for t in ("L", "M", "H")}
-
-# Base de données
-DB_PATH = Path("data/raw/gdiz_maintenance.db")
-TABLE = "factory_telemetry"
 
 # Périodes de temps pour les graphiques et les analyses
 PERIOD_MAP: dict[str, tuple[str, str]] = {

@@ -1,131 +1,101 @@
 """
-Physique de l'atelier et des machines.
-
-- Contexte : météo extérieure réelle (simulation/meteo.py) convertie en conditions intérieures,
-  rythme de production, réseau électrique SBEE.
-- Machines : évolution séquentielle d'un état caché (usure outil, encrassement, roulements) qui
-  pilote des risques de panne concurrents (framework AI4I 2020 adapté à la GDIZ).
-
-L'état caché n'est jamais exporté : la télémétrie n'expose que ce qu'une usine mesure réellement
-(capteurs + compteurs horaires de la GMAO).
+Physique de l'atelier et des machines : la météo réelle devient des conditions intérieures, et l'état caché
+de chaque machine (usure, encrassement, roulements) pilote des risques de panne concurrents (AI4I 2020).
+Seuls les capteurs et les compteurs GMAO sont exportés.
 """
 
 import hashlib
-import pathlib
 from datetime import datetime
 
 import numpy as np
 import pandas as pd
 
 from simulation.meteo import au_pas
+from src.config import CHEMIN_DB
 
 
 class ConfigDonneesSynthetiques:
-    """Configuration centralisée pour la génération de données synthétiques."""
-
     graine_globale = 42
-
-    # Horizon temporel
     date_debut = datetime(2024, 1, 1)
-    duree_jours = 730  # 2 ans, capture 2 cycles Harmattan + saisons des pluies
-    intervalle_minutes = 30  # Pas de 30 min
-
-    # 50 machines : au-delà, gain marginal sur les métriques pour un coût ~x2 en temps/RAM
+    duree_jours = 730  # 2 cycles Harmattan
+    intervalle_minutes = 30
     nb_machines = 50
     ids_machines = [f"GDIZ_TEX_M_{i:02d}" for i in range(1, nb_machines + 1)]
+    fichier_duckdb = CHEMIN_DB
 
-    # Usure : calibré pour ~4-8 pannes / machine / 2 ans
+    # Usure outil (%) : ~4 à 8 pannes par machine sur 2 ans
     increment_usure_base = 0.005
     plage_usure_initiale = (10, 70)
 
-    # TWF : chaque machine tire son propre seuil de rupture (variabilité unité-à-unité de fabrication)
-    # La plupart des machines tiennent bien, certaines cassent dès 65-75%, d'autres tiennent jusqu'à 95-99%
-    # Le hasard ne devient significatif qu'à l'approche de ce seuil personnel
+    # TWF : seuil de rupture propre à chaque machine, dans [65, 99] %, risque en rampe juste avant
     seuil_min_use = 65.0
-    plage_seuil_use = 34.0  # seuils personnels dans [65, 99]
+    plage_seuil_use = 34.0
     beta_a_seuil_use = 4.0
     beta_b_seuil_use = 2.0
-    bande_rampe_use = 12.0  # largeur de la rampe avant le seuil personnel
+    bande_rampe_use = 12.0
     exposant_rampe_use = 3.0
     coeff_risque_use = 0.08
 
-    # HDF : surchauffe soutenue (moyenne glissante ~4h), pas un pic instantané
-    # Hasard nul sous le seuil, quadratique au-delà
-    pas_fenetre_shd = 8  # 8 × 30 min = 4h
-    seuil_surchauffe_shd = 38.0  # °C au-delà de l'ambiant en moyenne sur la fenêtre choisie
+    # HDF : surchauffe soutenue sur 4h, au-delà de 38 °C d'écart à l'ambiant
+    pas_fenetre_shd = 8
+    seuil_surchauffe_shd = 38.0
     coeff_risque_shd = 0.00012
 
-    # OSF : surcharge mécanique, couple élevé combiné à une usure déjà significative
+    # OSF : couple élevé sur un outil ou des roulements usés
     coeff_risque_sm = 0.0007
-
-    # PWF : choc électrique au retour du courant après une coupure (par type, cf. sensibilite_panne_coupure)
-    probabilite_choc_coupure = 0.04
-
-    # RNF : risque résiduel irréductible, par construction sans précurseur (miroir du RNF d'AI4I 2020)
-    risque_base_pa = 0.000018
-
-    # Dérive thermique additionnelle due au frottement d'un outil usé
-    facteur_chaleur_usure = 3.0  # °C additionnels à usure = 100 %
-
-    # Encrassement : poussière --> dissipation thermique réduite --> HDF
-    taux_base_encrassement = 0.06  # % d'encrassement gagné par pas, à poussiere=100 µg/m³ et sensibilité=1
-    facteur_chaleur_encrassement = 1.8  # °C additionnels max à encrassement = 100 %
-    residu_reinitialisation_encrassement = 10.0  # % résiduel après une visite de maintenance
-
-    # Maintenance préventive imparfaite : une visite (routine + risque, jamais garantie) intercepte
-    # parfois une machine à risque avant qu'elle ne casse. L'outil est changé, les roulements
-    # seulement révisés.
-    probabilite_base_preventive = 0.00002
-    coeff_risque_preventif = 0.0001  # composante risque, ∝ max(usure, encrassement, roulements)²
-    heures_mediane_duree_preventive = 2.0
-    heures_max_duree_preventive = 8.0
-    reduction_roulements_preventive = 0.5  # révision partielle, pas une remise à neuf
-
-    # Second processus de dégradation indépendant de l'usure outil : usure des
-    # roulements, pilotée par la vitesse plutôt que par la poussière ou le couple, contribue à OSF.
     taux_base_usure_roulements = 0.004
     coeff_vibration_roulements = 2.0
     poids_roulements_osf = 0.25
 
-    # Thermique machine : 30 min ≈ 60 % du chemin vers T_cible
+    probabilite_choc_coupure = 0.04  # PWF : choc au retour du courant
+    risque_base_pa = 0.000018  # RNF : risque résiduel sans précurseur
+
+    # Chaleur et encrassement (poussière --> moins de dissipation --> HDF)
+    facteur_chaleur_usure = 3.0  # °C à usure 100 %
+    taux_base_encrassement = 0.06  # % par pas à 100 µg/m³
+    facteur_chaleur_encrassement = 1.8  # °C à encrassement 100 %
+    residu_reinitialisation_encrassement = 10.0
     coef_lissage_temperature = 0.55
     facteur_temperature_frottement = 25.0
 
-    # Atelier : météo extérieure réelle --> conditions intérieures
-    demi_vie_inertie_thermique_pas = 6  # inertie du bâtiment, ~3h
-    surchauffe_atelier_base = 4.0  # °C : toiture tôle, éclairage
-    surchauffe_atelier_activite = 2.5  # °C additionnels à pleine production (chaleur des machines)
-    seuil_ventilation = 38.0  # °C au-delà desquels la ventilation dissipe 70 % de l'excès
-    coeff_humidite_chauffage = 0.065  # l'humidité relative baisse d'environ 6,5 % par °C de réchauffement
-    demi_vie_infiltration_poussiere_pas = 4  # la poussière extérieure met ~2h à s'infiltrer
+    # Maintenance préventive : visite aléatoire, plus probable sur une machine usée
+    probabilite_base_preventive = 0.00002
+    coeff_risque_preventif = 0.0001
+    heures_mediane_duree_preventive = 2.0
+    heures_max_duree_preventive = 8.0
+    reduction_roulements_preventive = 0.5
+
+    # Atelier : extérieur --> intérieur
+    demi_vie_inertie_thermique_pas = 6  # ~3h
+    surchauffe_atelier_base = 4.0  # °C (toiture tôle, éclairage)
+    surchauffe_atelier_activite = 2.5  # °C à pleine production
+    seuil_ventilation = 38.0  # °C, au-delà la ventilation dissipe 70 % de l'excès
+    coeff_humidite_chauffage = 0.065  # -6,5 % d'humidité relative par °C de réchauffement
+    demi_vie_infiltration_poussiere_pas = 4  # ~2h
     taux_infiltration_poussiere = 0.7
-    poussiere_fibres_base = 12.0  # µg/m³ : fibres textiles en suspension, machines à l'arrêt
-    poussiere_fibres_activite = 25.0  # µg/m³ additionnels à pleine production
+    poussiere_fibres_base = 12.0  # µg/m³ de fibres textiles, machines à l'arrêt
+    poussiere_fibres_activite = 25.0  # µg/m³ en plus à pleine production
 
-    # Électrique
-    tension_nominale = 220.0  # 220V = norme Bénin (réseau SBEE)
-    probabilite_coupure = 0.0006  # début de coupure par pas, hors pointe
+    # Réseau SBEE
+    tension_nominale = 220.0
+    probabilite_coupure = 0.0006  # par pas, x8 aux heures de pointe
     multiplicateur_pointe_coupure = 8
-    persistance_coupure = 0.55  # E[durée] = 1/(1-p) ≈ 2.2 pas ≈ 67 min
+    persistance_coupure = 0.55  # durée moyenne ~1h
 
-    # Erreurs capteurs IoT : rafales corrélées (perte de paquets)
-    probabilite_debut_rafale_nan_capteur = 0.0024  # probabilité de démarrage d'une rafale, par pas/capteur
+    # Défaillances capteurs : rafales de NaN, capteurs figés, dérives de calibration
+    probabilite_debut_rafale_nan_capteur = 0.0024
     pas_moyens_duree_rafale_nan_capteur = 3.0
     sigma_duree_rafale_nan_capteur = 0.6
-    plage_duree_rafale_nan_capteur = (1, 24)  # 30 min à 12h
-
+    plage_duree_rafale_nan_capteur = (1, 24)
     probabilite_debut_capteur_bloque = 0.00025
     pas_moyens_duree_capteur_bloque = 12.0
     sigma_duree_capteur_bloque = 1.0
-    plage_duree_capteur_bloque = (2, 96)  # 1h à 48h
-
+    plage_duree_capteur_bloque = (2, 96)
     probabilite_debut_derive_capteur = 0.00006
     pas_moyens_duree_derive_capteur = 48.0
     sigma_duree_derive_capteur = 1.0
-    plage_duree_derive_capteur = (12, 200)  # 6h à 100h
-    pct_max_derive_capteur = 0.5  # biais max atteint en fin de dérive, en fraction de l'écart-type du capteur
-
-    fichier_duckdb = pathlib.Path("data/raw/gdiz_maintenance.db")
+    plage_duree_derive_capteur = (12, 200)
+    pct_max_derive_capteur = 0.5  # biais final, en écart-types du capteur
 
 
 # A - Contexte exogène global

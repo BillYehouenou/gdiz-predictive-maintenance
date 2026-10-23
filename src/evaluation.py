@@ -1,51 +1,28 @@
 """
-Métrique événementielle : remplace le F2 par-pas de temps comme boussole du projet.
-
-Deux chiffres qui comptent, pas un score composite abstrait :
-- recall événementiel : part des pannes réelles précédées d'au moins une alerte
-  dans les X pas qui précèdent.
-- taux de fausses alertes par machine-jour, compté en épisodes (une alerte continue
-  sur une même machine = un seul événement, correspondant à une intervention).
+Métrique événementielle, celle qui compte pour l'atelier :
+- recall événementiel : part des pannes précédées d'au moins une alerte dans l'horizon ;
+- fausses alertes par machine-jour, comptées en épisodes (une alerte continue = une intervention).
 """
 
 import numpy as np
 import pandas as pd
 
-from src.features import MODES_PANNE_PREDICTIBLES
+from src.config import PAS
+from src.donnees import MODES_PANNE_PREDICTIBLES
 
-# Délai de réarmement par défaut (24h = 48 pas de 30 min) : au-delà de cette durée,
-# un épisode d'alerte continu est redécoupé en plusieurs épisodes. Sans ça, un modèle
-# qui reste bloqué en alerte pendant des mois ne compte jamais que comme UN épisode.
+# Un épisode d'alerte plus long que 24h est redécoupé : sinon un modèle bloqué en alerte compterait pour un seul épisode
 PAS_MAX_EPISODE_DEFAUT = 48
 
 
-def _episodes_alerte(
-    indicateurs_alerte: np.ndarray, pas_max_episode: int | None = PAS_MAX_EPISODE_DEFAUT
-) -> list[tuple[int, int]]:
-    """
-    Runs consécutifs à 1 dans un vecteur binaire trié par temps.
-    pas_max_episode : redécoupe tout run plus long que cette durée.
-    None : désactive le redécoupage.
-    """
-    if indicateurs_alerte.sum() == 0:
+def _episodes_alerte(alertes: np.ndarray, pas_max_episode: int | None = PAS_MAX_EPISODE_DEFAUT) -> list[tuple[int, int]]:
+    """(début, fin) des suites consécutives d'alertes, redécoupées au-delà de pas_max_episode (None : jamais)."""
+    if alertes.sum() == 0:
         return []
-    padded = np.concatenate([[0], indicateurs_alerte.astype(int), [0]])
-    diff = np.diff(padded)
-    starts = np.flatnonzero(diff == 1)
-    ends = np.flatnonzero(diff == -1) - 1
-    episodes = list(zip(starts.tolist(), ends.tolist()))
-
+    diff = np.diff(np.concatenate([[0], alertes.astype(int), [0]]))
+    episodes = list(zip(np.flatnonzero(diff == 1).tolist(), (np.flatnonzero(diff == -1) - 1).tolist()))
     if pas_max_episode is None:
         return episodes
-
-    split_episodes = []
-    for s, e in episodes:
-        cur = s
-        while cur <= e:
-            seg_end = min(cur + pas_max_episode - 1, e)
-            split_episodes.append((cur, seg_end))
-            cur = seg_end + 1
-    return split_episodes
+    return [(d, min(d + pas_max_episode - 1, fin)) for debut, fin in episodes for d in range(debut, fin + 1, pas_max_episode)]
 
 
 def metriques_evenementielles(
@@ -57,69 +34,51 @@ def metriques_evenementielles(
     pas_max_episode: int | None = PAS_MAX_EPISODE_DEFAUT,
 ) -> dict:
     """
-    df : doit contenir id_machine, timestamp, panne, mode_panne, aligné index à index avec probas.
-
-    Pour chaque panne réelle, cherche le dernier épisode d'alerte qui chevauche la
-    fenêtre [panne - pas_horizon, panne] sur la même machine : s'il existe, la
-    panne est "attrapée" et le préavis = temps entre le début de cet épisode et la
-    panne. Les épisodes non associés à une panne sont des fausses alertes.
-
-    pas_max_episode : délai de réarmement - un épisode continu plus long est redécoupé,
-    pour qu'un modèle en alerte quasi permanente ne soit pas artificiellement bien noté.
+    df : id_machine, timestamp, panne, mode_panne, aligné ligne à ligne avec probas.
+    Une panne est attrapée si un épisode d'alerte chevauche [panne - horizon, panne] ; le préavis court
+    depuis le début de cet épisode. Les épisodes associés à aucune panne sont des fausses alertes.
     """
     if len(df) != len(probas):
         raise ValueError(f"df et probas doivent avoir la même longueur ({len(df)} vs {len(probas)}).")
 
     df = df.reset_index(drop=True)
-    indicateurs_alerte_tous = (np.asarray(probas) >= threshold).astype(int)
-
-    total_pannes = 0
-    total_attrapees = 0
-    total_episodes = 0
-    total_episodes_fausses_alertes = 0
+    alertes = np.asarray(probas) >= threshold
+    nb_pannes = nb_attrapees = nb_episodes = nb_fausses_alertes = 0
     preavis_heures: list[float] = []
-    total_machine_jours = 0.0
+    machine_jours = 0.0
 
     for _, g in df.groupby("id_machine", sort=False):
         g = g.sort_values("timestamp")
-        positions = g.index.to_numpy()
-        g = g.reset_index(drop=True)
-        a = indicateurs_alerte_tous[positions]
+        machine_jours += (g["timestamp"].iloc[-1] - g["timestamp"].iloc[0]) / pd.Timedelta("1D")
+        episodes = _episodes_alerte(alertes[g.index.to_numpy()], pas_max_episode)
+        nb_episodes += len(episodes)
 
-        duree_heures_totale = (g["timestamp"].iloc[-1] - g["timestamp"].iloc[0]).total_seconds() / 3600.0
-        total_machine_jours += duree_heures_totale / 24.0
-
-        episodes = _episodes_alerte(a, pas_max_episode=pas_max_episode)
-        total_episodes += len(episodes)
-
-        is_failure = (g["panne"] == 1) & g["mode_panne"].isin(modes_panne)
-        index_pannes = np.flatnonzero(is_failure.to_numpy())
-
-        index_episodes_associes = set()
-        for f_raw in index_pannes:
-            f = int(f_raw)
-            total_pannes += 1
-            debut_fenetre = max(0, f - pas_horizon)
-            candidates = [i for i, (s, e) in enumerate(episodes) if s <= f and e >= debut_fenetre]
-            if candidates:
-                total_attrapees += 1
-                best = max(candidates, key=lambda i: episodes[i][0])
-                index_episodes_associes.add(best)
-                preavis_heures.append((f - episodes[best][0]) * 0.5)
-
-        total_episodes_fausses_alertes += len(episodes) - len(index_episodes_associes)
+        pannes = np.flatnonzero(((g["panne"] == 1) & g["mode_panne"].isin(modes_panne)).to_numpy())
+        associes = set()
+        for f in pannes.tolist():
+            nb_pannes += 1
+            candidats = [i for i, (debut, fin) in enumerate(episodes) if debut <= f and fin >= f - pas_horizon]
+            if candidats:
+                nb_attrapees += 1
+                dernier = max(candidats, key=lambda i: episodes[i][0])
+                associes.add(dernier)
+                preavis_heures.append((f - episodes[dernier][0]) * PAS / pd.Timedelta("1h"))
+        nb_fausses_alertes += len(episodes) - len(associes)
 
     return {
-        "recall_evenementiel": total_attrapees / total_pannes if total_pannes > 0 else 0.0,
-        "nb_pannes": total_pannes,
-        "nb_attrapees": total_attrapees,
-        "nb_episodes": total_episodes,
-        "nb_episodes_fausses_alertes": total_episodes_fausses_alertes,
-        "taux_fausses_alertes_par_machine_jour": (
-            total_episodes_fausses_alertes / total_machine_jours if total_machine_jours > 0 else 0.0
-        ),
+        "recall_evenementiel": nb_attrapees / nb_pannes if nb_pannes else 0.0,
+        "nb_pannes": nb_pannes,
+        "nb_attrapees": nb_attrapees,
+        "nb_episodes": nb_episodes,
+        "nb_episodes_fausses_alertes": nb_fausses_alertes,
+        "taux_fausses_alertes_par_machine_jour": nb_fausses_alertes / machine_jours if machine_jours else 0.0,
         "preavis_heures": preavis_heures,
     }
+
+
+def grille_seuils(probas_validation: np.ndarray) -> np.ndarray:
+    """Seuils candidats sur les quantiles des scores, de la médiane au 99,9e centile, plus serrés vers le haut."""
+    return np.unique(np.quantile(probas_validation, 1 - np.geomspace(0.5, 0.001, 200)))
 
 
 def trouver_seuil_pour_budget_fa(
@@ -131,18 +90,11 @@ def trouver_seuil_pour_budget_fa(
     modes_panne: tuple = MODES_PANNE_PREDICTIBLES,
     pas_max_episode: int | None = PAS_MAX_EPISODE_DEFAUT,
 ) -> tuple[float, dict]:
-    """
-    Balaie une grille de seuils, ne retient que ceux dont le taux de fausses alertes
-    respecte le budget, choisit celui qui maximise le recall événementiel parmi eux.
-    Si aucun seuil ne respecte le budget (modèle trop bruité ou budget trop strict),
-    retombe sur celui qui minimise le taux de fausses alertes plutôt que de planter
-    ou de retourner un seuil arbitraire.
-    """
-    results = [
+    """Seuil qui maximise le recall sous le budget de fausses alertes ; à défaut, celui qui en fait le moins."""
+    resultats = [
         (float(t), metriques_evenementielles(df, probas, float(t), pas_horizon, modes_panne, pas_max_episode)) for t in thresholds
     ]
-
-    dans_budget = [(t, m) for t, m in results if m["taux_fausses_alertes_par_machine_jour"] <= budget_par_machine_jour]
+    dans_budget = [(t, m) for t, m in resultats if m["taux_fausses_alertes_par_machine_jour"] <= budget_par_machine_jour]
     if dans_budget:
         return max(dans_budget, key=lambda tm: tm[1]["recall_evenementiel"])
-    return min(results, key=lambda tm: tm[1]["taux_fausses_alertes_par_machine_jour"])
+    return min(resultats, key=lambda tm: tm[1]["taux_fausses_alertes_par_machine_jour"])

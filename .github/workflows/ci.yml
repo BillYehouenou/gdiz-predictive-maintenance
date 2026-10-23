@@ -59,7 +59,7 @@ jobs:
             models
             mlflow.db
             mlruns
-          key: pipeline-${{ hashFiles('simulation/**/*.py', 'scripts/run_training.py', 'src/**/*.py', 'config/config.yaml') }}
+          key: pipeline-${{ hashFiles('simulation/**/*.py', 'src/**/*.py') }}
 
       - name: Générer les données et entraîner le modèle (si le cache ne correspond pas)
         if: steps.cache-pipeline.outputs.cache-hit != 'true'
@@ -69,7 +69,7 @@ jobs:
           PYTHONHASHSEED: "0"
         run: |
           uv run python -m simulation.generer
-          uv run python scripts/run_training.py
+          uv run python -m src.train
 
       - name: Lancer les tests avec couverture
         env:

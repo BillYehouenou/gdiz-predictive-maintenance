@@ -4,8 +4,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.features import FENETRE_24H, enrichir_serie_inference
-from ui.constants import FEAT_COLS, STEPS_MAP
+from src.features import LIGNES_HISTORIQUE, calculer_features
+from ui.constants import STEPS_MAP
 from ui.helpers import axe_graphique, disposition_graphique
 from ui.queries import (
     obtenir_explicateur,
@@ -25,12 +25,11 @@ def _predire_serie(predicteur, df_serie_tampon: pd.DataFrame, display_steps: int
     """
     Enrichit temporellement puis prédit sur toute la série, puis ne garde que les dernières lignes.
     """
-    df_enriched = enrichir_serie_inference(df_serie_tampon)
-    feat_df = df_enriched[[k for k in FEAT_COLS if k in df_enriched.columns]].dropna()
-    if len(feat_df) == 0:
+    df_enriched = calculer_features(df_serie_tampon)
+    if df_enriched.empty:
         return pd.DataFrame()
-    preds = predicteur.predire(feat_df)
-    out = df_enriched.loc[feat_df.index, ["timestamp", "vibration", "panne"]].copy()
+    preds = predicteur.predire(df_enriched)
+    out = df_enriched[["timestamp", "vibration", "panne"]].copy()
     out["probabilite_panne"] = preds["probabilite_panne"].values
     out["prediction"] = preds["prediction"].values
     return out.reset_index(drop=True).tail(display_steps).reset_index(drop=True)
@@ -86,9 +85,8 @@ def afficher(C: dict) -> None:
 
     try:
         predicteur = obtenir_predicteur()
-        # +FENETRE_24H lignes de tampon : sans elles, les features glissantes des premières lignes
-        # de la fenêtre affichée seraient tronquées
-        df_serie_tampon = q_serie_complete_machine(id_selectionne, steps + FENETRE_24H)
+        # 24h de tampon : sans elles, les features glissantes du début de la fenêtre seraient tronquées
+        df_serie_tampon = q_serie_complete_machine(id_selectionne, steps + LIGNES_HISTORIQUE)
         df_predictions = _predire_serie(predicteur, df_serie_tampon, steps)
         if len(df_predictions) > 0:
             peak_idx = int(df_predictions["probabilite_panne"].idxmax())
@@ -96,10 +94,8 @@ def afficher(C: dict) -> None:
             horodatage_pic = df_predictions.loc[peak_idx, "timestamp"]
             probabilite_actuelle = float(df_predictions.iloc[-1]["probabilite_panne"])
             if probabilite_actuelle >= predicteur.threshold:
-                enrichi = enrichir_serie_inference(df_serie_tampon)
-                feat_df = enrichi[[k for k in FEAT_COLS if k in enrichi.columns]].dropna()
-                if len(feat_df) > 0:
-                    cause_probable = obtenir_explicateur().cause_probable(feat_df.iloc[[-1]])[0]["cause_principale"]
+                derniere = calculer_features(df_serie_tampon).iloc[[-1]]
+                cause_probable = obtenir_explicateur().cause_probable(derniere)[0]["cause_principale"]
     except Exception as e:
         logger.warning(f"Prédiction indisponible pour {id_selectionne} : {e}")
 

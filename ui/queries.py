@@ -4,7 +4,9 @@ import duckdb
 import pandas as pd
 import streamlit as st
 
-from ui.constants import _PARTS, _PROD_COEFF, _QUAL_FIX, _TECH_RATE, DB_PATH, TABLE
+from src.config import CHEMIN_DB as DB_PATH
+from src.config import TABLE
+from ui.constants import _PARTS, _PROD_COEFF, _QUAL_FIX, _TECH_RATE
 
 _SQL_EVENEMENTS_COUPURE = """
     WITH etat_reseau AS (
@@ -181,7 +183,7 @@ def q_serie_complete_machine(id_machine: str, steps: int) -> "pd.DataFrame":
     """Retourne la série temporelle complète avec toutes les features ML + indicateurs visuels."""
     with duckdb.connect(str(DB_PATH), read_only=True) as conn:
         df = conn.execute(
-            f"""SELECT * EXCLUDE (id_machine)
+            f"""SELECT *
                 FROM {TABLE}
                 WHERE id_machine = ?
                 ORDER BY timestamp DESC LIMIT ?""",
@@ -319,18 +321,17 @@ def q_chronologie_cout(date_debut: str, date_fin: str) -> "pd.DataFrame":
 
 @st.cache_resource
 def obtenir_predicteur():
-    from src.xpredict import Predicteur
+    from src.predicteur import Predicteur
 
     return Predicteur(utiliser_mlflow=True)
 
 
 @st.cache_resource
 def obtenir_explicateur():
-    """Explicateur SHAP (point 33) — construit une seule fois sur le pipeline du
-    champion courant, réutilisé pour toutes les machines de la vue "à traiter"."""
+    """Explicateur SHAP du champion courant, construit une seule fois."""
     from src.explain import ExplicateurCause
 
-    return ExplicateurCause(obtenir_predicteur().pipeline)
+    return ExplicateurCause(obtenir_predicteur().modele)
 
 
 @st.cache_data(ttl=300)
@@ -361,10 +362,10 @@ def q_priorites_parc() -> pd.DataFrame:
     défaut de la Vue Machine (tab_machine), pour ne pas recalculer deux fois la même
     boucle prédiction + SHAP sur 50 machines à chaque chargement de page.
     """
-    from src.features import FENETRE_24H
+    from src.features import LIGNES_HISTORIQUE
     from ui.priorites import calculer_priorites_parc
 
     predicteur = obtenir_predicteur()
     explicateur = obtenir_explicateur()
-    df_historique = q_derniers_releves_toutes_machines(FENETRE_24H + 4)
+    df_historique = q_derniers_releves_toutes_machines(LIGNES_HISTORIQUE)
     return calculer_priorites_parc(df_historique, predicteur, explicateur)

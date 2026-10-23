@@ -1,21 +1,8 @@
 """
-Détection de drift — uv run python scripts/check_drift.py
-
-Compare la distribution des features reçues en production à celle du jeu
-d'entraînement, et la distribution des probabilités prédites elles-mêmes (pas
-seulement les features en entrée) — deux tests complémentaires par variable
-(Kolmogorov-Smirnov + PSI), et un troisième sur la sortie du modèle.
-
-Source des données de production : l'expérience MLflow GDIZ_Monitoring_Predictions
-(loggée par app/utils.py::_loguer_mlflow, une prédiction = un run). C'est la « table
-de prédictions dédiée » du projet — interrogeable via `mlflow.search_runs`, pas
-besoin d'une deuxième table DuckDB qui dupliquerait la même donnée.
-
-Une p-value KS faible (< 0.05) ou un PSI élevé (> 0.25, repère usuel de l'industrie)
-signifient que les deux distributions sont statistiquement différentes — signal
-qu'il faut creuser (capteur défaillant, changement de process, nouvelle saison non
-représentée à l'entraînement, dérive du comportement du modèle...), pas une alerte
-automatique de mauvaise qualité en soi.
+Drift : compare les prédictions loggées en production (expérience MLflow GDIZ_Monitoring_Predictions) à la
+période d'entraînement, feature par feature et sur les probabilités prédites (KS + PSI).
+Un drift est un signal à creuser (capteur, saison, process), pas une alerte automatique.
+Usage : python scripts/check_drift.py
 """
 
 import logging
@@ -25,10 +12,8 @@ import numpy as np
 import pandas as pd
 from scipy.stats import ks_2samp
 
-from src.configloader import charger_config
-from src.dataloader import ChargeurDonnees
-from src.train import DATE_COUPURE
-from src.xpredict import Predicteur
+from src.donnees import DATE_TEST, charger
+from src.predicteur import Predicteur
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -73,10 +58,9 @@ def _psi(reference: pd.Series, production: pd.Series, buckets: int = 10) -> floa
 
 
 def _charger_distribution_reference() -> pd.DataFrame:
-    """Sous-ensemble d'entraînement (avant DATE_COUPURE) — référence vue par le modèle."""
-    df = ChargeurDonnees().charger_donnees_brutes()
-    df["timestamp"] = pd.to_datetime(df["timestamp"])
-    return df[df["timestamp"] < DATE_COUPURE]
+    """Période d'entraînement et de validation (avant 2025) : la référence vue par le modèle."""
+    df = charger()
+    return df[df["timestamp"] < DATE_TEST]
 
 
 def _charger_distribution_production(variables: list[str]) -> pd.DataFrame:
@@ -129,14 +113,12 @@ def verifier_derive_predictions() -> dict | None:
         logger.warning("Aucune probabilité loggée dans MLflow — drift des prédictions non évalué.")
         return None
 
-    config = charger_config()
-    colonnes_features = config["jeu_donnees"]["features"]
     reference_df = _charger_distribution_reference()
     if len(reference_df) > TAILLE_ECHANTILLON_REFERENCE:
         reference_df = reference_df.sample(n=TAILLE_ECHANTILLON_REFERENCE, random_state=42)
 
     predicteur = Predicteur(utiliser_mlflow=True)
-    probas_reference = predicteur.predire(reference_df[colonnes_features])["probabilite_panne"]
+    probas_reference = predicteur.predire(reference_df)["probabilite_panne"]
     probas_production = production["probabilite_panne"].dropna()
 
     statistique, p_value = ks_2samp(probas_reference, probas_production)
