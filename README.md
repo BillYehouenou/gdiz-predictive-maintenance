@@ -28,15 +28,16 @@ src/train.py                         - LightGBM (NaN et catégories natives) -->
         │                              sur la validation (recall événementiel sous budget de fausses alertes)
         │                              --> MLflow Registry : @champion remplacé seulement si le recall ne régresse pas
         │
-              models/model_pipeline.pkl + models/seuil_optimal.json
-                          │
+src/score.py                         - score tout le parc une fois --> table DuckDB `predictions`
+        │                              (risque, niveau, cause probable SHAP des machines en alerte)
           ┌───────────────┴───────────────┐
           │                               │
-  app/main.py (FastAPI)          dashboard.py (Streamlit)
-  POST /api/v1/predict           ui/tabs/{general, machine, about}
-  POST /api/v1/predict/batch
-  GET  /api/v1/info              (version + seuil du champion chargé)
-  POST /api/v1/reload            (recharge le @champion sans redémarrer)
+  app/main.py (FastAPI)          dashboard.py (Streamlit) : lit la table, ne charge pas le modèle
+  POST /api/v1/predict(/batch)   (prédiction temps réel, sans état)
+  GET  /api/v1/machines          (dernier état de chaque machine)
+  GET  /api/v1/priorites         (machines en alerte, par risque décroissant)
+  GET  /api/v1/machines/{id}/serie?jours=30
+  GET  /api/v1/info · POST /api/v1/reload
 ```
 
 
@@ -53,8 +54,8 @@ uv sync --frozen
 # Génère le dataset (télécharge la météo Open-Meteo au premier lancement, puis cache DuckDB)
 make generate-data
 
-# Entraîne le modèle et l'enregistre dans MLflow
-make train
+# Entraîne le modèle (MLflow) puis score le parc (table predictions)
+make train score
 
 # Dashbord Streamlit
 make dashboard
@@ -101,17 +102,14 @@ L'image Docker ne contient ni données d'entraînement ni artefacts de modèle.
 ```
 gdiz-predictive-maintenance/
 ├── app/                    # Application FastAPI
-│   ├── main.py             # Routes : /health, /predict(/batch), /info, /reload
-│   ├── schemas.py          # Modèles Pydantic entrée/sortie
-│   └── utils.py            # Orchestration des prédictions, log MLflow async, rechargement à chaud
+│   ├── main.py             # Routes : prédiction, lecture du parc, info, rechargement à chaud
+│   └── schemas.py          # Modèles Pydantic entrée/sortie
 ├── dashboard.py            # Point d'entrée Streamlit
 ├── simulation/             # Générateur : python -m simulation.generer
 │   ├── meteo.py            # Météo réelle Open-Meteo (ERA5 + CAMS), cache DuckDB
 │   ├── physique.py         # Atelier (extérieur --> intérieur) + état caché et risques de panne des machines
 │   ├── observation.py      # Défaillances capteurs IoT + écriture DuckDB
 │   └── generer.py          # Orchestration
-├── scripts/
-│   └── check_drift.py      # Drift KS + PSI des features et des prédictions
 ├── src/                    # Pipeline ML : python -m src.train
 │   ├── config.py           # Chemins, schéma des données, MLflow
 │   ├── donnees.py          # Chargement DuckDB, cible à horizon, split avec tampon et machines réservées
@@ -120,12 +118,13 @@ gdiz-predictive-maintenance/
 │   ├── modeles.py          # Candidats et comparaison : python -m src.modeles (make compare)
 │   ├── train.py            # Modèle retenu + calibration + seuil + promotion @champion
 │   ├── predicteur.py       # Chargement du @champion et prédiction
-│   └── explain.py          # Cause probable par famille physique (SHAP)
+│   ├── explain.py          # Cause probable par famille physique (SHAP)
+│   ├── score.py            # Scoring du parc --> table predictions (make score)
+│   └── drift.py            # PSI des 30 derniers jours vs entraînement (make check-drift)
 ├── tests/                  # Suite pytest
 ├── ui/                     # Modules UI Streamlit
 │   ├── constants.py        # Palettes, constantes coûts métier, maps de périodes
 │   ├── helpers.py          # Helpers mise en page graphiques, utilitaires de formatage
-│   ├── priorites.py        # Vue "à traiter aujourd'hui" — machines en alerte triées par risque
 │   ├── queries.py          # Couche requêtes DuckDB 
 │   ├── styles.py           # Injection du thème global CSS-in-Python
 │   └── tabs/

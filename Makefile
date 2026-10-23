@@ -4,7 +4,7 @@ PYTHONPATH   := $(PROJECT_ROOT)
 UV_RUN       := PYTHONHASHSEED=0 PYTHONPATH=$(PYTHONPATH) uv run
 PORT         ?= 8501
 
-.PHONY: help install install-dev generate-data train compare pipeline check-drift \
+.PHONY: help install install-dev generate-data train compare score pipeline check-drift \
         check lint format test \
         serve dashboard mlflow-ui \
         docker-up docker-down \
@@ -28,16 +28,19 @@ install-dev:  # installe toutes les dépendances (dont ceux de l'environnement d
 generate-data:  # Génère le dataset GDIZ (météo réelle Open-Meteo + simulation des machines --> DuckDB)
 	$(UV_RUN) python -m simulation.generer
 
-train:  # Entraîne le modèle LightGBM et enregistre l'expérience MLflow
+train:  # Entraîne le modèle retenu et l'enregistre dans MLflow
 	$(UV_RUN) python -m src.train
-
-pipeline: generate-data train  # Régénère les données puis entraîne le modèle
 
 compare:  # Compare les modèles candidats (validation sur 3 fenêtres + test 2025)
 	$(UV_RUN) python -m src.modeles
 
-check-drift:  # Compare la distribution des features en production à celle de l'entraînement
-	$(UV_RUN) python scripts/check_drift.py
+score:  # Score tout le parc avec le @champion --> table predictions (lue par l'API et le dashboard)
+	$(UV_RUN) python -m src.score
+
+pipeline: generate-data train score  # Régénère les données, entraîne puis score le parc
+
+check-drift:  # Compare les 30 derniers jours (features et risque prédit) à la période d'entraînement
+	$(UV_RUN) python -m src.drift
 
 # Qualité du code 
 lint:  # vérifie le style et les types (ruff + mypy)
