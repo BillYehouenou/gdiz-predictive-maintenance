@@ -222,15 +222,14 @@ def afficher(C: dict) -> None:
             "Préparation des données",
             C["orange"],
             "Même traitement à l'entraînement et en production pour éviter un quelconque écart silencieux.",
-            "Avant tout traitement, chaque capteur passe un <strong>contrôle de sanité</strong> (bornes physiques "
-            "vérifiées) et les valeurs manquantes sont imputées automatiquement. Les catégories sont encodées "
-            "nativement pour LightGBM, sans mise à l'échelle superflue. Un <strong>artefact unique et figé</strong> "
-            "garantit que l'entraînement, le dashboard et l'API appliquent exactement le même traitement.",
+            "Chaque capteur passe un <strong>contrôle de sanité</strong> (bornes physiques). Les valeurs manquantes "
+            "et le type de machine sont gérés nativement par LightGBM, sans imputation. Les indicateurs sont calculés "
+            "par <strong>une seule fonction</strong>, partagée par l'entraînement, le dashboard et l'API.",
         ),
         (
             "ML",
             C["red"],
-            "65 % des pannes prévisibles détectées, jusqu'à 5 jours à l'avance.",
+            "60 % des pannes prévisibles détectées, jusqu'à 5 jours à l'avance.",
             "Le modèle est un LightGBM, calibré pour donner des probabilités fiables et interprétables. Entraîné sur 2024 et "
             "testé sur 2025, il apprend à généraliser dans le temps plutôt qu'à retenir par cœur, et prédit les pannes "
             "d'usure, de surchauffe et de surcharge mécanique. Les pannes électriques et aléatoires étant exclues pour "

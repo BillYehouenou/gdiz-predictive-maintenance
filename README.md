@@ -20,17 +20,14 @@ simulation/                          - Physique des machines (framework AI4I 202
         │
 data/raw/gdiz_maintenance.db         - DuckDB : télémétrie 1,75M lignes (id_machine, timestamp) + cache météo
         │
-src/features.py  (rolling temporel)  src/preprocessor.py  (imputation + catégorielles natives LightGBM)
-        │                                     │
-        └─────────────────┬───────────────────┘
-                          │
-        src/train.py : split train/validation/test - seuil choisi sur validation
-        (recall événementiel sous budget de fausses alertes, src/evaluation.py) -
-        calibration isotonique — MLflow Registry (alias @champion)
-                          │     ↳ promotion gatée : la nouvelle version ne remplace le
-                          │       @champion que si elle l'égale ou le dépasse sur le
-                          │       recall événementiel
-                          │
+src/donnees.py + src/features.py     - cible à 120h, features glissantes (24h / 4h) : une seule fonction,
+        │                              identique à l'entraînement, dans le dashboard et dans l'API
+        │                              split train / validation / test avec tampon de 120h + 10 machines réservées au test
+        │
+src/train.py                         - LightGBM (NaN et catégories natives) --> calibration sigmoïde --> seuil choisi
+        │                              sur la validation (recall événementiel sous budget de fausses alertes)
+        │                              --> MLflow Registry : @champion remplacé seulement si le recall ne régresse pas
+        │
               models/model_pipeline.pkl + models/seuil_optimal.json
                           │
           ┌───────────────┴───────────────┐
@@ -89,7 +86,6 @@ gdiz-predictive-maintenance/
 │   ├── main.py             # Routes : /health, /predict(/batch), /info, /reload
 │   ├── schemas.py          # Modèles Pydantic entrée/sortie
 │   └── utils.py            # Orchestration des prédictions, log MLflow async, rechargement à chaud
-├── config/config.yaml      # Chemins, spec dataset, URIs MLflow
 ├── dashboard.py            # Point d'entrée Streamlit
 ├── simulation/             # Générateur : python -m simulation.generer
 │   ├── meteo.py            # Météo réelle Open-Meteo (ERA5 + CAMS), cache DuckDB
@@ -97,19 +93,16 @@ gdiz-predictive-maintenance/
 │   ├── observation.py      # Défaillances capteurs IoT + écriture DuckDB
 │   └── generer.py          # Orchestration
 ├── scripts/
-│   ├── run_training.py
 │   ├── run_baseline_comparison.py  # Règle triviale + régression logistique, à battre par LightGBM
-│   └── check_drift.py      # Drift KS + PSI (features) et drift des prédictions elles-mêmes
-├── src/                    # Bibliothèque ML principale
-│   ├── configloader.py
-│   ├── dataloader.py
+│   └── check_drift.py      # Drift KS + PSI des features et des prédictions
+├── src/                    # Pipeline ML : python -m src.train
+│   ├── config.py           # Chemins, schéma des données, MLflow
+│   ├── donnees.py          # Chargement DuckDB, cible à horizon, split avec tampon et machines réservées
+│   ├── features.py         # Features glissantes (une seule fonction pour l'entraînement et l'inférence)
 │   ├── evaluation.py       # Métrique événementielle : recall @ budget de fausses alertes
-│   ├── explain.py          # Cause probable par famille physique (SHAP), point 33 roadmap
-│   ├── features.py         # Feature engineering temporel (entraînement + inférence)
-│   ├── preprocessor.py     # Imputation + encodage catégoriel natif LightGBM
-│   ├── train.py            # Split 3 voies + calibration isotonique + gate de promotion @champion
-│   ├── validation.py       # Bornes physiques à l'ingestion (pandera), tolérantes à la dérive capteur
-│   └── xpredict.py         # Predicteur — probabilités calibrées, pas de recentrage ad hoc
+│   ├── train.py            # LightGBM + calibration + seuil + promotion @champion
+│   ├── predicteur.py       # Chargement du @champion et prédiction
+│   └── explain.py          # Cause probable par famille physique (SHAP)
 ├── tests/                  # Suite pytest
 ├── ui/                     # Modules UI Streamlit
 │   ├── constants.py        # Palettes, constantes coûts métier, maps de périodes
