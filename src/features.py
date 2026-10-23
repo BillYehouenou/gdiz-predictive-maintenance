@@ -8,8 +8,6 @@ logger = logging.getLogger(__name__)
 FENETRE_4H = 8  # 8 pas × 30 min = 4 h — accélération court terme
 FENETRE_24H = 48  # 48 pas × 30 min = 24 h
 VARIABLES_TEMPORELLES = [
-    "usure_outil_delta_24h",
-    "usure_outil_delta_4h",
     "vibration_max_24h",
     "vibration_moyenne_24h",
     "vibration_ecart_type_24h",
@@ -22,12 +20,11 @@ VARIABLES_TEMPORELLES = [
     "poussiere_moyenne_24h",
     "poussiere_max_24h",
     "couple_max_24h",
-    "encrassement_max_24h",
 ]
 
 
 def _delta(series: pd.Series, window: int) -> pd.Series:
-    """usure/vibration/temp_t - valeur_(t-window), clampé à 0 (absorbe les resets post-maintenance)."""
+    """vibration/temp_t - valeur_(t-window), clampé à 0 : seule la hausse compte."""
     return (series - series.shift(window)).clip(lower=0).fillna(0.0)
 
 
@@ -39,9 +36,6 @@ def enrichir_df_entrainement(df: pd.DataFrame) -> pd.DataFrame:
     df = df.sort_values(["id_machine", "timestamp"]).copy()
 
     grp = df.groupby("id_machine", sort=False)
-
-    df["usure_outil_delta_24h"] = grp["usure_outil"].transform(lambda x: _delta(x, FENETRE_24H))
-    df["usure_outil_delta_4h"] = grp["usure_outil"].transform(lambda x: _delta(x, FENETRE_4H))
 
     df["vibration_max_24h"] = grp["vibration"].transform(lambda x: x.rolling(FENETRE_24H, min_periods=1).max())
     df["vibration_moyenne_24h"] = grp["vibration"].transform(lambda x: x.rolling(FENETRE_24H, min_periods=1).mean())
@@ -62,7 +56,6 @@ def enrichir_df_entrainement(df: pd.DataFrame) -> pd.DataFrame:
     df["poussiere_max_24h"] = grp["concentration_poussiere"].transform(lambda x: x.rolling(FENETRE_24H, min_periods=1).max())
 
     df["couple_max_24h"] = grp["couple"].transform(lambda x: x.rolling(FENETRE_24H, min_periods=1).max())
-    df["encrassement_max_24h"] = grp["encrassement"].transform(lambda x: x.rolling(FENETRE_24H, min_periods=1).max())
 
     # Cible retenue pour l'entraînement
     df["cible_h120_predictible"] = calculer_cible_horizon(df, heures_horizon=120, modes_panne=MODES_PANNE_PREDICTIBLES)
@@ -97,9 +90,6 @@ def enrichir_serie_inference(df_serie: pd.DataFrame) -> pd.DataFrame:
     Calcule les features temporelles sur une série d'une seule machine.
     """
     df = df_serie.copy()
-    df["usure_outil_delta_24h"] = _delta(df["usure_outil"], FENETRE_24H)
-    df["usure_outil_delta_4h"] = _delta(df["usure_outil"], FENETRE_4H)
-
     df["vibration_max_24h"] = df["vibration"].rolling(FENETRE_24H, min_periods=1).max()
     df["vibration_moyenne_24h"] = df["vibration"].rolling(FENETRE_24H, min_periods=1).mean()
     df["vibration_ecart_type_24h"] = df["vibration"].rolling(FENETRE_24H, min_periods=1).std().fillna(0.0)
@@ -116,35 +106,30 @@ def enrichir_serie_inference(df_serie: pd.DataFrame) -> pd.DataFrame:
     df["poussiere_max_24h"] = df["concentration_poussiere"].rolling(FENETRE_24H, min_periods=1).max()
 
     df["couple_max_24h"] = df["couple"].rolling(FENETRE_24H, min_periods=1).max()
-    df["encrassement_max_24h"] = df["encrassement"].rolling(FENETRE_24H, min_periods=1).max()
     return df
 
 
 def enrichir_point_inference(current: dict, history_df: pd.DataFrame) -> dict:
     """
     Calcule les features temporelles pour un point unique via API.
-    current       : dict avec les features courantes (les 16 features brutes)
+    current       : dict avec les features brutes courantes
     history_df    : DataFrame des 48 dernières lignes de la machine (24h, ASC :
-                     usure_outil, vibration, temperature_process, concentration_poussiere,
-                     couple, temperature_ambiante, encrassement), peut être vide.
+                     vibration, temperature_process, concentration_poussiere,
+                     couple, temperature_ambiante), peut être vide.
     Retourne un dict enrichi avec les features temporelles.
     """
     result = dict(current)
-    usure_actuelle = float(current.get("usure_outil", 0.0))
     vibration_actuelle = float(current.get("vibration", 0.0))
     temperature_actuelle = float(current.get("temperature_process", 0.0))
     ambiante_actuelle = float(current.get("temperature_ambiante", 0.0))
     poussiere_actuelle = float(current.get("concentration_poussiere", 0.0))
     couple_actuel = float(current.get("couple", 0.0))
-    encrassement_actuel = float(current.get("encrassement", 0.0))
     ecart_thermique_actuel = temperature_actuelle - ambiante_actuelle
 
     # Ne dépend pas de l'historique
     result["ecart_thermique"] = ecart_thermique_actuel
 
     if history_df.empty:
-        result["usure_outil_delta_24h"] = 0.0
-        result["usure_outil_delta_4h"] = 0.0
         result["vibration_max_24h"] = vibration_actuelle
         result["vibration_moyenne_24h"] = vibration_actuelle
         result["vibration_ecart_type_24h"] = 0.0
@@ -156,7 +141,6 @@ def enrichir_point_inference(current: dict, history_df: pd.DataFrame) -> dict:
         result["poussiere_moyenne_24h"] = poussiere_actuelle
         result["poussiere_max_24h"] = poussiere_actuelle
         result["couple_max_24h"] = couple_actuel
-        result["encrassement_max_24h"] = encrassement_actuel
         return result
 
     def _delta_historique(col: str, current_value: float, window: int) -> float:
@@ -173,9 +157,6 @@ def enrichir_point_inference(current: dict, history_df: pd.DataFrame) -> dict:
             "ecart_type": float(np.std(serie)) if len(serie) > 1 else 0.0,
             "max": float(np.max(serie)),
         }
-
-    result["usure_outil_delta_24h"] = _delta_historique("usure_outil", usure_actuelle, FENETRE_24H)
-    result["usure_outil_delta_4h"] = _delta_historique("usure_outil", usure_actuelle, FENETRE_4H)
 
     historique_vibration = history_df["vibration"].dropna().tolist()
     stats_vibration = _stats_24h(historique_vibration, vibration_actuelle)
@@ -200,10 +181,6 @@ def enrichir_point_inference(current: dict, history_df: pd.DataFrame) -> dict:
     # Couple : pic sur historique + valeur courante
     historique_couple = history_df["couple"].dropna().tolist() + [couple_actuel] if "couple" in history_df else [couple_actuel]
     result["couple_max_24h"] = float(np.max(historique_couple[-FENETRE_24H:]))
-
-    # Encrassement : pic sur 24h (brut + historique), même logique que couple_max_24h.
-    historique_encrassement = history_df["encrassement"].dropna().tolist() if "encrassement" in history_df else []
-    result["encrassement_max_24h"] = float(np.max(historique_encrassement[-FENETRE_24H:] + [encrassement_actuel]))
 
     if "temperature_process" in history_df and "temperature_ambiante" in history_df:
         historique_ambiante = history_df["temperature_ambiante"].dropna()

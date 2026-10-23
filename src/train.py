@@ -199,7 +199,7 @@ class PipelineModele:
             }
 
             mlflow.log_params(hyperparametres)
-            mlflow.log_param("nom_jeu_donnees", self.config["jeu_donnees"]["name"])
+            mlflow.log_param("nom_jeu_donnees", self.config["jeu_donnees"]["table"])
             mlflow.log_param("validation_split_date", DATE_COUPURE_VALIDATION)
             mlflow.log_param("split_date", DATE_COUPURE)
             mlflow.log_param("seuil_optimal", round(seuil_optimal, 4))

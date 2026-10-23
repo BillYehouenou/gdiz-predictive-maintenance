@@ -12,27 +12,24 @@ def predicteur():
 
 @pytest.fixture
 def machine_normale():
-    """Machine H en saison des pluies — état sain nominal, aucune dégradation récente."""
+    """Machine H en saison des pluies — état sain nominal, outil récent, aucune dégradation récente."""
     return pd.DataFrame(
         {
             "temperature_ambiante": [26.0],
             "temperature_process": [40.0],
             "vitesse_rotation": [1200.0],
             "couple": [28.0],
-            "usure_outil": [20.0],
+            "heures_depuis_changement_outil": [800.0],
+            "heures_depuis_maintenance": [200.0],
             "niveau_activite": [0.5],
             "vibration": [1.2],
             "humidite": [70.0],
             "concentration_poussiere": [45.0],
             "niveau_tension": [225.0],
-            "stabilite_tension": [82.0],
-            "indicateur_pluie": [1],
+            "precipitation_mm": [2.0],
             "indicateur_coupure": [0],
-            "saison_benin": [0],  # grande saison des pluies
             "type_machine": ["H"],
             # Features temporelles : machine stable, aucune variation sur 24h
-            "usure_outil_delta_24h": [0.5],
-            "usure_outil_delta_4h": [0.1],
             "vibration_max_24h": [1.3],
             "vibration_moyenne_24h": [1.2],
             "vibration_ecart_type_24h": [0.1],
@@ -45,35 +42,30 @@ def machine_normale():
             "poussiere_moyenne_24h": [42.0],
             "poussiere_max_24h": [50.0],
             "couple_max_24h": [32.0],
-            "encrassement": [25.0],
-            "encrassement_max_24h": [28.0],
         }
     )
 
 
 @pytest.fixture
 def machine_en_surchauffe():
-    """Machine L en Harmattan — usure critique + délestage + dégradation rapide sur 24h."""
+    """Machine L en Harmattan — outil en fin de vie + délestage + dégradation rapide sur 24h."""
     return pd.DataFrame(
         {
             "temperature_ambiante": [41.0],
             "temperature_process": [89.0],
             "vitesse_rotation": [2500.0],
             "couple": [85.0],
-            "usure_outil": [90.0],
+            "heures_depuis_changement_outil": [9000.0],
+            "heures_depuis_maintenance": [3000.0],
             "niveau_activite": [0.95],
             "vibration": [7.5],
             "humidite": [22.0],
             "concentration_poussiere": [380.0],
             "niveau_tension": [195.0],
-            "stabilite_tension": [18.0],
-            "indicateur_pluie": [0],
+            "precipitation_mm": [0.0],
             "indicateur_coupure": [1],
-            "saison_benin": [3],  # grande saison sèche / Harmattan
             "type_machine": ["L"],
             # Features temporelles : machine en dégradation rapide sur les 24h précédentes
-            "usure_outil_delta_24h": [15.0],
-            "usure_outil_delta_4h": [4.0],
             "vibration_max_24h": [8.2],
             "vibration_moyenne_24h": [6.5],
             "vibration_ecart_type_24h": [1.8],
@@ -86,7 +78,5 @@ def machine_en_surchauffe():
             "poussiere_moyenne_24h": [350.0],
             "poussiere_max_24h": [410.0],
             "couple_max_24h": [88.0],
-            "encrassement": [78.0],
-            "encrassement_max_24h": [82.0],
         }
     )

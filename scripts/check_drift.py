@@ -35,10 +35,10 @@ logger = logging.getLogger(__name__)
 
 NOM_EXPERIENCE = "GDIZ_Monitoring_Predictions"
 VARIABLES_DERIVE = [
-    "usure_outil",
+    "heures_depuis_changement_outil",
     "vibration",
     "temperature_process",
-    "usure_outil_delta_24h",
+    "concentration_poussiere",
     "vibration_max_24h",
     "temperature_process_max_24h",
 ]

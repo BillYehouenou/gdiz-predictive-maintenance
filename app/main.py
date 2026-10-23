@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="GDIZ Maintenance Prédictive API",
     description="API de maintenance prédictive pour les machines textiles GDIZ Bénin",
-    version="2.0.0",
+    version="3.0.0",
 )
 
 router = APIRouter(prefix="/api/v1")

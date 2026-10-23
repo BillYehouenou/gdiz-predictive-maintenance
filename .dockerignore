@@ -18,9 +18,10 @@ Makefile
 notebooks/
 README.md
 
-# Tests et scripts
+# Tests, scripts et générateur de données
 tests/
 scripts/
+simulation/
 
 # Données lourdes et artefacts MLflow
 data/

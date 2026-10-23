@@ -41,8 +41,8 @@ def _recuperer_historique_machine(id_machine: str) -> pd.DataFrame:
     try:
         with duckdb.connect(str(_DB_PATH), read_only=True) as conn:
             df = conn.execute(
-                f"""SELECT usure_outil, vibration, temperature_process, concentration_poussiere,
-                           couple, temperature_ambiante, encrassement
+                f"""SELECT vibration, temperature_process, concentration_poussiere,
+                           couple, temperature_ambiante
                     FROM {_TABLE}
                     WHERE id_machine = ?
                     ORDER BY timestamp DESC LIMIT 48""",
@@ -84,11 +84,10 @@ def _loguer_mlflow(
                     "probabilite_panne": probability,
                     "prediction": float(prediction),
                     # Métriques capteurs clés
-                    "usure_outil": float(features.get("usure_outil", 0)),
+                    "heures_depuis_changement_outil": float(features.get("heures_depuis_changement_outil", 0)),
                     "vibration": float(features.get("vibration", 0)),
                     "temperature_process": float(features.get("temperature_process", 0)),
                     # Features temporelles + signal de dégradation
-                    "usure_outil_delta_24h": float(features.get("usure_outil_delta_24h", 0)),
                     "vibration_max_24h": float(features.get("vibration_max_24h", 0)),
                     "temperature_process_max_24h": float(features.get("temperature_process_max_24h", 0)),
                 }
@@ -116,10 +115,7 @@ def traiter_prediction(dict_donnees_machine: dict, background_tasks: BackgroundT
         ambiante = float(features.get("temperature_ambiante", 0.0))
         poussiere = float(features.get("concentration_poussiere", 0.0))
         couple = float(features.get("couple", 0.0))
-        encrassement = float(features.get("encrassement", 0.0))
         ecart_thermique = temperature - ambiante
-        features["usure_outil_delta_24h"] = 0.0
-        features["usure_outil_delta_4h"] = 0.0
         features["vibration_max_24h"] = vibration
         features["vibration_moyenne_24h"] = vibration
         features["vibration_ecart_type_24h"] = 0.0
@@ -132,7 +128,6 @@ def traiter_prediction(dict_donnees_machine: dict, background_tasks: BackgroundT
         features["poussiere_moyenne_24h"] = poussiere
         features["poussiere_max_24h"] = poussiere
         features["couple_max_24h"] = couple
-        features["encrassement_max_24h"] = encrassement
 
     df = pd.DataFrame([features])
     results = predicteur.predire(df)

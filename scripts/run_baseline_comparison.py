@@ -26,7 +26,7 @@ from src.train import (
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-GRILLE_SEUILS_REGLE = np.arange(5.0, 100.0, 1.0)  # sur l'échelle brute de usure_outil, pas une probabilité
+COLONNE_REGLE = "heures_depuis_changement_outil"
 GRILLE_SEUILS_RL = np.arange(0.005, 0.95, 0.005)
 
 
@@ -73,11 +73,12 @@ def main():
     df = ChargeurDonnees().charger_donnees_brutes()
     X_train, y_train, X_val, y_val, meta_validation, X_test, y_test, meta_test = _split(df, colonnes_features, colonne_cible)
 
-    # 1. Règle triviale : usure > seuil. Pas d'apprentissage, juste un balayage de
-    # seuil sur usure_outil directement (même infrastructure d'évaluation que le modèle).
-    probas_val_regle = X_val["usure_outil"].to_numpy()
-    probas_test_regle = X_test["usure_outil"].to_numpy()
-    evaluer_baseline("Règle triviale", probas_val_regle, probas_test_regle, meta_validation, meta_test, GRILLE_SEUILS_REGLE)
+    # 1. Règle triviale : heures d'outil > seuil. Pas d'apprentissage, juste un balayage de
+    # seuil sur le compteur GMAO (même infrastructure d'évaluation que le modèle).
+    probas_val_regle = X_val[COLONNE_REGLE].to_numpy()
+    probas_test_regle = X_test[COLONNE_REGLE].to_numpy()
+    grille_regle = np.unique(np.quantile(probas_val_regle, np.linspace(0.5, 0.999, 100)))  # échelle brute, pas une probabilité
+    evaluer_baseline("Règle triviale", probas_val_regle, probas_test_regle, meta_validation, meta_test, grille_regle)
 
     # 2. Régression logistique : même preprocessing que le modèle principal, pas
     # d'ingénierie spécifique — le point de comparaison le plus juste.

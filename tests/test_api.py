@@ -9,18 +9,16 @@ payload_normal = {
     "temperature_process": 40.0,
     "vitesse_rotation": 1200.0,
     "couple": 28.0,
-    "usure_outil": 20.0,
     "niveau_activite": 0.5,
     "vibration": 1.2,
     "humidite": 70.0,
     "concentration_poussiere": 45.0,
     "niveau_tension": 225.0,
-    "stabilite_tension": 82.0,
-    "indicateur_pluie": 1,
+    "precipitation_mm": 1.5,
     "indicateur_coupure": 0,
-    "saison_benin": 1,
     "type_machine": "H",
-    "encrassement": 35.0,
+    "heures_depuis_changement_outil": 800.0,
+    "heures_depuis_maintenance": 200.0,
 }
 
 

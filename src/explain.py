@@ -3,7 +3,7 @@ import shap
 
 # Quel phénomène physique pousse cette alerte ? (usure, surchauffe, surcharge...)
 FAMILLES_FEATURES: dict[str, list[str]] = {
-    "Usure de l'outil": ["usure_outil", "usure_outil_delta_24h", "usure_outil_delta_4h"],
+    "Usure et entretien": ["heures_depuis_changement_outil", "heures_depuis_maintenance"],
     "Surchauffe": [
         "temperature_process",
         "temperature_process_max_24h",
@@ -11,8 +11,6 @@ FAMILLES_FEATURES: dict[str, list[str]] = {
         "temperature_process_delta_4h",
         "ecart_thermique",
         "ecart_thermique_max_24h",
-        "encrassement",
-        "encrassement_max_24h",
     ],
     "Surcharge mécanique": [
         "couple",
@@ -28,10 +26,9 @@ FAMILLES_FEATURES: dict[str, list[str]] = {
         "poussiere_moyenne_24h",
         "poussiere_max_24h",
         "niveau_tension",
-        "stabilite_tension",
         "indicateur_coupure",
         "humidite",
-        "indicateur_pluie",
+        "precipitation_mm",
     ],
 }
 

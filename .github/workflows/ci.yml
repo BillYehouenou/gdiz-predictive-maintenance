@@ -33,7 +33,7 @@ jobs:
         run: uv run ruff check .
 
       - name: Vérification des types (mypy)
-        run: uv run mypy src app
+        run: uv run mypy src app simulation
 
   test:
     name: Tests & Coverage
@@ -59,7 +59,7 @@ jobs:
             models
             mlflow.db
             mlruns
-          key: pipeline-${{ hashFiles('scripts/generate_synthetic_data.py', 'scripts/run_training.py', 'src/**/*.py', 'config/config.yaml') }}
+          key: pipeline-${{ hashFiles('simulation/**/*.py', 'scripts/run_training.py', 'src/**/*.py', 'config/config.yaml') }}
 
       - name: Générer les données et entraîner le modèle (si le cache ne correspond pas)
         if: steps.cache-pipeline.outputs.cache-hit != 'true'
@@ -68,7 +68,7 @@ jobs:
           PYTHONPATH: .
           PYTHONHASHSEED: "0"
         run: |
-          uv run python scripts/generate_synthetic_data.py
+          uv run python -m simulation.generer
           uv run python scripts/run_training.py
 
       - name: Lancer les tests avec couverture

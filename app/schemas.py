@@ -11,27 +11,20 @@ class DonneesMachine(BaseModel):
     temperature_process: float = Field(..., description="Température du process en °C", examples=[52.0])
     vitesse_rotation: float = Field(..., description="Vitesse de rotation (tr/min)", examples=[1200.0])
     couple: float = Field(..., description="Couple en Nm", examples=[35.0])
-    usure_outil: float = Field(..., description="Usure de l'outil (%)", examples=[30.0])
     niveau_activite: float = Field(..., ge=0.0, le=1.0, description="Taux d'activité de la machine (0-1)", examples=[0.6])
     vibration: float = Field(..., description="Niveau de vibration (mm/s)", examples=[1.5])
     humidite: float = Field(..., description="Humidité relative (%)", examples=[60.0])
     concentration_poussiere: float = Field(..., description="Concentration de poussière (µg/m³)", examples=[120.0])
     niveau_tension: float = Field(..., description="Tension réseau SBEE (V)", examples=[222.0])
-    stabilite_tension: float = Field(..., description="Stabilité de la tension (%)", examples=[75.0])
-    indicateur_pluie: int = Field(..., ge=0, le=1, description="Indicateur de pluie (0/1)", examples=[0])
+    precipitation_mm: float = Field(..., ge=0.0, description="Précipitations sur le dernier pas de 30 min (mm)", examples=[0.0])
     indicateur_coupure: int = Field(..., ge=0, le=1, description="Délestage SBEE (0/1)", examples=[0])
-    saison_benin: int = Field(
-        ...,
-        ge=0,
-        le=3,
-        description=(
-            "Saison béninoise : 0=grande saison des pluies, 1=petite saison sèche, "
-            "2=petite saison des pluies, 3=grande saison sèche/Harmattan"
-        ),
-        examples=[1],
-    )
     type_machine: str = Field(..., description="Qualité de machine (L, M, H)", examples=["M"])
-    encrassement: float = Field(..., ge=0.0, le=100.0, description="Encrassement accumulé du process (%)", examples=[35.0])
+    heures_depuis_changement_outil: float = Field(
+        ..., ge=0.0, description="Heures de fonctionnement depuis le dernier changement d'outil (GMAO)", examples=[2400.0]
+    )
+    heures_depuis_maintenance: float = Field(
+        ..., ge=0.0, description="Heures depuis la dernière intervention de maintenance (GMAO)", examples=[600.0]
+    )
 
 
 class ReponsePrediction(BaseModel):

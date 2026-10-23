@@ -24,7 +24,7 @@ class Preprocesseur(BaseEstimator, TransformerMixin):
 
         # Récupération de la liste des features de la config
         self.all_features = self.config["jeu_donnees"]["features"]
-        self.categorical_features = ["saison_benin", "type_machine"]
+        self.categorical_features = ["type_machine"]
         self.numeric_features = [col for col in self.all_features if col not in self.categorical_features]
 
         logger.info(f"Features numériques identifiées : {self.numeric_features}")

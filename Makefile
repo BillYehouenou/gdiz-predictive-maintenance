@@ -25,8 +25,8 @@ install-dev:  # installe toutes les dépendances (dont ceux de l'environnement d
 	uv sync --frozen --group dev
 
 # Données & Entraînement
-generate-data:  # Génère le dataset synthétique GDIZ (DuckDB + Parquet)
-	$(UV_RUN) python scripts/generate_synthetic_data.py
+generate-data:  # Génère le dataset GDIZ (météo réelle Open-Meteo + simulation des machines --> DuckDB)
+	$(UV_RUN) python -m simulation.generer
 
 train:  # Entraîne le modèle LightGBM et enregistre l'expérience MLflow
 	$(UV_RUN) python scripts/run_training.py
@@ -40,7 +40,7 @@ check-drift:  # Compare la distribution des features en production à celle de l
 lint:  # vérifie le style et les types (ruff + mypy)
 	$(UV_RUN) ruff check .
 	$(UV_RUN) ruff format --check .
-	$(UV_RUN) mypy src app
+	$(UV_RUN) mypy src app simulation
 
 format:  # formate le code automatiquement (ruff)
 	$(UV_RUN) ruff format .
@@ -78,6 +78,5 @@ clean-hard: clean  # Supprime aussi les artefacts générés (modèles, MLflow, 
 	rm -f models/*.pkl models/*.json
 	rm -f mlflow.db
 	rm -rf mlruns
-	rm -f data/raw/*.parquet
 	rm -f data/raw/*.db
 	@echo "Artefacts supprimés — relancer 'make pipeline' pour régénérer"

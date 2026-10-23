@@ -1,39 +1,9 @@
 from pathlib import Path
 
-# Features ML
-FEAT_COLS: list[str] = [
-    "saison_benin",
-    "type_machine",
-    "temperature_ambiante",
-    "temperature_process",
-    "vitesse_rotation",
-    "couple",
-    "usure_outil",
-    "niveau_activite",
-    "vibration",
-    "humidite",
-    "concentration_poussiere",
-    "indicateur_pluie",
-    "indicateur_coupure",
-    "niveau_tension",
-    "stabilite_tension",
-    "encrassement",
-    "usure_outil_delta_24h",
-    "usure_outil_delta_4h",
-    "vibration_max_24h",
-    "vibration_moyenne_24h",
-    "vibration_ecart_type_24h",
-    "vibration_delta_4h",
-    "temperature_process_max_24h",
-    "temperature_process_moyenne_24h",
-    "temperature_process_delta_4h",
-    "ecart_thermique",
-    "ecart_thermique_max_24h",
-    "poussiere_moyenne_24h",
-    "poussiere_max_24h",
-    "couple_max_24h",
-    "encrassement_max_24h",
-]
+from src.configloader import charger_config
+
+# Features ML : source unique dans config/config.yaml
+FEAT_COLS: list[str] = charger_config()["jeu_donnees"]["features"]
 
 # Coûts de maintenance
 # C_panne = C_production + C_technique + C_qualite
