@@ -16,6 +16,12 @@ MODES_PANNE_PREDICTIBLES = ("TWF", "HDF", "OSF")  # PWF et RNF n'ont pas de sign
 HORIZON = pd.Timedelta("120h")
 DATE_VALIDATION = pd.Timestamp("2024-10-01")
 DATE_TEST = pd.Timestamp("2025-01-01")
+# Fenêtres de validation pour comparer les modèles : chaque trimestre 2024 après le premier
+PLIS = [
+    (pd.Timestamp("2024-04-01"), pd.Timestamp("2024-07-01")),
+    (pd.Timestamp("2024-07-01"), DATE_VALIDATION),
+    (DATE_VALIDATION, DATE_TEST),
+]
 # Une machine sur cinq n'est vue qu'au test : mesure la généralisation à une machine neuve
 MACHINES_RESERVEES = [f"GDIZ_TEX_M_{i:02d}" for i in range(5, 51, 5)]
 
@@ -77,14 +83,19 @@ def calculer_cible(df: pd.DataFrame, horizon: pd.Timedelta = HORIZON, modes: tup
     return cible
 
 
-def decouper(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def decouper_pli(df: pd.DataFrame, debut: pd.Timestamp, fin: pd.Timestamp) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Train avant octobre 2024, validation jusqu'à fin 2024, test sur 2025.
+    Entraînement avant `debut`, validation sur [debut, fin[, machines réservées exclues.
     Tampon d'un horizon avant chaque coupure : la cible de ces lignes dépend de pannes de la période suivante.
     """
     t = df["timestamp"]
     reservee = df["id_machine"].isin(MACHINES_RESERVEES)
-    train = df[(t < DATE_VALIDATION - HORIZON) & ~reservee]
-    validation = df[(t >= DATE_VALIDATION) & (t < DATE_TEST - HORIZON) & ~reservee]
-    test = df[t >= DATE_TEST]
-    return train, validation, test
+    train = df[(t < debut - HORIZON) & ~reservee]
+    validation = df[(t >= debut) & (t < fin - HORIZON) & ~reservee]
+    return train, validation
+
+
+def decouper(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Train avant octobre 2024, validation jusqu'à fin 2024, test sur 2025 (toutes machines)."""
+    train, validation = decouper_pli(df, DATE_VALIDATION, DATE_TEST)
+    return train, validation, df[df["timestamp"] >= DATE_TEST]

@@ -8,7 +8,10 @@ import numpy as np
 import pandas as pd
 
 from src.config import PAS
-from src.donnees import MODES_PANNE_PREDICTIBLES
+from src.donnees import HORIZON, MODES_PANNE_PREDICTIBLES
+
+BUDGET_FAUSSES_ALERTES_PAR_MACHINE_JOUR = 0.2  # dérangements inutiles acceptés par l'équipe de maintenance
+PAS_HORIZON = int(HORIZON / PAS)
 
 # Un épisode d'alerte plus long que 24h est redécoupé : sinon un modèle bloqué en alerte compterait pour un seul épisode
 PAS_MAX_EPISODE_DEFAUT = 48

@@ -4,7 +4,7 @@ PYTHONPATH   := $(PROJECT_ROOT)
 UV_RUN       := PYTHONHASHSEED=0 PYTHONPATH=$(PYTHONPATH) uv run
 PORT         ?= 8501
 
-.PHONY: help install install-dev generate-data train pipeline check-drift \
+.PHONY: help install install-dev generate-data train compare pipeline check-drift \
         check lint format test \
         serve dashboard mlflow-ui \
         docker-up docker-down \
@@ -32,6 +32,9 @@ train:  # Entraîne le modèle LightGBM et enregistre l'expérience MLflow
 	$(UV_RUN) python -m src.train
 
 pipeline: generate-data train  # Régénère les données puis entraîne le modèle
+
+compare:  # Compare les modèles candidats (validation sur 3 fenêtres + test 2025)
+	$(UV_RUN) python -m src.modeles
 
 check-drift:  # Compare la distribution des features en production à celle de l'entraînement
 	$(UV_RUN) python scripts/check_drift.py
