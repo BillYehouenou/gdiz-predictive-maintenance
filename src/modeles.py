@@ -67,6 +67,16 @@ class RegleSeuil(ClassifierMixin, BaseEstimator):
         return np.column_stack([-score, score])
 
 
+class LGBMLogOdds(LGBMClassifier):
+    """
+    LightGBM qui expose ses log-odds. La calibration sigmoïde s'ajuste alors sur un score non borné : sur la probabilité
+    brute (bornée à 0), elle imposait un plancher d'environ 2,8 % à toutes les machines saines.
+    """
+
+    def decision_function(self, X):
+        return self.predict(X, raw_score=True)
+
+
 def _encodeur(numerique) -> object:
     return make_column_transformer((numerique, NUMERIQUES), (OneHotEncoder(handle_unknown="ignore"), ["type_machine"]))
 
@@ -89,7 +99,7 @@ CANDIDATS = {
         categorical_features="from_dtype",
         random_state=42,
     ),
-    "lightgbm": lambda: LGBMClassifier(**HYPERPARAMETRES_LIGHTGBM, random_state=42, n_jobs=-1, verbose=-1),
+    "lightgbm": lambda: LGBMLogOdds(**HYPERPARAMETRES_LIGHTGBM, random_state=42, n_jobs=-1, verbose=-1),
 }
 
 

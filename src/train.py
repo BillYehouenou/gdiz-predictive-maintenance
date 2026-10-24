@@ -39,7 +39,8 @@ def entrainer(df: pd.DataFrame) -> tuple[CalibratedClassifierCV, float, dict]:
     logger.info(f"Train {len(train):,} | validation {len(validation):,} | test {len(test):,} lignes")
 
     modele = CANDIDATS[MODELE_RETENU]().fit(preparer_X(train), train[CIBLE])
-    # Sigmoïde plutôt qu'isotonique : des probabilités continues permettent de régler finement le seuil
+    # Sigmoïde plutôt qu'isotonique : des probabilités continues permettent de régler finement le seuil.
+    # Elle s'ajuste sur les log-odds du modèle (decision_function), pas sur sa probabilité bornée.
     calibre = CalibratedClassifierCV(FrozenEstimator(modele), method="sigmoid").fit(preparer_X(validation), validation[CIBLE])
 
     probas_validation = calibre.predict_proba(preparer_X(validation))[:, 1]

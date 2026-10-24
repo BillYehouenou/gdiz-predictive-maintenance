@@ -24,7 +24,8 @@ src/donnees.py + src/features.py     - cible à 120h, features glissantes (24h /
         │                              identique à l'entraînement, au scoring et dans l'API
         │                              split train / validation / test avec tampon de 120h + 10 machines réservées au test
         │
-src/train.py                         - LightGBM (NaN et catégories natives) --> calibration sigmoïde --> seuil choisi
+src/train.py                         - LightGBM (NaN et catégories natives) --> calibration sigmoïde sur les log-odds
+        │                              (pas de plancher de risque sur les machines saines) --> seuil choisi
         │                              sur la validation (recall événementiel sous budget de fausses alertes)
         │                              --> MLflow Registry : @champion remplacé seulement si le recall ne régresse pas
         │

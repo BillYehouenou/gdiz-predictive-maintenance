@@ -1,9 +1,11 @@
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.frozen import FrozenEstimator
 
 from src.features import calculer_features, preparer_X
-from src.modeles import CANDIDATS, MODELE_RETENU, RegleSeuil
+from src.modeles import CANDIDATS, MODELE_RETENU, LGBMLogOdds, RegleSeuil
 from tests.conftest import serie_machine
 
 
@@ -37,3 +39,18 @@ def test_regle_score_croissant_avec_les_heures(jeu_entrainement):
 
 def test_modele_retenu_fait_partie_des_candidats():
     assert MODELE_RETENU in CANDIDATS
+
+
+def test_lightgbm_expose_ses_log_odds(jeu_entrainement):
+    X, y = jeu_entrainement
+    modele = LGBMLogOdds(n_estimators=20, verbose=-1).fit(X, y)
+    probas = modele.predict_proba(X)[:, 1]
+    assert np.allclose(modele.decision_function(X), np.log(probas / (1 - probas)))
+
+
+def test_calibration_sur_log_odds_sans_plancher(jeu_entrainement):
+    """Les lignes que le modèle juge les plus sûres restent proches de 0 après calibration."""
+    X, y = jeu_entrainement
+    modele = LGBMLogOdds(n_estimators=20, verbose=-1).fit(X, y)
+    calibre = CalibratedClassifierCV(FrozenEstimator(modele), method="sigmoid").fit(X, y)
+    assert calibre.predict_proba(X)[:, 1].min() < 0.01
