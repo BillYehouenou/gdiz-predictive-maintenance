@@ -1,16 +1,19 @@
 {% extends "base.html" %}
 {% block contenu %}
-<header class="entete">
+<section class="accueil">
   <div>
-    <h1>Machine</h1>
-    <p>Que se passe-t-il, et que faire ?</p>
+    <h1>Machine M{{ id_machine[-2:] }}</h1>
+    <p>Que se passe-t-il sur cette machine, et pourquoi ?</p>
   </div>
-  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
-    <label for="choix-machine" class="sr">Machine</label>
-    <select id="choix-machine" class="champ mono" style="min-width: 240px; border-radius: 999px; background: var(--surface-2)"></select>
-    <a class="btn btn-noir" href="/alertes"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Planifier une intervention</a>
+  <div class="actions">
+    <label for="choix-machine" class="discret">Machine</label>
+    <select id="choix-machine" class="champ mono" style="min-width: 220px"></select>
+    <button type="button" class="btn btn-contour" data-export="M{{ id_machine[-2:] }}">
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg>
+      Exporter le rapport
+    </button>
   </div>
-</header>
+</section>
 
 <div id="fiche" data-machine="{{ id_machine }}"></div>
 {% endblock %}

@@ -57,6 +57,7 @@ class Indicateurs(BaseModel):
     mtbf_h: Optional[float] = Field(description="Heures de marche entre deux pannes")
     cout: float = Field(description="Coût des pannes en FCFA, durée réelle des réparations comprise")
     heures_arret: float
+    heures_marche: float
     pannes: int
 
 

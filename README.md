@@ -30,33 +30,27 @@ src/train.py                         - LightGBM (NaN et catégories natives) -->
         │
 src/score.py                         - score tout le parc une fois --> table DuckDB `predictions`
         │                              (risque, niveau, cause probable SHAP des machines en alerte)
-        │                              + table `reglage` (fausses alertes, pannes annoncées et bilan selon le seuil)
-        │
-src/interventions.py                 - data/raw/interventions.db : historique 2025 reconstitué + alertes à traiter
-        │                              (base séparée : seule l'API y écrit)
         │
 app/main.py (FastAPI)                - API et tableau de bord sur le même port
-  GET  /  · /machines/{id} · /alertes                 pages web (web/templates + web/static)
+  GET  /  · /machines/{id}                           pages web (web/templates + web/static)
   GET  /api/v1/parc?periode= · /etat · /machines/{id} · /machines/{id}/risque?jours=
-  GET  /api/v1/alertes · POST /api/v1/alertes/{id}/planifier | qualifier | rouvrir
   POST /api/v1/predict(/batch) · GET /api/v1/info · POST /api/v1/reload
 ```
 
 
 ## Tableau de bord
 
-Pensé pour le superviseur ou le chef d'usine, en trois écrans :
+Pensé pour le superviseur ou le chef d'usine, en deux écrans :
 
-- **Parc** : disponibilité, MTBF, coût réel des pannes et heures d'arrêt sur la période choisie ; plan des
+- **Parc** : disponibilité, MTBF, coût réel des pannes et heures d'arrêt sur la période choisie, chacun
+  expliqué en termes métier (« Voir le détail ») ; plan des
   50 machines par état ; matrice risque × criticité (criticité = part de la production perdue si la machine
   s'arrête, déduite du nombre de machines à son étape de la chaîne).
 - **Machine** : santé, risque à 5 jours, contributions SHAP, frise des pannes, capteurs sur 30 jours et
   courbe de risque brute (pas de 2 h, délestages visibles).
-- **Alertes & interventions** : circuit à traiter → intervention planifiée (créneau, technicien, type) →
-  constat (fondée ou fausse alerte), équipe de 6 techniciens et fiabilité des alertes sur 2025.
 
 Le HTML ne contient aucune donnée : chaque écran lit l'API, avec un état de chargement, vide et d'erreur.
-Thème clair ou sombre, utilisable au clavier et sur téléphone.
+« Exporter le rapport » produit un PDF de l'écran. Thème clair ou sombre, utilisable au clavier et sur téléphone.
 
 
 ## Installation 
@@ -72,8 +66,8 @@ uv sync --frozen
 # Génère le dataset (télécharge la météo Open-Meteo au premier lancement, puis cache DuckDB)
 make generate-data
 
-# Entraîne le modèle (MLflow), score le parc et prépare les interventions
-make train score interventions
+# Entraîne le modèle (MLflow) puis score le parc (table predictions)
+make train score
 
 # API et tableau de bord sur http://localhost:8000 (documentation de l'API : /docs)
 make serve
@@ -120,7 +114,7 @@ L'image Docker ne contient ni données d'entraînement ni artefacts de modèle.
 ```
 gdiz-predictive-maintenance/
 ├── app/                    # Application FastAPI
-│   ├── main.py             # Pages web, routes des trois écrans, circuit des alertes, prédiction
+│   ├── main.py             # Pages web, routes des deux écrans, prédiction
 │   └── schemas.py          # Modèles Pydantic entrée/sortie
 ├── simulation/             # Générateur : python -m simulation.generer
 │   ├── meteo.py            # Météo réelle Open-Meteo (ERA5 + CAMS), cache DuckDB
@@ -136,14 +130,13 @@ gdiz-predictive-maintenance/
 │   ├── train.py            # Modèle retenu + calibration + seuil + promotion @champion
 │   ├── predicteur.py       # Chargement du @champion et prédiction
 │   ├── explain.py          # Cause probable par famille physique (SHAP)
-│   ├── usine.py            # Chaîne de production, criticité, coûts, techniciens
+│   ├── usine.py            # Chaîne de production, criticité, coûts par gamme
 │   ├── metier.py           # Indicateurs, coût réel des pannes, fiche machine (lecture DuckDB)
-│   ├── interventions.py    # Base des interventions et circuit des alertes (make interventions)
-│   ├── score.py            # Scoring du parc --> tables predictions et reglage (make score)
+│   ├── score.py            # Scoring du parc --> table predictions (make score)
 │   └── drift.py            # PSI des 30 derniers jours vs entraînement (make check-drift)
 ├── tests/                  # Suite pytest
 ├── web/                    # Tableau de bord (sans framework ni étape de build)
-│   ├── templates/          # Gabarit commun + Parc, Machine, Alertes & interventions (Jinja2)
+│   ├── templates/          # Gabarit commun + Parc et Machine (Jinja2)
 │   └── static/
 │       ├── css/            # tokens.css (couleurs, thèmes clair/sombre) + app.css
 │       └── js/             # api.js, nav.js, charts.js (SVG) + un script par écran

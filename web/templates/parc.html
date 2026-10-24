@@ -1,28 +1,31 @@
 {% extends "base.html" %}
 {% block contenu %}
-<header class="entete">
+<section class="accueil">
   <div>
-    <h1>Parc</h1>
-    <p>Quelles machines demandent une action maintenant ?</p>
+    <h1>Bienvenue, Bill 👋</h1>
+    <p id="sous-titre">État des 50 machines et coût des pannes.</p>
   </div>
-  <div class="segmente" role="group" aria-label="Période des indicateurs" id="periodes">
-    <button type="button" data-periode="30j">30 j</button>
-    <button type="button" data-periode="t4">T4</button>
-    <button type="button" data-periode="s2">S2</button>
-    <button type="button" data-periode="annee">Année</button>
-    <button type="button" data-periode="tout">2024-2025</button>
+  <div class="actions">
+    <div class="segmente" role="group" aria-label="Période des indicateurs" id="periodes">
+      <button type="button" data-periode="30j">30 j</button>
+      <button type="button" data-periode="t4">T4</button>
+      <button type="button" data-periode="s2">S2</button>
+      <button type="button" data-periode="annee">Année</button>
+      <button type="button" data-periode="tout">2024-2025</button>
+    </div>
+    <button type="button" class="btn btn-contour" data-export="parc">
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg>
+      Exporter le rapport
+    </button>
   </div>
-</header>
+</section>
 
 <section class="kpis" id="kpis" aria-label="Indicateurs de la période"></section>
 
 <div class="grille">
   <section class="carte" aria-labelledby="t-plan">
     <div class="carte-tete">
-      <div class="carte-titre">
-        <span class="tuile" style="background: var(--blue)" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg></span>
-        <h2 id="t-plan">Plan de l'atelier</h2>
-      </div>
+      <h2 id="t-plan">Plan de l'atelier</h2>
       <span class="discret">état actuel · cliquer pour ouvrir la fiche</span>
     </div>
     <div id="plan"></div>
@@ -30,38 +33,29 @@
 
   <section class="carte" aria-labelledby="t-matrice">
     <div class="carte-tete">
-      <div class="carte-titre">
-        <span class="tuile" style="background: var(--orange)" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4"/></svg></span>
-        <h2 id="t-matrice">Risque × criticité</h2>
-      </div>
+      <h2 id="t-matrice">Risque × criticité</h2>
       <span class="discret">risque à 5 jours · poids de la machine dans la chaîne</span>
     </div>
     <div class="defile" id="matrice"></div>
-    <span class="discret"><span class="mono" style="color: var(--text-2)">criticité = part de la production perdue si la machine s'arrête</span>, ramenée sur 10. Agir : risque ≥ 3 × seuil, ou criticité ≥ 7. Une machine à l'arrêt n'apparaît pas.</span>
+    <span class="discret">Criticité = part de la production perdue si la machine s'arrête, ramenée sur 10. Agir : risque ≥ 3 × seuil, ou criticité ≥ 7. Une machine déjà en panne n'apparaît pas.</span>
   </section>
 </div>
 
 <section class="carte" aria-labelledby="t-causes">
   <div class="carte-tete">
-    <div class="carte-titre">
-      <span class="tuile" style="background: var(--teal)" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="11" width="4" height="9" rx="1.2"/><rect x="10" y="6" width="4" height="14" rx="1.2"/><rect x="16" y="9" width="4" height="11" rx="1.2"/></svg></span>
-      <div><h2 id="t-causes">Pannes par type de machine</h2><span class="discret" id="causes-sous-titre"></span></div>
-    </div>
-    <ul class="legende" style="border: 0; padding: 0" id="causes-legende" aria-label="Légende des causes"></ul>
+    <div><h2 id="t-causes">Pannes par gamme et par cause</h2><span class="discret" id="causes-sous-titre"></span></div>
+    <ul class="legende nue" id="causes-legende" aria-label="Légende des causes"></ul>
   </div>
   <div class="defile" id="causes"></div>
 </section>
 
 <section class="carte" aria-labelledby="t-cout">
   <div class="carte-tete">
-    <div class="carte-titre">
-      <span class="tuile" style="background: var(--violet)" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-5 4 3 8-8"/><path d="M15 7h5v5"/></svg></span>
-      <div><h2 id="t-cout">Coût des pannes</h2><span class="discret" id="cout-sous-titre"></span></div>
-    </div>
-    <ul class="legende" style="border: 0; padding: 0" id="cout-legende" aria-label="Légende"></ul>
+    <div><h2 id="t-cout">Coût des pannes</h2><span class="discret" id="cout-sous-titre"></span></div>
+    <ul class="legende nue" id="cout-legende" aria-label="Légende"></ul>
   </div>
   <div class="defile" id="cout"></div>
-  <span class="discret"><span class="mono" style="color: var(--text-2)">coût = pièces + (production perdue + technicien) × durée réelle d'arrêt + tissu rebuté</span> · constantes par gamme dans src/usine.py</span>
+  <span class="discret">Coût = pièces + (production perdue + technicien) × durée réelle d'arrêt + tissu rebuté.</span>
 </section>
 {% endblock %}
 {% block scripts %}<script type="module" src="/static/js/parc.js"></script>{% endblock %}

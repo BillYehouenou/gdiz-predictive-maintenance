@@ -1,4 +1,4 @@
-import { FAMILLES, LIBELLES_STATUT, erreur, esc, lire, millions, nombre, pourcent, squelette } from "./api.js";
+import { FAMILLES, LIBELLES_STATUT, erreur, esc, lire, nombre, pourcent, squelette } from "./api.js";
 import { courbeRisque, frise, jauge } from "./charts.js";
 
 const conteneur = document.getElementById("fiche");
@@ -7,9 +7,7 @@ const choix = document.getElementById("choix-machine");
 let jours = 60;
 
 const carte = (contenu, style = "") => `<section class="carte" style="${style}">${contenu}</section>`;
-const titre = (texte, couleur, icone, droite = "") => `<div class="carte-tete"><div class="carte-titre">
-  <span class="tuile${couleur === "var(--yellow)" ? " sombre" : ""}" style="background: ${couleur}" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${icone}"></path></svg></span>
-  <h2>${esc(texte)}</h2></div>${droite}</div>`;
+const titre = (texte, droite = "") => `<div class="carte-tete"><h2>${esc(texte)}</h2>${droite}</div>`;
 
 function valeurContribution(c) {
   if (c.valeur == null) return "—";
@@ -24,10 +22,7 @@ function afficher(f) {
   conteneur.innerHTML = `
   <div style="display: flex; flex-direction: column; gap: 16px">
     <section class="grille" style="--min: 260px" aria-label="État de la machine M${esc(f.numero)}">
-      ${carte(`<div style="display: flex; align-items: center; gap: 12px">
-          <span class="tuile" style="width: 44px; height: 44px; flex-basis: 44px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text)" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16M6 20V10l4 2.5V10l4 2.5V6h4v14"></path></svg></span>
-          <span class="mono" style="font-size: 40px; font-weight: 600; letter-spacing: -0.03em; line-height: 1">M${esc(f.numero)}</span>
-        </div>
+      ${carte(`<span class="mono" style="font-size: 40px; font-weight: 600; letter-spacing: -0.03em; line-height: 1">M${esc(f.numero)}</span>
         <div style="display: flex; flex-direction: column; gap: 10px">
           <span class="badge statut-${esc(f.statut)}" style="align-self: flex-start">${esc(LIBELLES_STATUT[f.statut])}</span>
           <div style="display: flex; flex-wrap: wrap; gap: 6px"><span class="badge doux">${esc(f.nom)}</span><span class="badge doux">Gamme ${esc(f.gamme)}</span></div>
@@ -42,13 +37,13 @@ function afficher(f) {
     </section>
 
     <div class="grille" style="--min: 460px">
-      ${carte(`${titre("Pourquoi ce risque", "var(--yellow)", "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.2v.1", '<span class="discret">contributions SHAP</span>')}
+      ${carte(`${titre("Pourquoi ce risque", '<span class="discret">contributions SHAP</span>')}
         ${f.contributions.length ? f.contributions.map((c) => `<div style="display: flex; flex-direction: column; gap: 6px">
           <div style="display: flex; justify-content: space-between; gap: 12px; font-size: 13px"><span style="font-weight: 500">${esc(c.libelle)} <span style="font-weight: 400; color: var(--text-3)">· ${valeurContribution(c)}</span></span><b>+${nombre(c.contribution, 2)}</b></div>
           <div role="img" aria-label="${esc(c.libelle)} : contribution +${nombre(c.contribution, 2)}" style="height: 22px; border-radius: 7px; background: var(--surface-2)"><div style="width: ${((c.contribution / max) * 100).toFixed(1)}%; height: 100%; border-radius: 7px; background-color: ${FAMILLES[c.famille] ?? "var(--gray-c)"}; background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.24) 0 2px, transparent 2px 7px)"></div></div>
         </div>`).join("") : '<p class="vide">Aucune variable ne pousse vers la panne : le risque est au plancher.</p>'}
         <ul class="legende">${familles.map((fa) => `<li><span class="temoin" style="background: ${FAMILLES[fa]}"></span>${esc(fa)}</li>`).join("")}</ul>`)}
-      ${carte(`${titre("Historique", "var(--blue)", "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3.5 2", '<span class="discret">24 mois · pannes</span>')}
+      ${carte(`${titre("Historique", '<span class="discret">24 mois · pannes</span>')}
         <div class="defile">${frise(f.historique, f.fin_donnees, f.risque)}</div>
         <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">${[
           [pourcent(f.douze_mois.disponibilite, 2), "disponibilité"],
@@ -63,11 +58,11 @@ function afficher(f) {
       <div class="kpis" style="grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px">${[
         ...f.capteurs_30j.map((c) => ({ libelle: c.libelle, valeur: nombre(c.valeur, c.unite === "mm/s" ? 2 : c.valeur > 100 ? 0 : 1), unite: c.unite, note: c.hors_limite ? `${c.libelle.includes("min") ? "↓ sous" : "↑ au-dessus de"} la limite (${nombre(c.limite, 1)})` : `limite ${nombre(c.limite, 1)}`, alerte: c.hors_limite })),
         { libelle: "Pannes", valeur: f.pannes_30j, unite: "", note: "sur les 30 derniers jours", alerte: f.pannes_30j > 0 },
-      ].map((c) => `<div class="kpi"><div class="kpi-tete" style="font-size: 13px; font-weight: 500; color: var(--text-2)"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 50%; background: ${c.alerte ? "var(--danger)" : "var(--good)"}"></span>${esc(c.libelle)}</div>
-        <div class="kpi-corps" style="gap: 8px"><span class="kpi-valeur" style="font-size: 26px">${c.valeur}<small> ${esc(c.unite)}</small></span><span style="font-size: 12px; font-weight: 500; color: ${c.alerte ? "var(--danger)" : "var(--text-3)"}">${esc(c.note)}</span></div></div>`).join("")}</div>
+      ].map((c) => `<div class="kpi" style="gap: 6px"><h3 style="font-size: 13px; display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 50%; background: ${c.alerte ? "var(--danger)" : "var(--good)"}"></span>${esc(c.libelle)}</h3>
+        <p class="kpi-valeur" style="font-size: 26px">${c.valeur}<small> ${esc(c.unite)}</small></p><span style="font-size: 12px; font-weight: 500; color: ${c.alerte ? "var(--danger)" : "var(--text-3)"}">${esc(c.note)}</span></div>`).join("")}</div>
     </section>
 
-    ${carte(`${titre("Risque de panne", "var(--orange)", "M3 12h4l3-8 4 16 3-8h4", `<div class="segmente" role="group" aria-label="Fenêtre"><button type="button" data-jours="30" aria-pressed="${jours === 30}">30 j</button><button type="button" data-jours="60" aria-pressed="${jours === 60}">60 j</button></div>`)}
+    ${carte(`${titre("Risque de panne", `<div class="segmente" role="group" aria-label="Fenêtre"><button type="button" data-jours="30" aria-pressed="${jours === 30}">30 j</button><button type="button" data-jours="60" aria-pressed="${jours === 60}">60 j</button></div>`)}
       <div class="defile" id="courbe">${squelette(220)}</div>
       <ul class="legende"><li><span class="temoin" style="background: repeating-linear-gradient(135deg, var(--hatch) 0 1.5px, transparent 1.5px 4px)"></span>Délestage SBEE (pas de mesure)</li><li><span class="temoin" style="width: 9px; height: 9px; border-radius: 0; transform: rotate(45deg); background: var(--danger)"></span>Panne constatée</li></ul>`)}
   </div>`;

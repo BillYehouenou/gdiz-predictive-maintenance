@@ -1,36 +1,15 @@
-// Commun à toutes les pages : compteurs de la navigation, recherche d'une machine (⌘K), thème.
-import { dateHeure, esc, lire } from "./api.js";
+// Commun aux deux pages : bulle d'alertes sur « Parc », thème, export du rapport en PDF.
+import { lire } from "./api.js";
 
-const champ = document.getElementById("recherche-champ");
-
-async function chargerEtat() {
+async function chargerBulle() {
   try {
-    const etat = await lire("/etat");
-    const c = etat.comptes;
-    const alertes = (c.en_panne ?? 0) + (c.panne_predite ?? 0) + (c.surveillance ?? 0);
-    document.getElementById("compteur-parc").textContent = alertes || "";
-    document.getElementById("compteur-alertes").textContent = etat.interventions_a_traiter || "";
-    document.getElementById("fin-donnees").textContent = `Données au ${dateHeure(etat.fin_donnees)}`;
-    document.getElementById("liste-machines").innerHTML = etat.machines
-      .map((m) => `<option value="M${m.numero}">${esc(m.nom)} · gamme ${esc(m.gamme)}</option>`)
-      .join("");
-  } catch {
-    document.getElementById("fin-donnees").textContent = "Données indisponibles";
-  }
+    const c = (await lire("/etat")).comptes;
+    const n = (c.en_panne ?? 0) + (c.panne_predite ?? 0) + (c.surveillance ?? 0);
+    const bulle = document.getElementById("bulle-parc");
+    bulle.textContent = n || "";
+    bulle.setAttribute("aria-label", `${n} machine${n > 1 ? "s" : ""} en alerte`);
+  } catch {}
 }
-
-document.getElementById("recherche").addEventListener("submit", (e) => {
-  e.preventDefault();
-  const n = parseInt(champ.value.replace(/\D/g, ""), 10);
-  if (n >= 1 && n <= 50) window.location.href = `/machines/GDIZ_TEX_M_${String(n).padStart(2, "0")}`;
-});
-
-document.addEventListener("keydown", (e) => {
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-    e.preventDefault();
-    champ.focus();
-  }
-});
 
 document.getElementById("theme").addEventListener("click", () => {
   const sombre = document.documentElement.dataset.theme
@@ -38,8 +17,20 @@ document.getElementById("theme").addEventListener("click", () => {
     : window.matchMedia("(prefers-color-scheme: dark)").matches;
   document.documentElement.dataset.theme = sombre ? "light" : "dark";
   try { localStorage.setItem("theme", document.documentElement.dataset.theme); } catch {}
+  document.querySelector(".compte").open = false;
 });
 
-// Les pages rappellent ce chargement après une action qui change les compteurs
-window.addEventListener("etat-change", chargerEtat);
-chargerEtat();
+// L'impression du navigateur produit le PDF ; le nom du fichier vient du titre de la page
+document.querySelectorAll("[data-export]").forEach((b) =>
+  b.addEventListener("click", () => {
+    const { title } = document, theme = document.documentElement.dataset.theme;
+    document.title = `Rapport GDIZ ${b.dataset.export} ${new Date().toISOString().slice(0, 10)}`;
+    document.documentElement.dataset.theme = "light";
+    window.print();
+    document.title = title;
+    if (theme) document.documentElement.dataset.theme = theme;
+    else delete document.documentElement.dataset.theme;
+  }),
+);
+
+chargerBulle();

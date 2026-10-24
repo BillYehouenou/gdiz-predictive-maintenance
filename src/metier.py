@@ -108,6 +108,7 @@ def indicateurs(conn: duckdb.DuckDBPyConnection, debut, fin, id_machine: str | N
         "mtbf_h": heures_marche / len(ev) if len(ev) else None,
         "cout": float(ev["cout"].sum()),
         "heures_arret": float(ev["duree_h"].sum()),
+        "heures_marche": heures_marche,
         "pannes": len(ev),
     }
 
