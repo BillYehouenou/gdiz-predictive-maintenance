@@ -5,7 +5,7 @@ Plateforme MLOps de bout en bout pour la prédiction de pannes en temps réel su
 
 ## Résumé
 
-Cette plateforme opérationnalise un modèle LightGBM de prédiction de pannes entraîné sur 1,75 million de relevés IoT (50 machines × 730 jours × 48 pas de 30 minutes). Elle expose une intelligence de maintenance actionnable via un dashboard Streamlit adossé à un moteur analytique DuckDB embarqué, avec MLflow gérant l'intégralité du cycle de vie des expériences. Le système est conçu pour les contraintes opérationnelles spécifiques du parc textile : déséquilibre de classes extrême, instabilité du réseau SBEE et cycles de poussière Harmattan.
+Cette plateforme opérationnalise un modèle LightGBM de prédiction de pannes entraîné sur 1,75 million de relevés IoT (50 machines × 730 jours × 48 pas de 30 minutes). Elle expose une intelligence de maintenance actionnable via un tableau de bord web (HTML, CSS et JavaScript servis par FastAPI) adossé à un moteur analytique DuckDB embarqué, avec MLflow gérant l'intégralité du cycle de vie des expériences. Le système est conçu pour les contraintes opérationnelles spécifiques du parc textile : déséquilibre de classes extrême, instabilité du réseau SBEE et cycles de poussière Harmattan.
 
 La cible tente de répondre à la question : **cette machine tombera-t-elle en panne dans les 120h prochaines heures ? Si oui, quelle en est la cause probable ?**
 
@@ -21,7 +21,7 @@ simulation/                          - Physique des machines (framework AI4I 202
 data/raw/gdiz_maintenance.db         - DuckDB : télémétrie 1,75M lignes (id_machine, timestamp) + cache météo
         │
 src/donnees.py + src/features.py     - cible à 120h, features glissantes (24h / 4h) : une seule fonction,
-        │                              identique à l'entraînement, dans le dashboard et dans l'API
+        │                              identique à l'entraînement, au scoring et dans l'API
         │                              split train / validation / test avec tampon de 120h + 10 machines réservées au test
         │
 src/train.py                         - LightGBM (NaN et catégories natives) --> calibration sigmoïde --> seuil choisi
@@ -30,15 +30,33 @@ src/train.py                         - LightGBM (NaN et catégories natives) -->
         │
 src/score.py                         - score tout le parc une fois --> table DuckDB `predictions`
         │                              (risque, niveau, cause probable SHAP des machines en alerte)
-          ┌───────────────┴───────────────┐
-          │                               │
-  app/main.py (FastAPI)          dashboard.py (Streamlit) : lit la table, ne charge pas le modèle
-  POST /api/v1/predict(/batch)   (prédiction temps réel, sans état)
-  GET  /api/v1/machines          (dernier état de chaque machine)
-  GET  /api/v1/priorites         (machines en alerte, par risque décroissant)
-  GET  /api/v1/machines/{id}/serie?jours=30
-  GET  /api/v1/info · POST /api/v1/reload
+        │                              + table `reglage` (fausses alertes, pannes annoncées et bilan selon le seuil)
+        │
+src/interventions.py                 - data/raw/interventions.db : historique 2025 reconstitué + alertes à traiter
+        │                              (base séparée : seule l'API y écrit)
+        │
+app/main.py (FastAPI)                - API et tableau de bord sur le même port
+  GET  /  · /machines/{id} · /alertes                 pages web (web/templates + web/static)
+  GET  /api/v1/parc?periode= · /etat · /machines/{id} · /machines/{id}/risque?jours=
+  GET  /api/v1/alertes · POST /api/v1/alertes/{id}/planifier | qualifier | rouvrir
+  POST /api/v1/predict(/batch) · GET /api/v1/info · POST /api/v1/reload
 ```
+
+
+## Tableau de bord
+
+Pensé pour le superviseur ou le chef d'usine, en trois écrans :
+
+- **Parc** : disponibilité, MTBF, coût réel des pannes et heures d'arrêt sur la période choisie ; plan des
+  50 machines par état ; matrice risque × criticité (criticité = part de la production perdue si la machine
+  s'arrête, déduite du nombre de machines à son étape de la chaîne).
+- **Machine** : santé, risque à 5 jours, contributions SHAP, frise des pannes, capteurs sur 30 jours et
+  courbe de risque brute (pas de 2 h, délestages visibles).
+- **Alertes & interventions** : circuit à traiter → intervention planifiée (créneau, technicien, type) →
+  constat (fondée ou fausse alerte), équipe de 6 techniciens et fiabilité des alertes sur 2025.
+
+Le HTML ne contient aucune donnée : chaque écran lit l'API, avec un état de chargement, vide et d'erreur.
+Thème clair ou sombre, utilisable au clavier et sur téléphone.
 
 
 ## Installation 
@@ -54,14 +72,14 @@ uv sync --frozen
 # Génère le dataset (télécharge la météo Open-Meteo au premier lancement, puis cache DuckDB)
 make generate-data
 
-# Entraîne le modèle (MLflow) puis score le parc (table predictions)
-make train score
+# Entraîne le modèle (MLflow), score le parc et prépare les interventions
+make train score interventions
 
-# Dashbord Streamlit
-make dashboard
+# API et tableau de bord sur http://localhost:8000 (documentation de l'API : /docs)
+make serve
 
-# Optionnel : API d'inférence ou MLFlow UI
-make serve ; make mlflow-ui
+# Optionnel : MLflow UI
+make mlflow-ui
 ```
 
 
@@ -85,7 +103,7 @@ s'accordent pas. LightGBM 150 arbres est donc conservé. Départager plus fineme
 
 ## Déploiement Docker
 
-La stack Compose orchestre trois services dans des conteneurs :
+La stack Compose orchestre deux services : l'API (avec le tableau de bord, port 8000) et MLflow (port 5000).
 
 ```bash
 # Placer les artefacts pré-entraînés dans models/ et les données dans data/ avant le build.
@@ -102,9 +120,8 @@ L'image Docker ne contient ni données d'entraînement ni artefacts de modèle.
 ```
 gdiz-predictive-maintenance/
 ├── app/                    # Application FastAPI
-│   ├── main.py             # Routes : prédiction, lecture du parc, info, rechargement à chaud
+│   ├── main.py             # Pages web, routes des trois écrans, circuit des alertes, prédiction
 │   └── schemas.py          # Modèles Pydantic entrée/sortie
-├── dashboard.py            # Point d'entrée Streamlit
 ├── simulation/             # Générateur : python -m simulation.generer
 │   ├── meteo.py            # Météo réelle Open-Meteo (ERA5 + CAMS), cache DuckDB
 │   ├── physique.py         # Atelier (extérieur --> intérieur) + état caché et risques de panne des machines
@@ -119,18 +136,17 @@ gdiz-predictive-maintenance/
 │   ├── train.py            # Modèle retenu + calibration + seuil + promotion @champion
 │   ├── predicteur.py       # Chargement du @champion et prédiction
 │   ├── explain.py          # Cause probable par famille physique (SHAP)
-│   ├── score.py            # Scoring du parc --> table predictions (make score)
+│   ├── usine.py            # Chaîne de production, criticité, coûts, techniciens
+│   ├── metier.py           # Indicateurs, coût réel des pannes, fiche machine (lecture DuckDB)
+│   ├── interventions.py    # Base des interventions et circuit des alertes (make interventions)
+│   ├── score.py            # Scoring du parc --> tables predictions et reglage (make score)
 │   └── drift.py            # PSI des 30 derniers jours vs entraînement (make check-drift)
 ├── tests/                  # Suite pytest
-├── ui/                     # Modules UI Streamlit
-│   ├── constants.py        # Palettes, constantes coûts métier, maps de périodes
-│   ├── helpers.py          # Helpers mise en page graphiques, utilitaires de formatage
-│   ├── queries.py          # Couche requêtes DuckDB 
-│   ├── styles.py           # Injection du thème global CSS-in-Python
-│   └── tabs/
-│       ├── tab_general.py  # Onglet vue globale du parc + priorités du jour
-│       ├── tab_machine.py  # Onglet analyse par machine + cause probable (SHAP)
-│       └── tab_about.py    # Onglet architecture du pipeline
+├── web/                    # Tableau de bord (sans framework ni étape de build)
+│   ├── templates/          # Gabarit commun + Parc, Machine, Alertes & interventions (Jinja2)
+│   └── static/
+│       ├── css/            # tokens.css (couleurs, thèmes clair/sombre) + app.css
+│       └── js/             # api.js, nav.js, charts.js (SVG) + un script par écran
 ├── Dockerfile
 ├── docker-compose.yml
 ├── Makefile

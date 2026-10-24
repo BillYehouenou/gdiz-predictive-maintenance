@@ -1,6 +1,6 @@
 """
 Score tout le parc avec le @champion et écrit dans DuckDB :
-- `predictions` : risque, niveau et cause probable, lus par l'API et le dashboard ;
+- `predictions` : risque, niveau et cause probable, lus par l'API ;
 - `reglage` : sur 2025, ce que coûte et rapporte chaque niveau de seuil (fausses alertes face aux pannes annoncées).
 Usage : python -m src.score (après chaque entraînement)
 """

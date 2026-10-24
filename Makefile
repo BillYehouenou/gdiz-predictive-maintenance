@@ -2,11 +2,10 @@
 PROJECT_ROOT := $(shell pwd)
 PYTHONPATH   := $(PROJECT_ROOT)
 UV_RUN       := PYTHONHASHSEED=0 PYTHONPATH=$(PYTHONPATH) uv run
-PORT         ?= 8501
 
 .PHONY: help install install-dev generate-data train compare score interventions pipeline check-drift \
         check lint format test \
-        serve dashboard mlflow-ui \
+        serve mlflow-ui \
         docker-up docker-down \
         clean clean-hard
 
@@ -34,7 +33,7 @@ train:  # Entraîne le modèle retenu et l'enregistre dans MLflow
 compare:  # Compare les modèles candidats (validation sur 3 fenêtres + test 2025)
 	$(UV_RUN) python -m src.modeles
 
-score:  # Score tout le parc avec le @champion --> table predictions (lue par l'API et le dashboard)
+score:  # Score tout le parc avec le @champion --> table predictions (lue par l'API)
 	$(UV_RUN) python -m src.score
 
 interventions:  # (Re)crée la base des interventions : historique 2025 reconstitué + alertes en cours (API arrêtée)
@@ -61,17 +60,14 @@ test:  # lance la suite de tests avec coverage
 check: lint test  # lint + tests : gate CI avant merge
 
 # Serveurs locaux
-serve:  # Démarre l'API FastAPI en mode développement
-	$(UV_RUN) uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
-dashboard:  # Démarre le dashboard Streamlit 
-	$(UV_RUN) streamlit run dashboard.py --server.port $(PORT)
+serve:  # Démarre l'API et le tableau de bord sur http://localhost:8000
+	$(UV_RUN) uvicorn app.main:app --reload --reload-dir app --reload-dir src --reload-dir web --host 0.0.0.0 --port 8000
 
 mlflow-ui:  # Ouvre l'UI MLflow en lecture 
 	$(UV_RUN) mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5000
 
 # Docker
-docker-up:  # Build et démarre tous les services (API + MLflow + dashboard)
+docker-up:  # Build et démarre tous les services (API et tableau de bord + MLflow)
 	docker compose up --build -d
 
 docker-down:  # Arrête et supprime les conteneurs

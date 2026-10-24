@@ -195,7 +195,7 @@ class PointReglage(BaseModel):
 class EcranAlertes(BaseModel):
     a_traiter: list[Intervention]
     planifiees: list[Intervention]
-    qualifiees: list[Intervention] = Field(description="Constats saisis dans le dashboard")
+    qualifiees: list[Intervention] = Field(description="Constats saisis dans le tableau de bord")
     historique: list[Intervention]
     techniciens: list[Technicien]
     fiabilite: Fiabilite

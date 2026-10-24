@@ -36,7 +36,7 @@ _SCHEMA = """
         type VARCHAR,
         constat VARCHAR,
         fondee BOOLEAN,
-        source VARCHAR NOT NULL,  -- historique (reconstitué) ou terrain (saisi dans le dashboard)
+        source VARCHAR NOT NULL,  -- historique (reconstitué) ou terrain (saisi dans le tableau de bord)
         maj TIMESTAMP
     )
 """

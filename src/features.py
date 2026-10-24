@@ -1,6 +1,6 @@
 """
 Features glissantes par machine, sur des fenêtres de durée.
-Une seule fonction, utilisée à l'entraînement, par le dashboard et par l'API.
+Une seule fonction, utilisée à l'entraînement, par le scoring et par l'API.
 """
 
 import pandas as pd

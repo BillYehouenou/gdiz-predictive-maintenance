@@ -4,7 +4,7 @@ FROM python:3.11-slim
 # Définition du répertoire de travail dans le conteneur
 WORKDIR /app
 
-# curl : requis par les healthchecks docker-compose (mlflow/api/dashboard).
+# curl : requis par les healthchecks docker-compose (mlflow/api).
 # libgomp1 : runtime OpenMP requis par LightGBM, absent de python:3.11-slim.
 RUN apt-get update && apt-get install -y --no-install-recommends curl libgomp1 && rm -rf /var/lib/apt/lists/*
 
@@ -26,7 +26,7 @@ RUN mkdir -p /app/mlflow && \
     chown -R appuser:appuser /app
 USER appuser
 
-# Exposition du port FastAPI
+# Exposition du port FastAPI (API et tableau de bord)
 EXPOSE 8000
 
 # Commande pour lancer l'API
