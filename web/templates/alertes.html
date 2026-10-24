@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block contenu %}
+<header class="entete">
+  <div>
+    <h1>Alertes &amp; interventions</h1>
+    <p>Traiter chaque alerte, puis dire ce qu'on a trouvé sur place.</p>
+  </div>
+</header>
+
+<ol id="etapes" aria-label="Étapes du circuit" style="list-style: none; margin: 0; padding: 14px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px"></ol>
+
+<div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+  <div id="colonne" style="flex: 999 1 620px; min-width: 0; display: flex; flex-direction: column; gap: 22px"></div>
+  <aside id="cote" style="flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 16px"></aside>
+</div>
+{% endblock %}
+{% block scripts %}<script type="module" src="/static/js/alertes.js"></script>{% endblock %}

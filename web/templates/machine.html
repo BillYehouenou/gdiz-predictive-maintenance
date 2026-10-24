@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block contenu %}
+<header class="entete">
+  <div>
+    <h1>Machine</h1>
+    <p>Que se passe-t-il, et que faire ?</p>
+  </div>
+  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+    <label for="choix-machine" class="sr">Machine</label>
+    <select id="choix-machine" class="champ mono" style="min-width: 240px; border-radius: 999px; background: var(--surface-2)"></select>
+    <a class="btn btn-noir" href="/alertes"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Planifier une intervention</a>
+  </div>
+</header>
+
+<div id="fiche" data-machine="{{ id_machine }}"></div>
+{% endblock %}
+{% block scripts %}<script type="module" src="/static/js/machine.js"></script>{% endblock %}

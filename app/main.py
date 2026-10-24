@@ -2,7 +2,10 @@ import logging
 
 import duckdb
 import pandas as pd
-from fastapi import APIRouter, FastAPI, HTTPException, Query
+from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from app.schemas import (
     DemandeConstat,
@@ -18,11 +21,11 @@ from app.schemas import (
     TableauParc,
 )
 from src import interventions, metier
-from src.config import PAS, TABLE, TABLE_REGLAGE
+from src.config import PAS, RACINE, TABLE, TABLE_REGLAGE
 from src.explain import ExplicateurCause
 from src.features import LIGNES_HISTORIQUE, calculer_features
 from src.predicteur import Predicteur
-from src.usine import technicien_conseille
+from src.usine import nom_machine, technicien_conseille
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +35,8 @@ app = FastAPI(
     version="4.0.0",
 )
 router = APIRouter(prefix="/api/v1")
+app.mount("/static", StaticFiles(directory=RACINE / "web" / "static"), name="static")
+gabarits = Jinja2Templates(directory=RACINE / "web" / "templates")
 predicteur = Predicteur(utiliser_mlflow=True)
 explicateur = ExplicateurCause(predicteur.modele)
 
@@ -93,7 +98,15 @@ def parc(periode: str = Query("annee", pattern="^(30j|t4|s2|annee|tout)$")):
 def _etat_parc(conn: duckdb.DuckDBPyConnection) -> dict:
     machines = metier.etat_parc(conn, predicteur.threshold)
     comptes = pd.Series([m["statut"] for m in machines]).value_counts().to_dict()
-    return {"fin_donnees": metier.fin_donnees(conn), "seuil": predicteur.threshold, "machines": machines, "comptes": comptes}
+    with interventions.connexion() as base:
+        a_traiter = len(interventions.lister(base, "a_traiter"))
+    return {
+        "fin_donnees": metier.fin_donnees(conn),
+        "seuil": predicteur.threshold,
+        "machines": machines,
+        "comptes": comptes,
+        "interventions_a_traiter": a_traiter,
+    }
 
 
 @router.get("/etat", response_model=EtatParc)
@@ -139,6 +152,7 @@ def _reglage(conn: duckdb.DuckDBPyConnection) -> list[dict]:
 def _intervention(ligne: dict, etats: dict, creneau_conseille: str) -> dict:
     ligne = {k: (None if pd.isna(v) else v) for k, v in ligne.items()}
     ligne["numero"] = ligne["id_machine"][-2:]
+    ligne["nom"] = nom_machine(ligne["id_machine"])
     etat_machine = etats.get(ligne["id_machine"])
     if ligne["statut"] != "qualifiee" and etat_machine:
         ligne["machine"] = etat_machine
@@ -225,3 +239,31 @@ def recharger():
 
 
 app.include_router(router)
+
+
+# Pages du tableau de bord : le HTML ne contient aucune donnée, le JavaScript lit l'API
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+def page_parc(request: Request):
+    return gabarits.TemplateResponse(request, "parc.html", {"titre": "Parc", "page": "parc"})
+
+
+@app.get("/machines", include_in_schema=False)
+def page_machine_prioritaire():
+    """Sans machine précisée : la plus à risque parmi les machines en marche."""
+    machines = _lire(_etat_parc)["machines"]
+    en_marche = [m for m in machines if m["statut"] != "en_panne"] or machines
+    return RedirectResponse(f"/machines/{max(en_marche, key=lambda m: m['risque'])['id_machine']}")
+
+
+@app.get("/machines/{id_machine}", response_class=HTMLResponse, include_in_schema=False)
+def page_machine(request: Request, id_machine: str):
+    if not id_machine.startswith("GDIZ_TEX_M_"):
+        raise HTTPException(status_code=404, detail=f"Machine inconnue : {id_machine}")
+    return gabarits.TemplateResponse(
+        request, "machine.html", {"titre": f"Machine M{id_machine[-2:]}", "page": "machine", "id_machine": id_machine}
+    )
+
+
+@app.get("/alertes", response_class=HTMLResponse, include_in_schema=False)
+def page_alertes(request: Request):
+    return gabarits.TemplateResponse(request, "alertes.html", {"titre": "Alertes et interventions", "page": "alertes"})

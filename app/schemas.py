@@ -107,6 +107,7 @@ class EtatParc(BaseModel):
     seuil: float
     machines: list[EtatMachine]
     comptes: dict[str, int]
+    interventions_a_traiter: int
 
 
 class Contribution(BaseModel):
@@ -154,6 +155,7 @@ class Intervention(BaseModel):
     id: int
     id_machine: str
     numero: str
+    nom: str
     debut_alerte: datetime
     statut: Literal["a_traiter", "planifiee", "qualifiee"]
     technicien: Optional[str]

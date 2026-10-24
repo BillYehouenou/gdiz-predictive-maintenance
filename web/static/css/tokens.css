@@ -1,0 +1,69 @@
+/* Seul fichier qui contient des couleurs : tout le reste lit ces variables. */
+:root {
+  --police: "Inter", system-ui, -apple-system, sans-serif;
+  --police-mono: "JetBrains Mono", ui-monospace, monospace;
+  --rayon: 20px;
+  --rayon-petit: 12px;
+
+  --bg: #eeeef0;
+  --panel: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f5f5f7;
+  --text: #17181b;
+  --text-2: #4c4f56;
+  --text-3: #62666e;
+  --border: #e8e8eb;
+  --border-strong: #d3d4d9;
+  --accent: #2f6fe4;
+  --accent-weak: #eaf1fd;
+  --accent-ink: #1d55bd;
+  --danger: #c93434;
+  --danger-weak: #fdecec;
+  --on-danger: #ffffff;
+  --warn: #d99a06;
+  --warn-weak: #fdf4d8;
+  --warn-ink: #7a5200;
+  --orange: #ef6c1a;
+  --orange-weak: #feeadb;
+  --orange-ink: #9a3f05;
+  --good: #13804f;
+  --yellow: #f6c234;
+  --teal: #13917f;
+  --blue: #5b9cf5;
+  --violet: #7a5cf0;
+  --gray-c: #b6b9c0;
+  --hatch: #a9adb5;
+  --track: #efeff2;
+  --ink-btn: #17181b;
+  --ink-btn-text: #ffffff;
+  --shadow: 0 1px 2px rgba(16, 17, 20, 0.04), 0 4px 14px rgba(16, 17, 20, 0.04);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0c0d0f; --panel: #141518; --surface: #1a1b1f; --surface-2: #212227;
+    --text: #ececef; --text-2: #b9bcc3; --text-3: #9a9ea7; --border: #2a2b31; --border-strong: #3a3c43;
+    --accent: #6b9ff5; --accent-weak: #18243b; --accent-ink: #a9c6f8;
+    --danger: #f07070; --danger-weak: #3a1c1e; --on-danger: #1a0b0b;
+    --warn: #e7b030; --warn-weak: #33290f; --warn-ink: #f2cf7a;
+    --orange: #f28a45; --orange-weak: #3a2416; --orange-ink: #f6b388;
+    --good: #4cc38a; --yellow: #e8b72e; --teal: #2bb3a0; --blue: #6aa6f5; --violet: #9b84f5;
+    --gray-c: #7d828c; --hatch: #6b707a; --track: #25262c; --ink-btn: #ececef; --ink-btn-text: #111214;
+    --shadow: none;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0c0d0f; --panel: #141518; --surface: #1a1b1f; --surface-2: #212227;
+  --text: #ececef; --text-2: #b9bcc3; --text-3: #9a9ea7; --border: #2a2b31; --border-strong: #3a3c43;
+  --accent: #6b9ff5; --accent-weak: #18243b; --accent-ink: #a9c6f8;
+  --danger: #f07070; --danger-weak: #3a1c1e; --on-danger: #1a0b0b;
+  --warn: #e7b030; --warn-weak: #33290f; --warn-ink: #f2cf7a;
+  --orange: #f28a45; --orange-weak: #3a2416; --orange-ink: #f6b388;
+  --good: #4cc38a; --yellow: #e8b72e; --teal: #2bb3a0; --blue: #6aa6f5; --violet: #9b84f5;
+  --gray-c: #7d828c; --hatch: #6b707a; --track: #25262c; --ink-btn: #ececef; --ink-btn-text: #111214;
+  --shadow: none;
+  color-scheme: dark;
+}
