@@ -3,7 +3,7 @@ PROJECT_ROOT := $(shell pwd)
 PYTHONPATH   := $(PROJECT_ROOT)
 UV_RUN       := PYTHONHASHSEED=0 PYTHONPATH=$(PYTHONPATH) uv run
 
-.PHONY: help install install-dev generate-data train compare score interventions pipeline check-drift \
+.PHONY: help install install-dev generate-data train compare score pipeline check-drift \
         check lint format test \
         serve mlflow-ui \
         docker-up docker-down \
@@ -36,10 +36,7 @@ compare:  # Compare les modèles candidats (validation sur 3 fenêtres + test 20
 score:  # Score tout le parc avec le @champion --> table predictions (lue par l'API)
 	$(UV_RUN) python -m src.score
 
-interventions:  # (Re)crée la base des interventions : historique 2025 reconstitué + alertes en cours (API arrêtée)
-	$(UV_RUN) python -m src.interventions
-
-pipeline: generate-data train score interventions  # Régénère les données, entraîne, score le parc, prépare les interventions
+pipeline: generate-data train score  # Régénère les données, entraîne, score le parc
 
 check-drift:  # Compare les 30 derniers jours (features et risque prédit) à la période d'entraînement
 	$(UV_RUN) python -m src.drift

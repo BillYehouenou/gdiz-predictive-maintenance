@@ -1,9 +1,7 @@
-import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from src import interventions
 
 client = TestClient(app)
 
@@ -114,30 +112,3 @@ def test_risque_machine():
     assert r.status_code == 200
     assert len(r.json()) == 7 * 12  # pas de 2 h
     assert client.get("/api/v1/machines/INCONNUE/risque").status_code == 404
-
-
-@pytest.fixture
-def base_interventions(tmp_path, monkeypatch):
-    """Copie temporaire de la base des interventions : les tests d'écriture ne touchent pas à la vraie."""
-    chemin = tmp_path / "interventions.db"
-    interventions.initialiser(chemin)
-    monkeypatch.setattr(interventions, "connexion", lambda: duckdb.connect(str(chemin)))
-
-
-def test_circuit_des_alertes(base_interventions):
-    ecran = client.get("/api/v1/alertes").json()
-    alerte = ecran["a_traiter"][0]
-    assert alerte["machine"]["statut"] in ("surveillance", "panne_predite")
-    demande = {"technicien": alerte["technicien_conseille"], "creneau": ecran["creneaux"][0], "type": alerte["type_conseille"]}
-    assert client.post(f"/api/v1/alertes/{alerte['id']}/planifier", json=demande).status_code == 200
-    assert client.post(f"/api/v1/alertes/{alerte['id']}/planifier", json=demande).status_code == 409
-    assert client.post(f"/api/v1/alertes/{alerte['id']}/qualifier", json={"constat": "corrige"}).status_code == 200
-    qualifiees = client.get("/api/v1/alertes").json()["qualifiees"]
-    assert [i["id"] for i in qualifiees] == [alerte["id"]]
-    assert client.post(f"/api/v1/alertes/{alerte['id']}/rouvrir").status_code == 200
-
-
-def test_planifier_technicien_inconnu(base_interventions):
-    alerte = client.get("/api/v1/alertes").json()["a_traiter"][0]
-    demande = {"technicien": "TECH-99", "creneau": "demain", "type": "Inspection"}
-    assert client.post(f"/api/v1/alertes/{alerte['id']}/planifier", json=demande).status_code == 422

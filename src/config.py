@@ -7,12 +7,9 @@ import pandas as pd
 
 RACINE = Path(__file__).resolve().parent.parent
 CHEMIN_DB = RACINE / "data" / "raw" / "gdiz_maintenance.db"
-# Écrite par l'API seule (interventions, constats) : DuckDB n'accepte qu'un processus en écriture par fichier
-CHEMIN_INTERVENTIONS = RACINE / "data" / "raw" / "interventions.db"
 DOSSIER_MODELES = RACINE / "models"
 TABLE = "factory_telemetry"
 TABLE_PREDICTIONS = "predictions"
-TABLE_REGLAGE = "reglage"
 PAS = pd.Timedelta("30min")
 
 # Mesures brutes vues par le modèle : capteurs + compteurs GMAO (les features glissantes sont dans src/features.py)

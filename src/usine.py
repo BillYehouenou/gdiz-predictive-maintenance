@@ -1,5 +1,5 @@
 """
-L'usine vue par le superviseur : chaîne de production, coûts par gamme, techniciens, et les règles métier simples
+L'usine vue par le superviseur : chaîne de production, coûts par gamme, et les règles métier simples
 (criticité, santé, coût d'une panne, zone d'action). Hypothèses de projet, réunies ici pour être lues et testées.
 """
 
@@ -27,19 +27,6 @@ GAMMES: dict[str, dict[str, Any]] = {
     "M": {"libelle": "Gamme M", "capacite_m_h": 20, "marge_m": 1_500, "pieces": 180_000, "rebut_m": 8},
     "H": {"libelle": "Gamme H", "capacite_m_h": 35, "marge_m": 2_000, "pieces": 500_000, "rebut_m": 15},
 }
-# Réglage des alertes : coût d'une fausse alerte et gain d'une panne annoncée
-HEURES_FAUSSE_ALERTE = 1.0  # temps technicien perdu
-HEURES_ARRET_EVITEES = 3.0  # arrêt évité quand la panne est annoncée (MTTR)
-
-TECHNICIENS = [
-    {"id": "TECH-01", "specialite": "Mécanique", "equipe": "matin"},
-    {"id": "TECH-02", "specialite": "Mécanique", "equipe": "après-midi"},
-    {"id": "TECH-03", "specialite": "Électrique", "equipe": "matin"},
-    {"id": "TECH-04", "specialite": "Mécanique", "equipe": "nuit"},
-    {"id": "TECH-05", "specialite": "Électrique", "equipe": "après-midi"},
-    {"id": "TECH-06", "specialite": "Polyvalent", "equipe": "nuit"},
-]
-EQUIPES = {"matin": range(6, 14), "après-midi": range(14, 22), "nuit": list(range(22, 24)) + list(range(0, 6))}
 
 
 def numero(id_machine: str) -> int:
@@ -85,10 +72,3 @@ def zone(risque: float, seuil: float, crit: float) -> str | None:
     if risque >= 3 * seuil or crit >= 7:
         return "agir"
     return "planifier" if crit >= 4 else "surveiller"
-
-
-def technicien_conseille(specialite: str, heure: int) -> str:
-    """Premier technicien de la spécialité dans l'équipe en poste ; sinon le premier de la spécialité."""
-    candidats = [t for t in TECHNICIENS if t["specialite"] in (specialite, "Polyvalent")]
-    en_poste = [t for t in candidats if heure in EQUIPES[t["equipe"]]]
-    return (en_poste or candidats)[0]["id"]

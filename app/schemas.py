@@ -107,7 +107,6 @@ class EtatParc(BaseModel):
     seuil: float
     machines: list[EtatMachine]
     comptes: dict[str, int]
-    interventions_a_traiter: int
 
 
 class Contribution(BaseModel):
@@ -149,68 +148,3 @@ class PointRisque(BaseModel):
     risque: float
     delestage: bool
     panne: bool
-
-
-class Intervention(BaseModel):
-    id: int
-    id_machine: str
-    numero: str
-    nom: str
-    debut_alerte: datetime
-    statut: Literal["a_traiter", "planifiee", "qualifiee"]
-    technicien: Optional[str]
-    creneau: Optional[str]
-    type: Optional[str]
-    constat: Optional[str]
-    fondee: Optional[bool]
-    source: str
-    machine: Optional[EtatMachine] = Field(default=None, description="État actuel de la machine, pour les interventions ouvertes")
-    technicien_conseille: Optional[str] = None
-    type_conseille: Optional[str] = None
-
-
-class Technicien(BaseModel):
-    id: str
-    specialite: str
-    equipe: str
-    interventions_planifiees: int
-
-
-class Fiabilite(BaseModel):
-    alertes_qualifiees: int
-    alertes_fondees: int
-    part_fondees: Optional[float]
-
-
-class PointReglage(BaseModel):
-    seuil: float
-    fausses_alertes_machine_jour: float
-    part_pannes_annoncees: float
-    alertes_jour: float
-    bilan: float = Field(description="FCFA nets par an : pannes annoncées × arrêt évité − fausses alertes × temps technicien")
-    preavis_median_h: Optional[float]
-    actuel: bool
-
-
-class EcranAlertes(BaseModel):
-    a_traiter: list[Intervention]
-    planifiees: list[Intervention]
-    qualifiees: list[Intervention] = Field(description="Constats saisis dans le tableau de bord")
-    historique: list[Intervention]
-    techniciens: list[Technicien]
-    fiabilite: Fiabilite
-    reglage: list[PointReglage]
-    creneaux: list[str]
-    types: list[str]
-
-
-class DemandePlanification(BaseModel):
-    technicien: str = Field(examples=["TECH-01"])
-    creneau: str = Field(examples=["Mer. 31/12 · matin"])
-    type: Literal["Inspection", "Entretien", "Réparation"]
-
-
-class DemandeConstat(BaseModel):
-    constat: Literal["corrige", "rien", "panne", "ecartee"] = Field(
-        description="corrige : défaut corrigé ; rien : rien d'anormal ; panne : panne avant intervention ; ecartee : écartée"
-    )

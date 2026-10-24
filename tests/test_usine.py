@@ -1,6 +1,6 @@
 import pytest
 
-from src.usine import CHAINE, cout_heure_arret, cout_panne, criticite, nom_machine, sante, statut, technicien_conseille, zone
+from src.usine import CHAINE, cout_heure_arret, cout_panne, criticite, nom_machine, sante, statut, zone
 
 
 def test_chaine_couvre_les_50_machines_une_seule_fois():
@@ -33,9 +33,3 @@ def test_sante_et_statut():
 )
 def test_zone(risque, crit, attendu):
     assert zone(risque, 0.029, crit) == attendu
-
-
-def test_technicien_conseille_selon_specialite_et_equipe():
-    assert technicien_conseille("Mécanique", 9) == "TECH-01"
-    assert technicien_conseille("Électrique", 16) == "TECH-05"
-    assert technicien_conseille("Électrique", 2) == "TECH-06"  # la nuit, le polyvalent

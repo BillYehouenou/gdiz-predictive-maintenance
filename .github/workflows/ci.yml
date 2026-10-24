@@ -71,7 +71,6 @@ jobs:
           uv run python -m simulation.generer
           uv run python -m src.train
           uv run python -m src.score
-          uv run python -m src.interventions
 
       - name: Lancer les tests avec couverture
         env:

@@ -215,10 +215,10 @@ def fiche_machine(conn: duckdb.DuckDBPyConnection, id_machine: str, seuil: float
 
 
 def serie_risque(conn: duckdb.DuckDBPyConnection, id_machine: str, jours: int) -> pd.DataFrame:
-    """Risque prédit par pas de 2 h sur les derniers jours ; risque nul (trou) pendant les délestages, repère des pannes."""
+    """Risque au dernier relevé de chaque pas de 2 h (le dernier point est le risque actuel), délestages et pannes."""
     return conn.execute(
         f"""SELECT time_bucket(INTERVAL 2 HOUR, t.timestamp) AS timestamp,
-                   AVG(p.probabilite_panne) AS risque,
+                   arg_max(p.probabilite_panne, t.timestamp) AS risque,
                    MAX(t.indicateur_coupure) AS delestage,
                    MAX(t.panne) AS panne
             FROM {TABLE} t JOIN {TABLE_PREDICTIONS} p USING (id_machine, timestamp)
@@ -261,15 +261,3 @@ def libelle_feature(feature: str) -> tuple[str, str]:
             libelle, unite = _MESURES.get(feature.removesuffix(suffixe), (feature, ""))
             return libelle + texte, unite
     return _MESURES.get(feature, (feature, ""))
-
-
-def creneaux(fin: pd.Timestamp) -> list[str]:
-    """Créneaux proposés pour une intervention, à partir du dernier relevé."""
-    jours = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."]
-    demain = fin.normalize() + timedelta(days=1)
-    apres = demain + timedelta(days=2 if demain.dayofweek == 4 else 1)
-
-    def nom(d: pd.Timestamp) -> str:
-        return f"{jours[d.dayofweek].capitalize()} {d.day}/{d.month:02d}"
-
-    return [f"{nom(demain)} · matin", f"{nom(demain)} · après-midi", f"{nom(apres)} · matin", "Prochain arrêt programmé"]

@@ -8,10 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.schemas import (
-    DemandeConstat,
-    DemandePlanification,
     DonneesMachine,
-    EcranAlertes,
     EtatParc,
     FicheMachine,
     InfoModele,
@@ -20,18 +17,17 @@ from app.schemas import (
     ReponseRechargement,
     TableauParc,
 )
-from src import interventions, metier
-from src.config import PAS, RACINE, TABLE, TABLE_REGLAGE
+from src import metier
+from src.config import PAS, RACINE, TABLE
 from src.explain import ExplicateurCause
 from src.features import LIGNES_HISTORIQUE, calculer_features
 from src.predicteur import Predicteur
-from src.usine import nom_machine, technicien_conseille
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="GDIZ Maintenance Prédictive API",
-    description="Maintenance prédictive des 50 machines textiles : prédiction, état du parc, fiche machine, interventions",
+    description="Maintenance prédictive des 50 machines textiles : prédiction, état du parc, fiche machine",
     version="4.0.0",
 )
 router = APIRouter(prefix="/api/v1")
@@ -98,14 +94,11 @@ def parc(periode: str = Query("annee", pattern="^(30j|t4|s2|annee|tout)$")):
 def _etat_parc(conn: duckdb.DuckDBPyConnection) -> dict:
     machines = metier.etat_parc(conn, predicteur.threshold)
     comptes = pd.Series([m["statut"] for m in machines]).value_counts().to_dict()
-    with interventions.connexion() as base:
-        a_traiter = len(interventions.lister(base, "a_traiter"))
     return {
         "fin_donnees": metier.fin_donnees(conn),
         "seuil": predicteur.threshold,
         "machines": machines,
         "comptes": comptes,
-        "interventions_a_traiter": a_traiter,
     }
 
 
@@ -143,80 +136,6 @@ def risque(id_machine: str, jours: int = Query(60, ge=1, le=730)):
     if serie.empty:
         raise HTTPException(status_code=404, detail=f"Machine inconnue : {id_machine}")
     return serie.to_dict("records")
-
-
-def _reglage(conn: duckdb.DuckDBPyConnection) -> list[dict]:
-    return conn.execute(f"SELECT * FROM {TABLE_REGLAGE} ORDER BY seuil").fetchdf().to_dict("records")
-
-
-def _intervention(ligne: dict, etats: dict, creneau_conseille: str) -> dict:
-    ligne = {k: (None if pd.isna(v) else v) for k, v in ligne.items()}
-    ligne["numero"] = ligne["id_machine"][-2:]
-    ligne["nom"] = nom_machine(ligne["id_machine"])
-    etat_machine = etats.get(ligne["id_machine"])
-    if ligne["statut"] != "qualifiee" and etat_machine:
-        ligne["machine"] = etat_machine
-        specialite = "Électrique" if etat_machine["cause"] == "Surchauffe" else "Mécanique"
-        heure = 16 if "après-midi" in creneau_conseille else 8
-        ligne["technicien_conseille"] = technicien_conseille(specialite, heure)
-        ligne["type_conseille"] = "Entretien" if etat_machine["statut"] == "panne_predite" else "Inspection"
-    return ligne
-
-
-@router.get("/alertes", response_model=EcranAlertes)
-def alertes():
-    """Circuit des alertes : à traiter, planifiées, qualifiées ; équipe, fiabilité des alertes et réglage du seuil."""
-    etat_courant = _lire(_etat_parc)
-    etats = {m["id_machine"]: m for m in etat_courant["machines"]}
-    proposes = metier.creneaux(pd.Timestamp(etat_courant["fin_donnees"]))
-    with interventions.connexion() as conn:
-        listes = {s: interventions.lister(conn, s).to_dict("records") for s in interventions.STATUTS}
-        historique = interventions.historique_recent(conn).to_dict("records")
-        techniciens = interventions.charge_techniciens(conn)
-        fiabilite = interventions.fiabilite(conn)
-
-    def preparer(lignes):
-        return [_intervention(ligne, etats, proposes[0]) for ligne in lignes]
-
-    a_traiter = sorted(preparer(listes["a_traiter"]), key=lambda i: -(i.get("machine") or {}).get("risque", 0))
-    return {
-        "a_traiter": a_traiter,
-        "planifiees": preparer(listes["planifiee"]),
-        "qualifiees": [i for i in preparer(listes["qualifiee"]) if i["source"] == "terrain"],
-        "historique": preparer(historique),
-        "techniciens": techniciens,
-        "fiabilite": fiabilite,
-        "reglage": _lire(_reglage),
-        "creneaux": proposes,
-        "types": list(interventions.TYPES),
-    }
-
-
-def _action(fonction, id_intervention: int, *args):
-    try:
-        with interventions.connexion() as conn:
-            ok = fonction(conn, id_intervention, *args)
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
-    if not ok:
-        raise HTTPException(status_code=409, detail="Intervention introuvable ou déjà à une autre étape.")
-    return {"status": "success"}
-
-
-@router.post("/alertes/{id_intervention}/planifier")
-def planifier(id_intervention: int, demande: DemandePlanification):
-    return _action(interventions.planifier, id_intervention, demande.technicien, demande.creneau, demande.type)
-
-
-@router.post("/alertes/{id_intervention}/qualifier")
-def qualifier(id_intervention: int, demande: DemandeConstat):
-    """Constat après intervention, ou alerte écartée sans intervention (constat « ecartee »)."""
-    return _action(interventions.qualifier, id_intervention, demande.constat)
-
-
-@router.post("/alertes/{id_intervention}/rouvrir")
-def rouvrir(id_intervention: int):
-    return _action(interventions.rouvrir, id_intervention)
 
 
 @router.get("/info", response_model=InfoModele)
@@ -262,8 +181,3 @@ def page_machine(request: Request, id_machine: str):
     return gabarits.TemplateResponse(
         request, "machine.html", {"titre": f"Machine M{id_machine[-2:]}", "page": "machine", "id_machine": id_machine}
     )
-
-
-@app.get("/alertes", response_class=HTMLResponse, include_in_schema=False)
-def page_alertes(request: Request):
-    return gabarits.TemplateResponse(request, "alertes.html", {"titre": "Alertes et interventions", "page": "alertes"})

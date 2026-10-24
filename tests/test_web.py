@@ -6,7 +6,7 @@ client = TestClient(app)
 
 
 def test_pages_servies():
-    for chemin, script in [("/", "parc.js"), ("/alertes", "alertes.js"), ("/machines/GDIZ_TEX_M_20", "machine.js")]:
+    for chemin, script in [("/", "parc.js"), ("/machines/GDIZ_TEX_M_20", "machine.js")]:
         r = client.get(chemin)
         assert r.status_code == 200
         assert f"/static/js/{script}" in r.text
