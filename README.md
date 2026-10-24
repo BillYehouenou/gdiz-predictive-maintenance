@@ -44,11 +44,11 @@ app/main.py (FastAPI)                - API et tableau de bord sur le même port
 Pensé pour le superviseur ou le chef d'usine, en deux écrans :
 
 - **Parc** : disponibilité, MTBF, coût réel des pannes et heures d'arrêt sur la période choisie, chacun
-  expliqué en termes métier (« Voir le détail ») ; plan des
-  50 machines par état ; matrice risque × criticité (criticité = part de la production perdue si la machine
-  s'arrête, déduite du nombre de machines à son étape de la chaîne).
-- **Machine** : santé, risque à 5 jours, contributions SHAP, frise des pannes, capteurs sur 30 jours et
-  courbe de risque brute (pas de 2 h, délestages visibles).
+  expliqué en termes métier (bouton « + ») ; plan des 50 machines par état ; matrice risque × criticité
+  (criticité = part de la production perdue si la machine s'arrête, déduite du nombre de machines à son étape
+  de la chaîne) ; pannes par gamme et par cause ; coût mensuel face à la période précédente.
+- **Machine** : santé, risque à 5 jours, cause probable, contributions SHAP, frise des pannes, capteurs sur
+  30 jours face à la limite du parc et courbe de risque brute (pas de 2 h, délestages visibles).
 
 Le HTML ne contient aucune donnée : chaque écran lit l'API, avec un état de chargement, vide et d'erreur.
 « Exporter le rapport » produit un PDF de l'écran. Thème clair ou sombre, utilisable au clavier et sur téléphone.

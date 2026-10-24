@@ -2,19 +2,19 @@
 {% block contenu %}
 <section class="accueil">
   <div>
-    <h1>Bienvenue, Bill 👋</h1>
+    <h1>Bonjour, Bill</h1>
     <p id="sous-titre">État des 50 machines et coût des pannes.</p>
   </div>
   <div class="actions">
-    <div class="segmente" role="group" aria-label="Période des indicateurs" id="periodes">
+    <div class="pilules" role="group" aria-label="Période des indicateurs" id="periodes">
       <button type="button" data-periode="30j">30 j</button>
       <button type="button" data-periode="t4">T4</button>
       <button type="button" data-periode="s2">S2</button>
       <button type="button" data-periode="annee">Année</button>
       <button type="button" data-periode="tout">2024-2025</button>
     </div>
-    <button type="button" class="btn btn-contour" data-export="parc">
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg>
+    <button type="button" class="btn" data-export="parc">
+      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg>
       Exporter le rapport
     </button>
   </div>
@@ -23,39 +23,39 @@
 <section class="kpis" id="kpis" aria-label="Indicateurs de la période"></section>
 
 <div class="grille">
-  <section class="carte" aria-labelledby="t-plan">
+  <section class="carte" aria-labelledby="t-plan" style="padding: 20px 24px; gap: 18px">
     <div class="carte-tete">
       <h2 id="t-plan">Plan de l'atelier</h2>
-      <span class="discret">état actuel · cliquer pour ouvrir la fiche</span>
+      <span class="discret">État actuel</span>
     </div>
-    <div id="plan"></div>
+    <div id="plan" style="display: flex; flex-direction: column; gap: 18px"></div>
   </section>
 
-  <section class="carte" aria-labelledby="t-matrice">
+  <section class="carte" aria-labelledby="t-matrice" style="gap: 10px">
     <div class="carte-tete">
       <h2 id="t-matrice">Risque × criticité</h2>
-      <span class="discret">risque à 5 jours · poids de la machine dans la chaîne</span>
+      <span class="discret">Risque à 5 jours</span>
     </div>
     <div class="defile" id="matrice"></div>
-    <span class="discret">Criticité = part de la production perdue si la machine s'arrête, ramenée sur 10. Agir : risque ≥ 3 × seuil, ou criticité ≥ 7. Une machine déjà en panne n'apparaît pas.</span>
   </section>
 </div>
 
-<section class="carte" aria-labelledby="t-causes">
+<section class="carte" aria-labelledby="t-causes" style="gap: 16px">
   <div class="carte-tete">
     <div><h2 id="t-causes">Pannes par gamme et par cause</h2><span class="discret" id="causes-sous-titre"></span></div>
-    <ul class="legende nue" id="causes-legende" aria-label="Légende des causes"></ul>
+    <ul class="legende" id="causes-legende" aria-label="Légende des causes"></ul>
   </div>
   <div class="defile" id="causes"></div>
 </section>
 
 <section class="carte" aria-labelledby="t-cout">
-  <div class="carte-tete">
-    <div><h2 id="t-cout">Coût des pannes</h2><span class="discret" id="cout-sous-titre"></span></div>
-    <ul class="legende nue" id="cout-legende" aria-label="Légende"></ul>
+  <div class="carte-tete" style="align-items: flex-start">
+    <div><h2 id="t-cout">Coût des pannes</h2><p class="grand" id="cout-total" style="margin-top: 4px"></p></div>
+    <ul class="legende" id="cout-legende" aria-label="Légende"></ul>
   </div>
   <div class="defile" id="cout"></div>
-  <span class="discret">Coût = pièces + (production perdue + technicien) × durée réelle d'arrêt + tissu rebuté.</span>
 </section>
+
+<dialog class="detail" id="detail" aria-labelledby="detail-titre"></dialog>
 {% endblock %}
 {% block scripts %}<script type="module" src="/static/js/parc.js"></script>{% endblock %}

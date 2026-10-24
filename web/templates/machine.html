@@ -1,15 +1,15 @@
 {% extends "base.html" %}
 {% block contenu %}
 <section class="accueil">
-  <div>
+  <div style="display: flex; flex-direction: column; gap: 8px">
     <h1>Machine M{{ id_machine[-2:] }}</h1>
-    <p>Que se passe-t-il sur cette machine, et pourquoi ?</p>
+    <div id="badges" style="display: flex; flex-wrap: wrap; gap: 6px; min-height: 24px"></div>
   </div>
   <div class="actions">
     <label for="choix-machine" class="discret">Machine</label>
-    <select id="choix-machine" class="champ mono" style="min-width: 220px"></select>
-    <button type="button" class="btn btn-contour" data-export="M{{ id_machine[-2:] }}">
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg>
+    <select id="choix-machine" class="champ"></select>
+    <button type="button" class="btn" data-export="M{{ id_machine[-2:] }}">
+      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg>
       Exporter le rapport
     </button>
   </div>

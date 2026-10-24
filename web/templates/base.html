@@ -5,37 +5,42 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ titre }} · GDIZ Maintenance</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="/static/css/tokens.css">
   <link rel="stylesheet" href="/static/css/app.css">
   <script>try { const t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
 </head>
 <body>
 <header class="entete-app">
-  <a class="marque" href="/">
-    <span class="logo" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18"/><path d="M5 20V9l5 3V9l5 3V5h4v15"/></svg></span>
-    GDIZ Maintenance
-  </a>
-  <nav class="onglets" aria-label="Navigation principale">
-    <a href="/" {% if page == "parc" %}aria-current="page"{% endif %}>Parc<span class="bulle" id="bulle-parc"></span></a>
-    <a href="/machines" {% if page == "machine" %}aria-current="page"{% endif %}>Machine</a>
-  </nav>
-  <details class="compte">
-    <summary>
-      <span class="avatar" aria-hidden="true">B</span>
-      <span class="compte-nom"><b>Bill</b><small>Compte démo</small></span>
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
-    </summary>
-    <div class="menu">
-      <button type="button" id="theme">Changer de thème</button>
-      <a href="/docs">Documentation de l'API</a>
+  <div>
+    <a class="marque" href="/">
+      <span class="logo" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18"/><path d="M5 20V9l5 3V9l5 3V5h4v15"/></svg></span>
+      GDIZ Maintenance
+    </a>
+    <nav class="pilules onglets" aria-label="Navigation principale">
+      <a href="/" {% if page == "parc" %}aria-current="page"{% endif %}>Parc</a>
+      <a href="/machines" {% if page == "machine" %}aria-current="page"{% endif %}>Machine</a>
+    </nav>
+    <div class="compte">
+      <button type="button" id="compte" aria-expanded="false" aria-haspopup="true" aria-controls="menu-compte">
+        <span class="avatar" aria-hidden="true">B</span>
+        <span class="compte-nom"><b>Bill Y.</b><small>Compte démo</small></span>
+        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div class="menu" id="menu-compte" hidden>
+        <button type="button" role="switch" aria-checked="false" id="theme">Thème sombre<span class="interrupteur" aria-hidden="true"></span></button>
+        <a href="https://github.com/BillYehouenou/gdiz-predictive-maintenance" target="_blank" rel="noopener">
+          Documentation
+          <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M8 7h9v9"/></svg>
+        </a>
+      </div>
     </div>
-  </details>
+  </div>
 </header>
 
 <main class="page">
   {% block contenu %}{% endblock %}
-  <p class="pied">Projet portfolio · données simulées, météo réelle · sans lien avec la GDIZ</p>
+  <p class="pied">© 2026 Bill Yehouenou</p>
 </main>
 <script type="module" src="/static/js/nav.js"></script>
 {% block scripts %}{% endblock %}
