@@ -227,3 +227,49 @@ def serie_risque(conn: duckdb.DuckDBPyConnection, id_machine: str, jours: int) -
             GROUP BY 1 ORDER BY 1""",
         [id_machine, id_machine, jours],
     ).fetchdf()
+
+
+_MESURES = {
+    "heures_depuis_changement_outil": ("Heures d'outil", "h"),
+    "heures_depuis_maintenance": ("Depuis la dernière intervention", "h"),
+    "vibration": ("Vibration", "mm/s"),
+    "temperature_process": ("Temp. process", "°C"),
+    "ecart_thermique": ("Écart thermique", "°C"),
+    "couple": ("Couple", "Nm"),
+    "concentration_poussiere": ("Poussière", "µg/m³"),
+    "niveau_tension": ("Tension", "V"),
+    "humidite": ("Humidité", "%"),
+    "temperature_ambiante": ("Temp. atelier", "°C"),
+    "vitesse_rotation": ("Vitesse", "tr/min"),
+    "niveau_activite": ("Charge de production", ""),
+    "precipitation_mm": ("Pluie", "mm"),
+    "indicateur_coupure": ("Délestage", ""),
+    "type_machine": ("Gamme", ""),
+}
+_SUFFIXES = {
+    "_moyenne_24h": " moy. 24 h",
+    "_max_24h": " max 24 h",
+    "_ecart_type_24h": " écart-type 24 h",
+    "_hausse_4h": " hausse 4 h",
+}
+
+
+def libelle_feature(feature: str) -> tuple[str, str]:
+    """Libellé lisible et unité d'une feature du modèle (ex. vibration_max_24h -> « Vibration max 24 h », mm/s)."""
+    for suffixe, texte in _SUFFIXES.items():
+        if feature.endswith(suffixe):
+            libelle, unite = _MESURES.get(feature.removesuffix(suffixe), (feature, ""))
+            return libelle + texte, unite
+    return _MESURES.get(feature, (feature, ""))
+
+
+def creneaux(fin: pd.Timestamp) -> list[str]:
+    """Créneaux proposés pour une intervention, à partir du dernier relevé."""
+    jours = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."]
+    demain = fin.normalize() + timedelta(days=1)
+    apres = demain + timedelta(days=2 if demain.dayofweek == 4 else 1)
+
+    def nom(d: pd.Timestamp) -> str:
+        return f"{jours[d.dayofweek].capitalize()} {d.day}/{d.month:02d}"
+
+    return [f"{nom(demain)} · matin", f"{nom(demain)} · après-midi", f"{nom(apres)} · matin", "Prochain arrêt programmé"]

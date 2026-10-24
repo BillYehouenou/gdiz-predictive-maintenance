@@ -1,5 +1,5 @@
-from datetime import datetime
-from typing import Optional
+from datetime import date, datetime
+from typing import Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -52,24 +52,163 @@ class ReponseRechargement(BaseModel):
     status: str = Field(default="success")
 
 
+class Indicateurs(BaseModel):
+    disponibilite: Optional[float] = Field(description="Part du temps ouvert sans panne (hors arrêts planifiés et délestages)")
+    mtbf_h: Optional[float] = Field(description="Heures de marche entre deux pannes")
+    cout: float = Field(description="Coût des pannes en FCFA, durée réelle des réparations comprise")
+    heures_arret: float
+    pannes: int
+
+
+class Periode(BaseModel):
+    code: str
+    libelle: str
+    libelle_precedente: Optional[str]
+
+
+class PannesGammeCause(BaseModel):
+    gamme: str
+    cause: str = Field(description="TWF usure, HDF surchauffe, OSF surcharge, PWF électrique, RNF aléatoire")
+    pannes: int
+
+
+class PointCout(BaseModel):
+    debut: date
+    cout: float
+
+
+class TableauParc(BaseModel):
+    periode: Periode
+    indicateurs: Indicateurs
+    indicateurs_precedents: Optional[Indicateurs]
+    pannes_par_gamme: list[PannesGammeCause]
+    cout_serie: list[PointCout]
+    cout_serie_precedente: list[PointCout]
+
+
+Statut = Literal["normal", "surveillance", "panne_predite", "en_panne"]
+
+
 class EtatMachine(BaseModel):
-    """Dernier relevé d'une machine et son risque (table predictions)."""
-
     id_machine: str
-    type_machine: str
-    timestamp: datetime
-    probabilite_panne: float
-    niveau: str = Field(..., description="normal, surveillance ou eleve")
-    cause_principale: Optional[str] = Field(default=None, description="Famille physique dominante, si en alerte")
-    heures_depuis_changement_outil: float
-    heures_depuis_maintenance: float
+    numero: str
+    nom: str = Field(description="Cardeuse, continu à filer, métier à tisser ou rameuse")
+    gamme: str
+    statut: Statut
+    risque: float = Field(description="Probabilité de panne à 5 jours")
+    criticite: float = Field(description="Part de production perdue si la machine s'arrête, sur 10")
+    zone: Optional[Literal["surveiller", "planifier", "agir"]]
+    cause: Optional[str] = Field(description="Famille physique dominante, si en alerte")
+    sante: int
 
 
-class PointSerie(BaseModel):
+class EtatParc(BaseModel):
+    fin_donnees: datetime
+    seuil: float
+    machines: list[EtatMachine]
+    comptes: dict[str, int]
+
+
+class Contribution(BaseModel):
+    feature: str
+    libelle: str
+    unite: str
+    famille: Optional[str]
+    valeur: Optional[Union[float, str]]
+    contribution: float = Field(description="Contribution SHAP vers la panne (log-odds)")
+
+
+class EvenementPanne(BaseModel):
+    date: datetime
+    cause: str
+    duree_h: float
+    cout: float
+
+
+class Capteur(BaseModel):
+    capteur: str
+    libelle: str
+    unite: str
+    valeur: Optional[float]
+    limite: float = Field(description="99e centile du parc (1er pour la tension) sur la période d'entraînement")
+    hors_limite: bool
+
+
+class FicheMachine(EtatMachine):
+    seuil: float
+    contributions: list[Contribution]
+    historique: list[EvenementPanne]
+    douze_mois: Indicateurs
+    capteurs_30j: list[Capteur]
+    pannes_30j: int
+
+
+class PointRisque(BaseModel):
     timestamp: datetime
-    probabilite_panne: float
-    vibration: Optional[float]
-    temperature_process: Optional[float]
-    couple: Optional[float]
-    concentration_poussiere: Optional[float]
-    panne: int
+    risque: float
+    delestage: bool
+    panne: bool
+
+
+class Intervention(BaseModel):
+    id: int
+    id_machine: str
+    numero: str
+    debut_alerte: datetime
+    statut: Literal["a_traiter", "planifiee", "qualifiee"]
+    technicien: Optional[str]
+    creneau: Optional[str]
+    type: Optional[str]
+    constat: Optional[str]
+    fondee: Optional[bool]
+    source: str
+    machine: Optional[EtatMachine] = Field(default=None, description="État actuel de la machine, pour les interventions ouvertes")
+    technicien_conseille: Optional[str] = None
+    type_conseille: Optional[str] = None
+
+
+class Technicien(BaseModel):
+    id: str
+    specialite: str
+    equipe: str
+    interventions_planifiees: int
+
+
+class Fiabilite(BaseModel):
+    alertes_qualifiees: int
+    alertes_fondees: int
+    part_fondees: Optional[float]
+
+
+class PointReglage(BaseModel):
+    seuil: float
+    fausses_alertes_machine_jour: float
+    part_pannes_annoncees: float
+    alertes_jour: float
+    bilan: float = Field(description="FCFA nets par an : pannes annoncées × arrêt évité − fausses alertes × temps technicien")
+    preavis_median_h: Optional[float]
+    actuel: bool
+
+
+class EcranAlertes(BaseModel):
+    a_traiter: list[Intervention]
+    planifiees: list[Intervention]
+    qualifiees: list[Intervention] = Field(description="Constats saisis dans le dashboard")
+    historique: list[Intervention]
+    techniciens: list[Technicien]
+    fiabilite: Fiabilite
+    reglage: list[PointReglage]
+    creneaux: list[str]
+    types: list[str]
+
+
+class DemandePlanification(BaseModel):
+    technicien: str = Field(examples=["TECH-01"])
+    creneau: str = Field(examples=["Mer. 31/12 · matin"])
+    type: Literal["Inspection", "Entretien", "Réparation"]
+
+
+class DemandeConstat(BaseModel):
+    constat: Literal["corrige", "rien", "panne", "ecartee"] = Field(
+        description="corrige : défaut corrigé ; rien : rien d'anormal ; panne : panne avant intervention ; ecartee : écartée"
+    )

@@ -1,6 +1,9 @@
+import duckdb
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from src import interventions
 
 client = TestClient(app)
 
@@ -82,26 +85,59 @@ def test_recharger_modele():
     assert 0.0 <= data["threshold"] <= 1.0
 
 
-def test_machines_retourne_le_dernier_etat_de_chaque_machine():
-    r = client.get("/api/v1/machines")
+@pytest.mark.parametrize("periode", ["30j", "t4", "s2", "annee", "tout"])
+def test_parc(periode):
+    r = client.get("/api/v1/parc", params={"periode": periode})
     assert r.status_code == 200
-    etats = r.json()
-    assert len(etats) == 50
-    assert {e["niveau"] for e in etats} <= {"normal", "surveillance", "eleve"}
+    assert r.json()["periode"]["code"] == periode
 
 
-def test_priorites_triees_et_en_alerte():
-    priorites = client.get("/api/v1/priorites").json()
-    assert all(p["niveau"] != "normal" and p["cause_principale"] for p in priorites)
-    probas = [p["probabilite_panne"] for p in priorites]
-    assert probas == sorted(probas, reverse=True)
+def test_parc_periode_inconnue():
+    assert client.get("/api/v1/parc", params={"periode": "hier"}).status_code == 422
 
 
-def test_serie_machine():
-    r = client.get("/api/v1/machines/GDIZ_TEX_M_01/serie", params={"jours": 7})
+def test_etat_du_parc():
+    etat = client.get("/api/v1/etat").json()
+    assert len(etat["machines"]) == 50
+    assert sum(etat["comptes"].values()) == 50
+
+
+def test_fiche_machine():
+    fiche = client.get("/api/v1/machines/GDIZ_TEX_M_20").json()
+    assert fiche["nom"] == "Cardeuse"
+    assert fiche["contributions"] and all(c["contribution"] > 0 for c in fiche["contributions"])
+    assert client.get("/api/v1/machines/INCONNUE").status_code == 404
+
+
+def test_risque_machine():
+    r = client.get("/api/v1/machines/GDIZ_TEX_M_20/risque", params={"jours": 7})
     assert r.status_code == 200
-    assert len(r.json()) == 7 * 48
+    assert len(r.json()) == 7 * 12  # pas de 2 h
+    assert client.get("/api/v1/machines/INCONNUE/risque").status_code == 404
 
 
-def test_serie_machine_inconnue():
-    assert client.get("/api/v1/machines/INCONNUE/serie").status_code == 404
+@pytest.fixture
+def base_interventions(tmp_path, monkeypatch):
+    """Copie temporaire de la base des interventions : les tests d'écriture ne touchent pas à la vraie."""
+    chemin = tmp_path / "interventions.db"
+    interventions.initialiser(chemin)
+    monkeypatch.setattr(interventions, "connexion", lambda: duckdb.connect(str(chemin)))
+
+
+def test_circuit_des_alertes(base_interventions):
+    ecran = client.get("/api/v1/alertes").json()
+    alerte = ecran["a_traiter"][0]
+    assert alerte["machine"]["statut"] in ("surveillance", "panne_predite")
+    demande = {"technicien": alerte["technicien_conseille"], "creneau": ecran["creneaux"][0], "type": alerte["type_conseille"]}
+    assert client.post(f"/api/v1/alertes/{alerte['id']}/planifier", json=demande).status_code == 200
+    assert client.post(f"/api/v1/alertes/{alerte['id']}/planifier", json=demande).status_code == 409
+    assert client.post(f"/api/v1/alertes/{alerte['id']}/qualifier", json={"constat": "corrige"}).status_code == 200
+    qualifiees = client.get("/api/v1/alertes").json()["qualifiees"]
+    assert [i["id"] for i in qualifiees] == [alerte["id"]]
+    assert client.post(f"/api/v1/alertes/{alerte['id']}/rouvrir").status_code == 200
+
+
+def test_planifier_technicien_inconnu(base_interventions):
+    alerte = client.get("/api/v1/alertes").json()["a_traiter"][0]
+    demande = {"technicien": "TECH-99", "creneau": "demain", "type": "Inspection"}
+    assert client.post(f"/api/v1/alertes/{alerte['id']}/planifier", json=demande).status_code == 422
