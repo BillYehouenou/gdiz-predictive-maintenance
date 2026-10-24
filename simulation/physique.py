@@ -292,6 +292,8 @@ class EvolueurEtatMachine:
         self.vibration = np.zeros(n)
         self.failure = np.zeros(n, dtype=int)
         self.mode_panne = np.full(n, "", dtype=object)
+        # marche, arret (planifié), delestage, panne (réparation), entretien (visite préventive)
+        self.etat = np.full(n, "marche", dtype=object)
 
         # État caché : jamais exporté
         self.usure_outil = np.zeros(n)
@@ -309,13 +311,14 @@ class EvolueurEtatMachine:
         self.heures_maintenance[0] = self.rng.uniform(0, 720)
         self.temperature_process[0] = self.tableau_temperature_ambiante[0] + 5.0
 
-    def _arreter(self, idx: int, alpha_refroidissement: float):
+    def _arreter(self, idx: int, alpha_refroidissement: float, etat: str):
         """Machine à l'arrêt : pas de rotation, état caché figé, refroidissement vers l'ambiant."""
+        self.etat[idx] = etat
         self.vitesse_rotation[idx] = 0.0
         self.couple[idx] = 0.0
         self.vibration[idx] = np.abs(self.rng.normal(0, 0.01))
-        for etat in (self.usure_outil, self.encrassement, self.usure_roulements, self.heures_outil):
-            etat[idx] = etat[idx - 1]
+        for serie in (self.usure_outil, self.encrassement, self.usure_roulements, self.heures_outil):
+            serie[idx] = serie[idx - 1]
         self.heures_maintenance[idx] = self.heures_maintenance[idx - 1] + self.pas_heures
         self.temperature_process[idx] = (
             alpha_refroidissement * self.tableau_temperature_ambiante[idx]
@@ -431,8 +434,9 @@ class EvolueurEtatMachine:
         """
         duree_heures = float(np.clip(self.rng.lognormal(mean=np.log(3.0), sigma=1.2), 0.5, 48.0))
         fin_arret = min(index_panne + 1 + int(np.ceil(duree_heures / self.pas_heures)), self.nb_echantillons)
+        self.etat[index_panne] = "panne"
         for idx in range(index_panne + 1, fin_arret):
-            self._arreter(idx, alpha_refroidissement=0.70)
+            self._arreter(idx, alpha_refroidissement=0.70, etat="panne")
 
         if fin_arret < self.nb_echantillons:
             dernier = fin_arret - 1
@@ -464,7 +468,7 @@ class EvolueurEtatMachine:
         )
         fin = min(event_idx + 1 + int(np.ceil(duree_heures / self.pas_heures)), self.nb_echantillons)
         for idx in range(event_idx + 1, fin):
-            self._arreter(idx, alpha_refroidissement=0.70)
+            self._arreter(idx, alpha_refroidissement=0.70, etat="entretien")
 
         if fin < self.nb_echantillons:
             dernier = fin - 1
@@ -486,7 +490,7 @@ class EvolueurEtatMachine:
 
             # Délestage : machine à l'arrêt, choc électrique possible au début de la coupure
             if self.tableau_coupures[idx] == 1:
-                self._arreter(idx, alpha)
+                self._arreter(idx, alpha, etat="delestage")
                 if self.tableau_coupures[idx - 1] == 0:
                     # L=4%, M=3.2%, H=0.8% : H protégé par l'UPS au choc de coupure
                     if self.rng.random() < self.config.probabilite_choc_coupure * self.params["sensibilite_panne_coupure"]:
@@ -497,7 +501,7 @@ class EvolueurEtatMachine:
 
             # Arrêts planifiés : week-end, activité nulle
             if self.tableau_niveau_activite[idx] == 0.0:
-                self._arreter(idx, alpha)
+                self._arreter(idx, alpha, etat="arret")
                 continue
 
             self._mettre_a_jour_physique(idx, redemarre_apres_coupure=self.tableau_coupures[idx - 1] == 1)
@@ -525,5 +529,6 @@ class EvolueurEtatMachine:
                 "heures_depuis_maintenance": self.heures_maintenance,
                 "panne": self.failure,
                 "mode_panne": self.mode_panne,
+                "etat": self.etat,
             }
         )

@@ -123,3 +123,12 @@ def test_compteur_outil_remis_a_zero_apres_panne_usure(config_courte, meteo_hora
     assert len(index_twf) > 0
     heures_apres = df["heures_depuis_changement_outil"].iloc[index_twf[0] + 1 :]
     assert heures_apres.min() == 0.0
+
+
+def test_etat_suit_les_arrets(config_courte, meteo_horaire_factice):
+    contexte = GenerateurContexteExogene(config_courte).generer_contexte_global(meteo_horaire_factice)
+    df = EvolueurEtatMachine("GDIZ_TEX_M_01", "L", contexte, config_courte).evoluer_etats()
+    assert set(df["etat"]) <= {"marche", "arret", "delestage", "panne", "entretien"}
+    assert (df.loc[df["panne"] == 1, "etat"] == "panne").all()
+    marche = df.iloc[1:]  # la ligne 0 est l'état initial
+    assert (marche.loc[marche["etat"] == "marche", "vitesse_rotation"] > 0).all()

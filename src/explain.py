@@ -21,6 +21,12 @@ def famille_de(feature: str) -> str | None:
     return None
 
 
+def _valeur(v):
+    if pd.isna(v):
+        return None
+    return v if isinstance(v, str) else float(v)
+
+
 class ExplicateurCause:
     def __init__(self, modele_calibre):
         # CalibratedClassifierCV(FrozenEstimator(lgbm)) : on explique le LightGBM sous-jacent
@@ -48,3 +54,19 @@ class ExplicateurCause:
                 }
             )
         return resultats
+
+    def contributions(self, ligne: pd.DataFrame, n: int = 4) -> list[dict]:
+        """Les n features qui poussent le plus vers la panne sur une ligne : nom, famille, valeur, contribution."""
+        X = preparer_X(ligne)
+        valeurs = self._explainer.shap_values(X)[0]
+        top = sorted(zip(X.columns, valeurs), key=lambda kv: kv[1], reverse=True)[:n]
+        return [
+            {
+                "feature": f,
+                "famille": famille_de(f),
+                "valeur": _valeur(X.iloc[0][f]),
+                "contribution": round(float(v), 3),
+            }
+            for f, v in top
+            if v > 0
+        ]
