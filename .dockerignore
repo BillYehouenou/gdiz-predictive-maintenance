@@ -19,5 +19,6 @@ simulation/
 data/
 mlruns/
 mlflow.db
+mlartifacts/
 docker-compose.yml
 .dockerignore

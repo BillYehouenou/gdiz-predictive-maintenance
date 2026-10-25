@@ -1,10 +1,13 @@
 UV_RUN := PYTHONHASHSEED=0 PYTHONPATH=$(CURDIR) uv run
 
-.PHONY: help install generate-data mlflow train score pipeline check-drift lint format test check serve docker-up docker-down clean
+.PHONY: help demo install generate-data mlflow train score pipeline check-drift lint format test check serve docker-up docker-down clean
 .DEFAULT_GOAL := help
 
 help:  ## Affiche les commandes disponibles
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
+
+demo:  ## Lance tout sans Docker (registre, données et modèle si besoin) et ouvre le tableau de bord
+	$(UV_RUN) python -m src.demarrer
 
 install:  ## Installe les dépendances (dont celles de développement)
 	uv sync --frozen

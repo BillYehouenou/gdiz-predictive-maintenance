@@ -57,13 +57,21 @@ Le HTML ne contient aucune donnée : chaque écran lit l'API, avec un état de c
 
 ## Installation 
 
-Prérequis : Python 3.11+, uv, Docker (pour le registre MLflow)
+Prérequis : Python 3.11+, uv
 
 ```bash
 git clone <url-du-repo>
 cd gdiz-predictive-maintenance
 make install
 
+# Tout en une commande, sans Docker : registre MLflow local, données, entraînement et scoring s'ils manquent,
+# puis le tableau de bord s'ouvre sur http://localhost:8000 (Ctrl+C arrête tout)
+make demo
+```
+
+Étape par étape, avec le registre MLflow de Docker :
+
+```bash
 # Génère le dataset (télécharge la météo Open-Meteo au premier lancement, puis cache DuckDB)
 make generate-data
 

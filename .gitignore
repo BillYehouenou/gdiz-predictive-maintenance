@@ -18,6 +18,7 @@ data/
 # Suivi d'expériences MLflow
 mlruns/
 mlflow.db
+mlartifacts/
 
 # Fichiers système
 .DS_Store
