@@ -2,7 +2,6 @@
 :root {
   --police: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
   --rayon: 18px;
-  --rayon-petit: 12px;
 
   --bg: #f4f6f9;
   --bg-verre: rgba(244, 246, 249, 0.72);

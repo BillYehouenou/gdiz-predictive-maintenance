@@ -1,4 +1,5 @@
 import logging
+from collections import Counter
 
 import duckdb
 import pandas as pd
@@ -57,21 +58,37 @@ def _lire(fonction, *args):
         raise HTTPException(status_code=503, detail="Données incomplètes : lancer `make pipeline`.")
 
 
-def _historique(conn: duckdb.DuckDBPyConnection, id_machine: str) -> pd.DataFrame:
+def _historique(conn: duckdb.DuckDBPyConnection, ids_machines: list[str]) -> pd.DataFrame:
+    """Les dernières 24 h de chaque machine demandée, en une requête."""
+    if not ids_machines:
+        return pd.DataFrame()
     return conn.execute(
-        f"SELECT * FROM {TABLE} WHERE id_machine = ? ORDER BY timestamp DESC LIMIT ?", [id_machine, LIGNES_HISTORIQUE]
+        f"""SELECT * FROM {TABLE} WHERE id_machine IN (SELECT UNNEST(?))
+            QUALIFY ROW_NUMBER() OVER (PARTITION BY id_machine ORDER BY timestamp DESC) <= ?""",
+        [ids_machines, LIGNES_HISTORIQUE],
     ).fetchdf()
 
 
-def _predire(donnees: dict) -> dict:
-    """Ajoute le relevé à l'historique de la machine (si connue), calcule les features comme à l'entraînement, prédit."""
-    id_machine = donnees.pop("id_machine", None)
-    historique = _lire(_historique, id_machine) if id_machine else pd.DataFrame()
-    horodatage = historique["timestamp"].max() + PAS if not historique.empty else pd.Timestamp.now().floor(PAS)
-    courant = pd.DataFrame([{**donnees, "id_machine": id_machine or "inconnue", "timestamp": horodatage}])
-    serie = pd.concat([historique, courant], ignore_index=True) if not historique.empty else courant
-    resultat = predicteur.predire(calculer_features(serie).iloc[[-1]]).iloc[0]
-    return {"prediction": int(resultat["prediction"]), "probabilite_panne": round(float(resultat["probabilite_panne"]), 4)}
+def _predire(releves: list[dict]) -> list[dict]:
+    """
+    Chaque relevé est ajouté à l'historique de sa machine (si connue), séparément des autres relevés du lot ;
+    features calculées comme à l'entraînement, puis une seule prédiction pour tout le lot.
+    """
+    ids = sorted({r["id_machine"] for r in releves if r.get("id_machine")})
+    historiques = dict(tuple(_lire(_historique, ids).groupby("id_machine"))) if ids else {}
+    series = []
+    for k, releve in enumerate(releves):
+        historique = historiques.get(releve.get("id_machine"), pd.DataFrame())
+        horodatage = historique["timestamp"].max() + PAS if not historique.empty else pd.Timestamp.now().floor(PAS)
+        courant = pd.DataFrame([{**releve, "id_machine": releve.get("id_machine") or "inconnue", "timestamp": horodatage}])
+        serie = pd.concat([historique, courant], ignore_index=True) if not historique.empty else courant
+        series.append(serie.assign(id_machine=f"{k:06d}"))  # une série par relevé, dans l'ordre du lot
+    features = calculer_features(pd.concat(series, ignore_index=True)).groupby("id_machine").tail(1)
+    resultats = predicteur.predire(features)
+    return [
+        {"prediction": int(p), "probabilite_panne": round(float(r), 4)}
+        for p, r in zip(resultats["prediction"], resultats["probabilite_panne"])
+    ]
 
 
 @app.get("/health")
@@ -83,7 +100,7 @@ def sante():
 def predire(data: DonneesMachine):
     """Prédiction sur un relevé ; avec id_machine, les 24h d'historique en base complètent les features glissantes."""
     try:
-        return _predire(data.model_dump())
+        return _predire([data.model_dump()])[0]
     except HTTPException:
         raise
     except Exception:
@@ -93,7 +110,16 @@ def predire(data: DonneesMachine):
 
 @router.post("/predict/batch", response_model=list[ReponsePrediction])
 def predire_lot(donnees: list[DonneesMachine]):
-    return [predire(d) for d in donnees]
+    """Prédiction sur un lot de relevés : une requête d'historique et un appel au modèle pour tout le lot."""
+    if not donnees:
+        return []
+    try:
+        return _predire([d.model_dump() for d in donnees])
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Erreur lors de la prédiction par lot")
+        raise HTTPException(status_code=500, detail="Erreur interne lors de la prédiction.")
 
 
 @router.get("/parc", response_model=TableauParc)
@@ -104,7 +130,7 @@ def parc(periode: str = Query("annee", pattern="^(30j|t4|s2|annee|tout)$")):
 
 def _etat_parc(conn: duckdb.DuckDBPyConnection) -> dict:
     machines = metier.etat_parc(conn, predicteur.threshold)
-    comptes = pd.Series([m["statut"] for m in machines]).value_counts().to_dict()
+    comptes = dict(Counter(m["statut"] for m in machines))
     return {
         "fin_donnees": metier.fin_donnees(conn),
         "seuil": predicteur.threshold,
@@ -123,7 +149,7 @@ def _fiche(conn: duckdb.DuckDBPyConnection, id_machine: str) -> dict | None:
     fiche = metier.fiche_machine(conn, id_machine, predicteur.threshold)
     if fiche is None:
         return None
-    derniere = calculer_features(_historique(conn, id_machine).iloc[::-1]).iloc[[-1]]
+    derniere = calculer_features(_historique(conn, [id_machine])).iloc[[-1]]
     fiche["contributions"] = [
         {**c, **dict(zip(("libelle", "unite"), metier.libelle_feature(c["feature"])))}
         for c in explicateur.contributions(derniere)

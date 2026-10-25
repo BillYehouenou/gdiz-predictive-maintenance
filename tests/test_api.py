@@ -61,6 +61,18 @@ def test_predire_lot():
         assert 0.0 <= item["probabilite_panne"] <= 1.0
 
 
+def test_predire_lot_identique_aux_predictions_unitaires():
+    """Le lot (une seule prédiction) donne exactement les résultats des appels un par un, machines connues comprises."""
+    lot = [
+        {**payload_normal, "id_machine": "GDIZ_TEX_M_20"},
+        {**payload_normal, "id_machine": "GDIZ_TEX_M_20", "vibration": 4.0},
+        {**payload_normal, "id_machine": "GDIZ_TEX_M_03"},
+        payload_normal,
+    ]
+    unitaires = [client.post("/api/v1/predict", json=r).json() for r in lot]
+    assert client.post("/api/v1/predict/batch", json=lot).json() == unitaires
+
+
 def test_predire_lot_vide():
     r = client.post("/api/v1/predict/batch", json=[])
     assert r.status_code == 200

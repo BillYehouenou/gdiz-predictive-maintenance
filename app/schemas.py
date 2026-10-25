@@ -122,8 +122,6 @@ class Contribution(BaseModel):
 class EvenementPanne(BaseModel):
     date: datetime
     cause: str
-    duree_h: float
-    cout: float
 
 
 class Capteur(BaseModel):

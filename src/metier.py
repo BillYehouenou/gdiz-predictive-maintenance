@@ -43,8 +43,8 @@ def libelles_periodes(fin: pd.Timestamp) -> dict[str, str]:
     return {"30j": "30 j", "t4": f"T4 {a}", "s2": f"S2 {a}", "annee": str(a), "tout": f"{a - 1}-{a}"}
 
 
-def bornes_periode(code: str, fin: pd.Timestamp) -> dict:
-    """Début et fin (exclue) de la période, et de la période précédente de même nature."""
+def bornes_periode(code: str, fin: pd.Timestamp, debut_donnees: pd.Timestamp | None = None) -> dict:
+    """Début et fin (exclue) de la période, et de la période précédente de même nature ; « tout » part du premier relevé."""
     fin_excl = fin.normalize() + timedelta(days=1)
     annee = fin.year
     if code == "30j":
@@ -64,7 +64,8 @@ def bornes_periode(code: str, fin: pd.Timestamp) -> dict:
         prec = (pd.Timestamp(annee - 1, 1, 1), debut)
         libelles = (str(annee), str(annee - 1))
     elif code == "tout":
-        return {"debut": pd.Timestamp("2000-01-01"), "fin": fin_excl, "libelle": f"{annee - 1}-{annee}", "precedente": None}
+        debut = debut_donnees if debut_donnees is not None else pd.Timestamp(annee - 1, 1, 1)
+        return {"debut": debut, "fin": fin_excl, "libelle": f"{annee - 1}-{annee}", "precedente": None}
     else:
         raise ValueError(f"Période inconnue : {code}")
     return {
@@ -98,7 +99,9 @@ def evenements(conn: duckdb.DuckDBPyConnection, debut, fin, id_machine: str | No
     return df
 
 
-def indicateurs(conn: duckdb.DuckDBPyConnection, debut, fin, id_machine: str | None = None) -> dict:
+def indicateurs(
+    conn: duckdb.DuckDBPyConnection, debut, fin, id_machine: str | None = None, ev: pd.DataFrame | None = None
+) -> dict:
     """Disponibilité (hors arrêts planifiés et délestages), MTBF (heures de marche / pannes), coût, heures d'arrêt."""
     filtre = "AND id_machine = ?" if id_machine else ""
     marche, panne = _ligne(
@@ -107,7 +110,7 @@ def indicateurs(conn: duckdb.DuckDBPyConnection, debut, fin, id_machine: str | N
             FROM {TABLE} WHERE timestamp >= ? AND timestamp < ? {filtre}""",
         [debut, fin] + ([id_machine] if id_machine else []),
     )
-    ev = evenements(conn, debut, fin, id_machine)
+    ev = evenements(conn, debut, fin, id_machine) if ev is None else ev
     heures_marche = marche * PAS / pd.Timedelta("1h")
     return {
         "disponibilite": 1 - panne / (marche + panne) if marche + panne else None,
@@ -121,11 +124,12 @@ def indicateurs(conn: duckdb.DuckDBPyConnection, debut, fin, id_machine: str | N
 
 def tableau_parc(conn: duckdb.DuckDBPyConnection, code: str) -> dict:
     """Tout l'écran Parc pour une période : indicateurs (et période précédente), pannes par gamme et cause, coût."""
-    b = bornes_periode(code, fin_donnees(conn))
+    debut_donnees, fin = (pd.Timestamp(v) for v in _ligne(conn, f"SELECT MIN(timestamp), MAX(timestamp) FROM {TABLE}"))
+    b = bornes_periode(code, fin, debut_donnees)
     prec = b["precedente"]
     ev = evenements(conn, b["debut"], b["fin"])
-    debut_effectif = max(b["debut"], pd.Timestamp(_ligne(conn, f"SELECT MIN(timestamp) FROM {TABLE}")[0]))
-    periode_serie = "W" if (b["fin"] - debut_effectif).days <= 92 else "M"  # hebdomadaire sur 3 mois ou moins
+    ev_prec = evenements(conn, prec["debut"], prec["fin"]) if prec else None
+    periode_serie = "W" if (b["fin"] - max(b["debut"], debut_donnees)).days <= 92 else "M"  # hebdomadaire sur 3 mois ou moins
 
     def serie(evts: pd.DataFrame, debut, fin) -> list[dict]:
         index = pd.period_range(debut, fin - timedelta(days=1), freq=periode_serie)
@@ -134,24 +138,26 @@ def tableau_parc(conn: duckdb.DuckDBPyConnection, code: str) -> dict:
 
     return {
         "periode": {"code": code, "libelle": b["libelle"], "libelle_precedente": prec["libelle"] if prec else None},
-        "indicateurs": indicateurs(conn, b["debut"], b["fin"]),
-        "indicateurs_precedents": indicateurs(conn, prec["debut"], prec["fin"]) if prec else None,
+        "indicateurs": indicateurs(conn, b["debut"], b["fin"], ev=ev),
+        "indicateurs_precedents": indicateurs(conn, prec["debut"], prec["fin"], ev=ev_prec) if prec else None,
         "pannes_par_gamme": [
             {"gamme": g, "cause": c, "pannes": int(n)} for (g, c), n in ev.groupby(["gamme", "cause"]).size().items()
         ],
-        "cout_serie": serie(ev, debut_effectif, b["fin"]),
-        "cout_serie_precedente": serie(evenements(conn, prec["debut"], prec["fin"]), prec["debut"], prec["fin"]) if prec else [],
+        "cout_serie": serie(ev, max(b["debut"], debut_donnees), b["fin"]),
+        "cout_serie_precedente": serie(ev_prec, prec["debut"], prec["fin"]) if prec else [],
     }
 
 
-def etat_parc(conn: duckdb.DuckDBPyConnection, seuil: float) -> list[dict]:
-    """Dernier relevé de chaque machine : statut affiché, risque, criticité et zone d'action."""
+def etat_parc(conn: duckdb.DuckDBPyConnection, seuil: float, id_machine: str | None = None) -> list[dict]:
+    """Dernier relevé de chaque machine (ou d'une seule) : statut affiché, risque, criticité et zone d'action."""
+    filtre = "WHERE id_machine = ?" if id_machine else ""
     df = conn.execute(
-        f"""SELECT t.id_machine, t.type_machine AS gamme, t.timestamp, t.etat,
+        f"""WITH derniers AS (SELECT id_machine, MAX(timestamp) AS timestamp FROM {TABLE_PREDICTIONS} {filtre} GROUP BY 1)
+            SELECT t.id_machine, t.type_machine AS gamme, t.timestamp, t.etat,
                    p.probabilite_panne, p.niveau, p.cause_principale
-            FROM {TABLE} t JOIN {TABLE_PREDICTIONS} p USING (id_machine, timestamp)
-            QUALIFY ROW_NUMBER() OVER (PARTITION BY t.id_machine ORDER BY t.timestamp DESC) = 1
-            ORDER BY t.id_machine"""
+            FROM derniers JOIN {TABLE} t USING (id_machine, timestamp) JOIN {TABLE_PREDICTIONS} p USING (id_machine, timestamp)
+            ORDER BY t.id_machine""",
+        [id_machine] if id_machine else [],
     ).fetchdf()
     machines = []
     for r in df.itertuples():
@@ -185,7 +191,7 @@ def limites_capteurs() -> dict[str, float]:
 
 def fiche_machine(conn: duckdb.DuckDBPyConnection, id_machine: str, seuil: float) -> dict | None:
     """Fiche de l'écran Machine (hors contributions SHAP, calculées par l'API qui détient le modèle)."""
-    etat = next((m for m in etat_parc(conn, seuil) if m["id_machine"] == id_machine), None)
+    etat = next(iter(etat_parc(conn, seuil, id_machine)), None)
     if etat is None:
         return None
     fin = fin_donnees(conn)
@@ -214,7 +220,7 @@ def fiche_machine(conn: duckdb.DuckDBPyConnection, id_machine: str, seuil: float
     return {
         **etat,
         "seuil": seuil,
-        "historique": historique[["date", "cause", "duree_h", "cout"]].to_dict("records"),
+        "historique": historique[["date", "cause"]].to_dict("records"),
         "douze_mois": annee,
         "capteurs_30j": capteurs,
         "pannes_30j": int(valeurs[-1] or 0),

@@ -6,16 +6,6 @@ export async function lire(chemin) {
   return reponse.json();
 }
 
-export async function envoyer(chemin, corps = {}) {
-  const reponse = await fetch(`/api/v1${chemin}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(corps),
-  });
-  if (!reponse.ok) throw new Error((await reponse.json().catch(() => ({}))).detail ?? `Erreur ${reponse.status}`);
-  return reponse.json();
-}
-
 // Échappe tout texte venu des données avant de l'insérer dans le HTML
 export const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
@@ -23,7 +13,6 @@ const fr = (d) => new Intl.NumberFormat("fr-FR", { maximumFractionDigits: d, min
 export const nombre = (v, d = 0) => (v == null ? "—" : fr(d).format(v));
 export const pourcent = (v, d = 1) => (v == null ? "—" : `${fr(d).format(v * 100)} %`);
 export const millions = (v, d = 1) => `${fr(d).format(v / 1e6)} M`;
-export const dateCourte = (iso) => new Date(iso).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
 export const dateHeure = (iso) =>
   new Date(iso).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(" ", " · ");
 

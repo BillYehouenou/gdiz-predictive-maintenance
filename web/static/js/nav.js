@@ -28,6 +28,7 @@ majInterrupteur();
 // Onglets : la pastille glisse vers l'onglet cliqué, puis la page change
 const onglets = document.querySelector(".onglets");
 const placerOnglet = pastille(onglets, '[aria-current="page"]');
+const ongletDeLaPage = onglets.querySelector('[aria-current="page"]');
 onglets.querySelectorAll("a").forEach((lien) =>
   lien.addEventListener("click", (e) => {
     if (lien.getAttribute("aria-current") === "page" || e.metaKey || e.ctrlKey || e.shiftKey || mouvementReduit()) return;
@@ -38,8 +39,13 @@ onglets.querySelectorAll("a").forEach((lien) =>
     setTimeout(() => { window.location.href = lien.href; }, 320);
   }),
 );
-// Retour arrière depuis le cache du navigateur : l'onglet affiché doit redevenir celui de la page
-window.addEventListener("pageshow", (e) => { if (e.persisted) window.location.reload(); });
+// Retour arrière depuis le cache du navigateur : l'onglet de la page redevient l'onglet actif
+window.addEventListener("pageshow", (e) => {
+  if (!e.persisted || !ongletDeLaPage) return;
+  onglets.querySelectorAll("a").forEach((a) => a.removeAttribute("aria-current"));
+  ongletDeLaPage.setAttribute("aria-current", "page");
+  placerOnglet(ongletDeLaPage, false);
+});
 
 // L'impression du navigateur produit le PDF ; le nom du fichier vient du titre de la page
 document.querySelectorAll("[data-export]").forEach((b) =>

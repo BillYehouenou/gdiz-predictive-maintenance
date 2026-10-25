@@ -23,9 +23,9 @@ _PERTE_MAX = max(1 / len(etape["ids"]) for etape in CHAINE)
 TAUX_TECHNICIEN = 3_250  # par heure
 COUT_MATIERE = 800  # par mètre
 GAMMES: dict[str, dict[str, Any]] = {
-    "L": {"libelle": "Gamme L", "capacite_m_h": 15, "marge_m": 1_200, "pieces": 90_000, "rebut_m": 5},
-    "M": {"libelle": "Gamme M", "capacite_m_h": 20, "marge_m": 1_500, "pieces": 180_000, "rebut_m": 8},
-    "H": {"libelle": "Gamme H", "capacite_m_h": 35, "marge_m": 2_000, "pieces": 500_000, "rebut_m": 15},
+    "L": {"capacite_m_h": 15, "marge_m": 1_200, "pieces": 90_000, "rebut_m": 5},
+    "M": {"capacite_m_h": 20, "marge_m": 1_500, "pieces": 180_000, "rebut_m": 8},
+    "H": {"capacite_m_h": 35, "marge_m": 2_000, "pieces": 500_000, "rebut_m": 15},
 }
 
 
