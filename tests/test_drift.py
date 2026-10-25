@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from src.drift import VARIABLES, psi, verifier_derive
+from src.drift import VARIABLES, performance_recente, psi, verifier_derive
 
 
 def test_psi_distributions_identiques_proche_de_zero():
@@ -26,3 +26,18 @@ def test_verifier_derive_detecte_un_decalage_recent():
     rapport = verifier_derive(df).set_index("variable")
     assert rapport.loc["vibration", "drift"]
     assert not rapport.drop(index="vibration")["drift"].any()
+
+
+def test_performance_recente_ne_compte_que_la_periode_recente():
+    """Une panne ancienne est ignorée ; la panne récente, précédée d'une alerte, est annoncée."""
+    horodatages = pd.date_range("2025-01-01", periods=48 * 90, freq="30min")
+    df = pd.DataFrame(
+        {"id_machine": "M1", "type_machine": "M", "timestamp": horodatages, "etat": "marche", "panne": 0, "mode_panne": ""}
+    )
+    df["probabilite_panne"] = 0.01
+    for i in (48 * 5, 48 * 80):  # une panne au 5e jour (hors des 60 derniers), une au 80e
+        df.loc[i, ["panne", "mode_panne", "etat"]] = [1, "TWF", "panne"]
+    df.loc[48 * 80 - 20 : 48 * 80 - 1, "probabilite_panne"] = 0.5
+    p = performance_recente(df, seuil=0.1, jours=60)
+    assert (p["nb_pannes"], p["nb_attrapees"]) == (1, 1)
+    assert p["nb_episodes_fausses_alertes"] == 0

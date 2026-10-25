@@ -3,7 +3,7 @@
 Anticiper les pannes de machines textiles avant qu'elles n'arrêtent la production. Un atelier textile béninois, sur 2 ans avec des données de capteurs IoT, méteo et réseau SBEE. Chaque machine est évaluée toutes les 30 minutes pour répondre à une question : **va-t-elle tomber en panne dans les 5 prochains jours et pourquoi ?** 
 
 
-![Démonstration du tableau de bord : indicateurs, plan de l'atelier, matrice risque × criticité, fiche machine](docs/images/demo.gif)
+![Démonstration du tableau de bord : indicateurs, plan de l'atelier, matrice risque × criticité, fiche machine](docs/demo.gif)
 
 
 ## Essayer en une commande
@@ -39,31 +39,33 @@ make docker-down  # arrête (docker compose down -v efface aussi les données et
 
 - **Des données crédibles** : météo réelle Open-Meteo, physique d'usure et de surchauffe, capteurs IoT qui
   décrochent ou dérivent ; l'état réel des machines reste caché, seuls les capteurs et la GMAO sont visibles.
-- **Une métrique métier soutenable** : part des pannes annoncées dans les 5 jours, sous un budget de fausses
-  alertes comptées en interventions, et non en pas de 30 minutes.
-- **Un modèle honnête** : LightGBM comparé à quatre autres modèles, dont une simple règle, probabilités calibrées, cause probable regroupée par famille physique.
-- **Du MLOps adéquat** : registre MLflow (le modèle n'est promu que si le recall ne baisse pas, avec son seuil),
+- **Une métrique métier soutenable** : part des pannes annoncées dans les 5 jours (et avec au moins 4 h de préavis),
+  sous un budget de fausses alertes comptées en interventions, avec la précision des alertes et le bilan en FCFA.
+- **Un modèle honnête** : LightGBM comparé à trois autres modèles (régression logistique, arbre, HistGradientBoosting), appris sur les seules
+  machines en marche, probabilités calibrées, cause probable regroupée par famille physique.
+- **Du MLOps adéquat** : registre MLflow (le modèle n'est promu que si son gain net en validation ne baisse pas, avec
+  son seuil), suivi de la performance réelle des 60 derniers jours et de la dérive à saison égale (`make check-drift`),
   DuckDB embarqué, API FastAPI, tableau de bord HTML/CSS/JS sans framework, tests, CI et Docker.
 
 
 
 ## Choix du modèle
 
-Recall événementiel au budget de 0,2 fausse alerte par machine et par jour
-([notebooks/1_comparaison_modeles.ipynb](notebooks/1_comparaison_modeles.ipynb), qui détaille aussi les décisions
-de modélisation) :
+Part des pannes prévisibles (usure, surchauffe, surcharge) annoncées dans les 5 jours, au budget de 0,2 fausse alerte
+par machine et par jour ([notebooks/1_comparaison_modeles.ipynb](notebooks/1_comparaison_modeles.ipynb), qui
+détaille aussi les décisions de modélisation) :
 
-| Modèle | Validation (T2-T4 2024, 65 pannes) | Test 2025 (115 pannes) | Taille |
-|---|---|---|---|
-| Règle : heures d'outil | 59 % | 50 % | 0,2 Ko |
-| Régression logistique | 58 % | 28 % | 6 Ko |
-| Arbre de décision | 53 % | 48 % | 10 Ko |
-| HistGradientBoosting | 69 % | 53 % | 338 Ko |
-| **LightGBM (déployé)** | **71 %** | **60 %** | 266 Ko |
+| Modèle | Validation 2024 | Test 2025 (115 pannes) | dont ≥ 4 h de préavis | Précision des alertes | Gain net 2025 |
+|---|---|---|---|---|---|
+| Régression logistique | 72 % | 47 % | 41 % | 2,0 % | −3,5 M FCFA |
+| Arbre de décision | 69 % | 53 % | 44 % | 1,4 % | −2,5 M FCFA |
+| HistGradientBoosting | 77 % | 63 % | 54 % | 1,7 % | 0,0 M FCFA |
+| **LightGBM (déployé)** | 74 % | **64 %** | **55 %** | 1,9 % | −0,6 M FCFA |
 
-Incertitude : ±6 points en validation, ±5 au test. Le boosting bat nettement les modèles simples ; entre variantes
-de boosting (y compris des LightGBM plus petits), les écarts restent dans le bruit, et la validation et le test ne
-s'accordent pas. LightGBM 150 arbres est donc conservé.
+Incertitude : ±5 à 6 points de recall. Le boosting annonce le plus de pannes, et LightGBM est conservé, plus rapide
+et plus léger que HistGradientBoosting dont il ne se distingue pas. En FCFA, le bilan reste proche de zéro : le gain net
+compte une panne évitée comme un arrêt planifié de 2 h sans rebut, et une fausse alerte comme une heure de technicien
+(`src/usine.py`).
 
 
 ## Limites
@@ -72,8 +74,11 @@ s'accordent pas. LightGBM 150 arbres est donc conservé.
    plausibles (calendrier saisonnier béninois, réseau SBEE, Harmattan), mais reste une simulation calibrée.
 2. **La surcharge mécanique (OSF) reste le point faible**, faute d'exemples ; les pannes électriques et aléatoires
    n'ont pas de signe avant-coureur et ne sont pas apprises.
-3. **Préavis médian d'environ 12 h**, pas plusieurs jours : assez pour planifier une intervention le jour même, pas
-   pour commander une pièce.
-4. **La cause probable est une famille physique (SHAP)** — usure, surchauffe, surcharge, environnement — et non un
+3. **Une alerte sur cinquante seulement précède une panne.** Le modèle n'est rentable que si une inspection coûte
+   moins d'environ 3 100 FCFA (moins d'une heure de technicien). Piste : un seuil plus haut, choisi sur une
+   validation plus longue.
+4. **Préavis médian d'environ 12 h**, pas plusieurs jours : 55 % des pannes prévisibles sont annoncées au moins 4 h à
+   l'avance, assez pour planifier une intervention le jour même, pas pour commander une pièce.
+5. **La cause probable est une famille physique (SHAP)** — usure, surchauffe, surcharge, environnement — et non un
    diagnostic du mode de panne : un classifieur multi-classe testé à part était trop instable pour être exposé.
 

@@ -1,28 +1,88 @@
 """
-Calculs servis au tableau de bord : indicateurs par période, pannes, coûts, état du parc, fiche machine.
-Lit la télémétrie et la table predictions dans DuckDB ; le front n'affiche que ce qui sort d'ici.
+Le métier : chaîne de production, coûts et règles du superviseur (hypothèses de projet, lisibles et testées), puis les
+calculs servis au tableau de bord depuis DuckDB : indicateurs par période, pannes, état du parc, fiche machine.
 """
 
 from datetime import timedelta
 from functools import lru_cache
-from typing import Literal, get_args
+from typing import Any, Literal, get_args
 
 import duckdb
 import pandas as pd
 
 from src.config import CHEMIN_DB, PAS, TABLE, TABLE_PREDICTIONS
 from src.donnees import DATE_TEST
-from src.usine import cout_panne, criticite, nom_machine, sante, statut, zone
+
+# Chaîne de production : la criticité vient de la part de production perdue quand une machine s'arrête
+CHAINE: list[dict[str, Any]] = [
+    {"etape": "Préparation", "machine": "Cardeuse", "ids": [4, 11, 20, 37]},
+    {"etape": "Filature", "machine": "Continu à filer", "ids": [1, 5, 7, 12, 16, 19, 22, 25, 28, 31, 34, 39, 43, 47]},
+    {"etape": "Tissage", "machine": "Métier à tisser",
+     "ids": [2, 3, 6, 9, 10, 13, 14, 17, 18, 21, 23, 24, 27, 29, 32, 35, 36, 38, 40, 42, 44, 45, 48, 49]},
+    {"etape": "Finition", "machine": "Rameuse", "ids": [8, 15, 26, 30, 33, 41, 46, 50]},
+]  # fmt: skip
+_ETAPE = {n: etape for etape in CHAINE for n in etape["ids"]}
+_PERTE_MAX = max(1 / len(etape["ids"]) for etape in CHAINE)
+
+# Coûts (FCFA) : production perdue par heure d'arrêt, pièces par panne, tissu rebuté au crash
+TAUX_TECHNICIEN, COUT_MATIERE = 3_250, 800  # par heure, par mètre
+GAMMES: dict[str, dict[str, Any]] = {
+    "L": {"capacite_m_h": 15, "marge_m": 1_200, "pieces": 90_000, "rebut_m": 5},
+    "M": {"capacite_m_h": 20, "marge_m": 1_500, "pieces": 180_000, "rebut_m": 8},
+    "H": {"capacite_m_h": 35, "marge_m": 2_000, "pieces": 500_000, "rebut_m": 15},
+}
+# Valeur du modèle : une panne annoncée devient un arrêt planifié court, sans rebut ; une alerte coûte une inspection
+DUREE_INTERVENTION_PLANIFIEE_H, COUT_INSPECTION = 2.0, TAUX_TECHNICIEN  # une heure de technicien, machine en marche
 
 CodePeriode = Literal["30j", "t4", "s2", "annee", "tout"]
 PERIODES = get_args(CodePeriode)
-CAPTEURS_FICHE = {
+CAPTEURS_FICHE = {  # colonne : libellé, unité, sens de l'alerte
     "vibration": ("Vibration max", "mm/s", "max"),
     "temperature_process": ("Temp. process max", "°C", "max"),
     "couple": ("Couple max", "Nm", "max"),
     "concentration_poussiere": ("Poussière max", "µg/m³", "max"),
     "niveau_tension": ("Tension min", "V", "min"),
 }
+
+
+def nom_machine(id_machine: str) -> str:
+    return _ETAPE[int(id_machine[-2:])]["machine"]
+
+
+def criticite(id_machine: str) -> float:
+    """Part de la production perdue si la machine s'arrête (1 / machines de son étape), ramenée sur 10."""
+    return round(1 / len(_ETAPE[int(id_machine[-2:])]["ids"]) / _PERTE_MAX * 10, 1)
+
+
+def cout_heure_arret(gamme: str) -> float:
+    return GAMMES[gamme]["capacite_m_h"] * GAMMES[gamme]["marge_m"] + TAUX_TECHNICIEN
+
+
+def cout_panne(gamme: str, duree_h: float) -> float:
+    """pièces + (production perdue + technicien) × durée réelle d'arrêt + tissu rebuté."""
+    g = GAMMES[gamme]
+    return g["pieces"] + cout_heure_arret(gamme) * duree_h + g["rebut_m"] * COUT_MATIERE
+
+
+def gain_panne_evitee(gamme: str, duree_h: float) -> float:
+    """Coût de la panne subie moins celui de l'intervention planifiée qui la remplace (pièces payées dans les deux cas)."""
+    return cout_panne(gamme, duree_h) - (GAMMES[gamme]["pieces"] + cout_heure_arret(gamme) * DUREE_INTERVENTION_PLANIFIEE_H)
+
+
+def sante(risque: float) -> int:
+    return round(100 * (1 - risque) ** 4)
+
+
+def statut(niveau: str, etat: str) -> str:
+    """Statut affiché : une machine en réparation est en panne, quel que soit son risque."""
+    return "en_panne" if etat == "panne" else {"eleve": "panne_predite", "surveillance": "surveillance"}.get(niveau, "normal")
+
+
+def zone(risque: float, seuil: float, crit: float) -> str | None:
+    """Au-dessus du seuil. Agir : risque ≥ 3 × seuil. Sinon planifier si criticité ≥ 4, surveiller en dessous."""
+    if risque < seuil:
+        return None
+    return "agir" if risque >= 3 * seuil else "planifier" if crit >= 4 else "surveiller"
 
 
 def connexion() -> duckdb.DuckDBPyConnection:
@@ -47,34 +107,25 @@ def libelles_periodes(fin: pd.Timestamp) -> dict[str, str]:
 
 def bornes_periode(code: str, fin: pd.Timestamp, debut_donnees: pd.Timestamp | None = None) -> dict:
     """Début et fin (exclue) de la période, et de la période précédente de même nature ; « tout » part du premier relevé."""
-    fin_excl = fin.normalize() + timedelta(days=1)
-    annee = fin.year
-    if code == "30j":
-        debut = fin_excl - timedelta(days=30)
-        prec = (debut - timedelta(days=30), debut)
-        libelles = ("30 derniers jours", "30 jours précédents")
-    elif code == "t4":
-        debut = pd.Timestamp(annee, 10, 1)
-        prec = (pd.Timestamp(annee, 7, 1), debut)
-        libelles = (f"T4 {annee}", f"T3 {annee}")
-    elif code == "s2":
-        debut = pd.Timestamp(annee, 7, 1)
-        prec = (pd.Timestamp(annee, 1, 1), debut)
-        libelles = (f"S2 {annee}", f"S1 {annee}")
-    elif code == "annee":
-        debut = pd.Timestamp(annee, 1, 1)
-        prec = (pd.Timestamp(annee - 1, 1, 1), debut)
-        libelles = (str(annee), str(annee - 1))
-    elif code == "tout":
-        debut = debut_donnees if debut_donnees is not None else pd.Timestamp(annee - 1, 1, 1)
-        return {"debut": debut, "fin": fin_excl, "libelle": f"{annee - 1}-{annee}", "precedente": None}
-    else:
+    fin_excl, a = fin.normalize() + timedelta(days=1), fin.year
+    if code == "tout":
+        debut = debut_donnees if debut_donnees is not None else pd.Timestamp(a - 1, 1, 1)
+        return {"debut": debut, "fin": fin_excl, "libelle": f"{a - 1}-{a}", "precedente": None}
+    debut_30j = fin_excl - timedelta(days=30)
+    periodes = {  # début, début de la précédente, libellés
+        "30j": (debut_30j, debut_30j - timedelta(days=30), "30 derniers jours", "30 jours précédents"),
+        "t4": (pd.Timestamp(a, 10, 1), pd.Timestamp(a, 7, 1), f"T4 {a}", f"T3 {a}"),
+        "s2": (pd.Timestamp(a, 7, 1), pd.Timestamp(a, 1, 1), f"S2 {a}", f"S1 {a}"),
+        "annee": (pd.Timestamp(a, 1, 1), pd.Timestamp(a - 1, 1, 1), str(a), str(a - 1)),
+    }
+    if code not in periodes:
         raise ValueError(f"Période inconnue : {code}")
+    debut, debut_prec, libelle, libelle_prec = periodes[code]
     return {
         "debut": debut,
         "fin": fin_excl,
-        "libelle": libelles[0],
-        "precedente": {"debut": prec[0], "fin": prec[1], "libelle": libelles[1]},
+        "libelle": libelle,
+        "precedente": {"debut": debut_prec, "fin": debut, "libelle": libelle_prec},
     }
 
 
@@ -151,13 +202,17 @@ def tableau_parc(conn: duckdb.DuckDBPyConnection, code: str) -> dict:
 
 
 def etat_parc(conn: duckdb.DuckDBPyConnection, seuil: float, id_machine: str | None = None) -> list[dict]:
-    """Dernier relevé de chaque machine (ou d'une seule) : statut affiché, risque, criticité et zone d'action."""
+    """
+    Dernier relevé de chaque machine (ou d'une seule) : statut affiché, criticité et zone d'action. Le risque est celui du
+    dernier relevé en marche, seul état noté par le modèle (une machine en panne garde le risque d'avant sa panne).
+    """
     filtre = "WHERE id_machine = ?" if id_machine else ""
     df = conn.execute(
-        f"""WITH derniers AS (SELECT id_machine, MAX(timestamp) AS timestamp FROM {TABLE_PREDICTIONS} {filtre} GROUP BY 1)
+        f"""WITH derniers AS (SELECT id_machine, MAX(timestamp) AS timestamp FROM {TABLE} {filtre} GROUP BY 1)
             SELECT t.id_machine, t.type_machine AS gamme, t.timestamp, t.etat,
                    p.probabilite_panne, p.niveau, p.cause_principale
-            FROM derniers JOIN {TABLE} t USING (id_machine, timestamp) JOIN {TABLE_PREDICTIONS} p USING (id_machine, timestamp)
+            FROM derniers JOIN {TABLE} t USING (id_machine, timestamp)
+            ASOF LEFT JOIN {TABLE_PREDICTIONS} p ON p.id_machine = t.id_machine AND p.timestamp <= t.timestamp
             ORDER BY t.id_machine""",
         [id_machine] if id_machine else [],
     ).fetchdf()
@@ -165,6 +220,7 @@ def etat_parc(conn: duckdb.DuckDBPyConnection, seuil: float, id_machine: str | N
     for r in df.itertuples():
         crit = criticite(r.id_machine)
         st = statut(r.niveau, r.etat)
+        risque = float(r.probabilite_panne) if pd.notna(r.probabilite_panne) else 0.0
         machines.append(
             {
                 "id_machine": r.id_machine,
@@ -172,11 +228,11 @@ def etat_parc(conn: duckdb.DuckDBPyConnection, seuil: float, id_machine: str | N
                 "nom": nom_machine(r.id_machine),
                 "gamme": r.gamme,
                 "statut": st,
-                "risque": float(r.probabilite_panne),
+                "risque": risque,
                 "criticite": crit,
-                "zone": zone(float(r.probabilite_panne), seuil, crit) if st != "en_panne" else None,
+                "zone": zone(risque, seuil, crit) if st != "en_panne" else None,
                 "cause": r.cause_principale if isinstance(r.cause_principale, str) else None,
-                "sante": sante(float(r.probabilite_panne)),
+                "sante": sante(risque),
             }
         )
     return machines
@@ -231,13 +287,16 @@ def fiche_machine(conn: duckdb.DuckDBPyConnection, id_machine: str, seuil: float
 
 
 def serie_risque(conn: duckdb.DuckDBPyConnection, id_machine: str, jours: int) -> pd.DataFrame:
-    """Risque au dernier relevé de chaque pas de 2 h (le dernier point est le risque actuel), délestages et pannes."""
+    """
+    Risque au dernier relevé en marche de chaque pas de 2 h (vide si la machine n'a pas tourné : arrêt, panne,
+    délestage), délestages et pannes.
+    """
     return conn.execute(
         f"""SELECT time_bucket(INTERVAL 2 HOUR, t.timestamp) AS timestamp,
-                   arg_max(p.probabilite_panne, t.timestamp) AS risque,
+                   arg_max(p.probabilite_panne, t.timestamp) FILTER (WHERE p.probabilite_panne IS NOT NULL) AS risque,
                    MAX(t.indicateur_coupure) AS delestage,
                    MAX(t.panne) AS panne
-            FROM {TABLE} t JOIN {TABLE_PREDICTIONS} p USING (id_machine, timestamp)
+            FROM {TABLE} t LEFT JOIN {TABLE_PREDICTIONS} p USING (id_machine, timestamp)
             WHERE t.id_machine = ?
               AND t.timestamp > (SELECT MAX(timestamp) FROM {TABLE} WHERE id_machine = ?) - ? * INTERVAL 1 DAY
             GROUP BY 1 ORDER BY 1""",
@@ -245,23 +304,16 @@ def serie_risque(conn: duckdb.DuckDBPyConnection, id_machine: str, jours: int) -
     ).fetchdf()
 
 
+# Libellés lisibles des features du modèle (ex. vibration_max_24h -> « Vibration max 24 h », mm/s)
 _MESURES = {
     "heures_depuis_changement_outil": ("Heures d'outil", "h"),
-    "heures_depuis_maintenance": ("Depuis la dernière intervention", "h"),
-    "vibration": ("Vibration", "mm/s"),
-    "temperature_process": ("Temp. process", "°C"),
-    "ecart_thermique": ("Écart thermique", "°C"),
-    "couple": ("Couple", "Nm"),
-    "concentration_poussiere": ("Poussière", "µg/m³"),
-    "niveau_tension": ("Tension", "V"),
-    "humidite": ("Humidité", "%"),
-    "temperature_ambiante": ("Temp. atelier", "°C"),
-    "vitesse_rotation": ("Vitesse", "tr/min"),
-    "niveau_activite": ("Charge de production", ""),
-    "precipitation_mm": ("Pluie", "mm"),
-    "indicateur_coupure": ("Délestage", ""),
+    "heures_depuis_maintenance": ("Depuis la dernière intervention", "h"), "vibration": ("Vibration", "mm/s"),
+    "temperature_process": ("Temp. process", "°C"), "ecart_thermique": ("Écart thermique", "°C"),
+    "couple": ("Couple", "Nm"), "concentration_poussiere": ("Poussière", "µg/m³"), "niveau_tension": ("Tension", "V"),
+    "humidite": ("Humidité", "%"), "temperature_ambiante": ("Temp. atelier", "°C"), "vitesse_rotation": ("Vitesse", "tr/min"),
+    "niveau_activite": ("Charge de production", ""), "precipitation_mm": ("Pluie", "mm"), "indicateur_coupure": ("Délestage", ""),
     "type_machine": ("Gamme", ""),
-}
+}  # fmt: skip
 _SUFFIXES = {
     "_moyenne_24h": " moy. 24 h",
     "_max_24h": " max 24 h",
@@ -271,7 +323,6 @@ _SUFFIXES = {
 
 
 def libelle_feature(feature: str) -> tuple[str, str]:
-    """Libellé lisible et unité d'une feature du modèle (ex. vibration_max_24h -> « Vibration max 24 h », mm/s)."""
     for suffixe, texte in _SUFFIXES.items():
         if feature.endswith(suffixe):
             libelle, unite = _MESURES.get(feature.removesuffix(suffixe), (feature, ""))

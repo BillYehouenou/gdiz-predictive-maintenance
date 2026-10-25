@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.features import calculer_features
-from src.predicteur import Predicteur
+from src.donnees import calculer_features
+from src.modele import Predicteur
 
 MESURES_SAINES = {
     "temperature_ambiante": 31.0,

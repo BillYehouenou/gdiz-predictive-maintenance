@@ -1,5 +1,5 @@
 // Graphiques en SVG écrit à la main : chaque fonction renvoie une chaîne SVG, couleurs lues dans les tokens CSS.
-import { esc, mouvementReduit, pourcent } from "./api.js";
+import { esc, mouvementReduit, pourcent } from "./commun.js";
 
 const texte = (x, y, contenu, attrs = "") => `<text x="${x}" y="${y}" font-size="10" fill="var(--text-3)" ${attrs}>${esc(contenu)}</text>`;
 const ligne = (x1, y1, x2, y2, attrs) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" ${attrs}></line>`;
@@ -47,13 +47,17 @@ export function matrice(machines, seuil) {
   return svg + "</svg>";
 }
 
-// Risque de panne au pas de 2 h, sans lissage, échelle log ; délestages en barres grises, pannes constatées en croix
+// Risque de panne au pas de 2 h, sans lissage, échelle log, seulement quand la machine tourne ; délestages en barres
+// grises, pannes constatées en croix
 export function courbeRisque(points) {
   const n = Math.max(points.length - 1, 1);
   const X = (i) => (i * 960) / n;
   const Y = (r) => 200 - ((Math.log10(Math.min(Math.max(r, 0.001), 1)) + 3) / 3) * 200;
-  const risques = points.map((p) => p.risque);
-  let svg = `<svg viewBox="-44 -10 1004 236" role="img" aria-label="Risque de panne sur ${Math.round(points.length / 12)} jours, de ${pourcent(Math.min(...risques))} à ${pourcent(Math.max(...risques))}, ${pourcent(risques[risques.length - 1])} aujourd'hui" style="min-width: 640px">`;
+  // Pas de risque quand la machine ne tourne pas (week-end, panne, délestage) : la courbe s'interrompt
+  const notes = points.map((p, i) => [i, p.risque]).filter(([, r]) => r != null);
+  const risques = notes.map(([, r]) => r);
+  const derniere = notes[notes.length - 1];
+  let svg = `<svg viewBox="-44 -10 1004 236" role="img" aria-label="Risque de panne sur ${Math.round(points.length / 12)} jours, de ${pourcent(Math.min(...risques))} à ${pourcent(Math.max(...risques))}, ${pourcent(derniere?.[1])} au dernier relevé en marche" style="min-width: 640px">`;
   GRADUATIONS.forEach(([r, l]) => {
     const y = Y(r);
     svg += ligne(0, y, 960, y, r === 0.001 ? 'stroke="var(--border-strong)"' : 'stroke="var(--border)" stroke-dasharray="2 4"') + texte(-8, y + 4, l, 'font-size="11" text-anchor="end"');
@@ -63,15 +67,17 @@ export function courbeRisque(points) {
   const rideau = mouvementReduit() ? "" : '<animate attributeName="width" from="0" to="1004" dur="1.6s" calcMode="spline" keySplines="0.2 0.8 0.2 1" fill="freeze"></animate>';
   svg += `<clipPath id="revele"><rect x="-44" y="-10" width="1004" height="236">${rideau}</rect></clipPath><g clip-path="url(#revele)">`;
   const segments = [[]];
-  points.forEach((p, i) => (p.delestage ? segments.push([]) : segments[segments.length - 1].push([X(i).toFixed(1), Y(p.risque).toFixed(1)])));
+  points.forEach((p, i) => (p.delestage || p.risque == null ? segments.push([]) : segments[segments.length - 1].push([X(i).toFixed(1), Y(p.risque).toFixed(1)])));
   segments.filter((s) => s.length).forEach((s) => {
     const trace = s.map((pt) => pt.join(",")).join(" ");
     svg += `<polygon points="${trace} ${s[s.length - 1][0]},200 ${s[0][0]},200" fill="var(--danger)" opacity="0.1"></polygon>
       <polyline points="${trace}" fill="none" stroke="var(--danger)" stroke-width="1.75" stroke-linejoin="round"></polyline>`;
   });
+  let connu = risques[0] ?? 0.001; // une panne se place au dernier risque connu : la machine ne tourne plus
   points.forEach((p, i) => {
+    if (p.risque != null) connu = p.risque;
     if (!p.panne) return;
-    const x = X(i), y = Y(p.risque), croix = `M${x - 5} ${y - 5} L${x + 5} ${y + 5} M${x + 5} ${y - 5} L${x - 5} ${y + 5}`;
+    const x = X(i), y = Y(connu), croix = `M${x - 5} ${y - 5} L${x + 5} ${y + 5} M${x + 5} ${y - 5} L${x - 5} ${y + 5}`;
     svg += `<path d="${croix}" stroke="var(--surface)" stroke-width="5" stroke-linecap="round"></path><path d="${croix}" stroke="var(--text)" stroke-width="2.25" stroke-linecap="round"></path>`;
   });
   svg += "</g>";
@@ -80,8 +86,8 @@ export function courbeRisque(points) {
     const d = new Date(points[Math.min(i, points.length - 1)].timestamp);
     svg += texte(X(i), 222, d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" }), `font-size="11" text-anchor="${k === 0 ? "start" : k === 4 ? "end" : "middle"}"`);
   }
-  const fin = points[points.length - 1];
-  if (fin) svg += `<circle class="fin" cx="960" cy="${Y(fin.risque).toFixed(1)}" r="5" fill="var(--danger)" stroke="var(--surface)" stroke-width="2"></circle>`;
+  // Le point « maintenant » seulement si la machine tourne au dernier relevé ; sinon la croix ou le trou parlent d'eux-mêmes
+  if (derniere && derniere[0] === points.length - 1) svg += `<circle class="fin" cx="${X(derniere[0]).toFixed(1)}" cy="${Y(derniere[1]).toFixed(1)}" r="5" fill="var(--danger)" stroke="var(--surface)" stroke-width="2"></circle>`;
   return svg + "</svg>";
 }
 

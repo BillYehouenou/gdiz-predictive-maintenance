@@ -1,5 +1,5 @@
-import { CAUSES, LIBELLES_STATUT, compter, dateHeure, erreur, esc, lire, millions, nombre, pastille, pourcent, squelette } from "./api.js";
-import { matrice } from "./charts.js";
+import { CAUSES, LIBELLES_STATUT, compter, dateHeure, erreur, esc, lire, millions, nombre, pastille, pourcent, squelette } from "./commun.js";
+import { matrice } from "./graphiques.js";
 
 const $ = (id) => document.getElementById(id);
 const dialogue = $("detail");
@@ -35,27 +35,27 @@ function details(a) {
   };
 }
 
-function indicateur(cle, libelle, couleur, encre, [valeur, num, dec, suffixe], unite, actuel, precedent, plusEstMieux, formatDelta, libellePrec, explication) {
-  let delta = "";
-  if (precedent != null && actuel != null) {
-    const ecart = actuel - precedent;
-    const sens = Math.abs(ecart) < 1e-9 ? "" : (ecart > 0) === plusEstMieux ? "bon" : "mauvais";
-    const fleche = Math.abs(ecart) < 1e-9 ? "=" : ecart > 0 ? "▲" : "▼";
-    delta = `<span class="delta ${sens}">${fleche} ${esc(formatDelta(ecart))}</span> vs ${esc(libellePrec)}`;
-  }
-  return { cle, libelle, couleur, encre, valeur, num, dec, suffixe, unite, delta, explication };
-}
+// clé, libellé, couleur, encre, unité, champ, plus est mieux, valeur affichée (nombre, décimales, suffixe), écart affiché
+const KPIS = [
+  ["dispo", "Disponibilité", "good", "good-ink", "%", "disponibilite", true, (v) => [v * 100, 1, ""], (e) => `${nombre(Math.abs(e) * 100, 2)} pt`],
+  ["mtbf", "MTBF moyen", "blue", "blue", "h de marche", "mtbf_h", true, (v) => [v, 0, ""], (e) => `${nombre(Math.abs(e))} h`],
+  ["cout", "Coût des pannes", "orange", "orange-ink", "FCFA", "cout", false, (v) => [v / 1e6, 1, " M"], (e) => millions(Math.abs(e))],
+  ["arret", "Heures d'arrêt subies", "indigo", "indigo", "h", "heures_arret", false, (v) => [v, 0, ""], (e) => `${nombre(Math.abs(e))} h`],
+];
 
 function afficherIndicateurs(t) {
-  const a = t.indicateurs, p = t.indicateurs_precedents ?? {};
-  const prec = t.periode.libelle_precedente;
-  const d = details(a);
-  indicateurs = [
-    indicateur("dispo", "Disponibilité", "var(--good)", "var(--good-ink)", [nombre(a.disponibilite * 100, 1), a.disponibilite * 100, 1, ""], "%", a.disponibilite, p.disponibilite, true, (e) => signe(e, `${nombre(Math.abs(e) * 100, 2)} pt`), prec, d.dispo),
-    indicateur("mtbf", "MTBF moyen", "var(--blue)", "var(--blue)", [nombre(a.mtbf_h), a.mtbf_h, 0, ""], "h de marche", a.mtbf_h, p.mtbf_h, true, (e) => signe(e, `${nombre(Math.abs(e))} h`), prec, d.mtbf),
-    indicateur("cout", "Coût des pannes", "var(--orange)", "var(--orange-ink)", [millions(a.cout), a.cout / 1e6, 1, " M"], "FCFA", a.cout, p.cout, false, (e) => signe(e, millions(Math.abs(e))), prec, d.cout),
-    indicateur("arret", "Heures d'arrêt subies", "var(--indigo)", "var(--indigo)", [nombre(a.heures_arret), a.heures_arret, 0, ""], "h", a.heures_arret, p.heures_arret, false, (e) => signe(e, `${nombre(Math.abs(e))} h`), prec, d.arret),
-  ];
+  const a = t.indicateurs, p = t.indicateurs_precedents ?? {}, d = details(a);
+  indicateurs = KPIS.map(([cle, libelle, couleur, encre, unite, champ, plusEstMieux, affichage, ecart]) => {
+    const [num, dec, suffixe] = affichage(a[champ]);
+    let delta = "";
+    if (p[champ] != null && a[champ] != null) {
+      const e = a[champ] - p[champ], nul = Math.abs(e) < 1e-9;
+      const sens = nul ? "" : (e > 0) === plusEstMieux ? "bon" : "mauvais";
+      delta = `<span class="delta ${sens}">${nul ? "=" : e > 0 ? "▲" : "▼"} ${esc(signe(e, ecart(e)))}</span> vs ${esc(t.periode.libelle_precedente)}`;
+    }
+    const valeur = `${nombre(num, dec)}${suffixe}`;
+    return { cle, libelle, couleur: `var(--${couleur})`, encre: `var(--${encre})`, unite, num, dec, suffixe, valeur, delta, explication: d[cle] };
+  });
   const compteur = (k) => `<span data-compte="${k.num}" data-depart="${valeursAffichees[k.cle] ?? 0}" data-dec="${k.dec}" data-suffixe="${k.suffixe}">${esc(k.valeur)}</span>`;
   $("kpis").innerHTML = indicateurs.map((k, i) => `<article class="kpi" style="--i: ${i}">
     <h3><span class="point" style="background: ${k.couleur}" aria-hidden="true"></span>${esc(k.libelle)}</h3>

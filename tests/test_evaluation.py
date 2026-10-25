@@ -7,27 +7,22 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.evaluation import _episodes_alerte, metriques_evenementielles, trouver_seuil_pour_budget_fa
+from src.evaluation import _episodes_alerte, bilan_economique, metriques_evenementielles, trouver_seuil_pour_budget_fa
+from src.metier import COUT_INSPECTION, gain_panne_evitee
 
 
-def test_episodes_alerte_aucune_alerte():
-    assert _episodes_alerte(np.zeros(5, dtype=int)) == []
-
-
-def test_episodes_alerte_toutes_alertes():
-    assert _episodes_alerte(np.ones(5, dtype=int)) == [(0, 4)]
-
-
-def test_episodes_alerte_plusieurs_series():
-    a = np.array([0, 1, 1, 0, 0, 1, 0, 1, 1, 1])
-    assert _episodes_alerte(a) == [(1, 2), (5, 5), (7, 9)]
-
-
-def test_episodes_alerte_rearm_scinde_series_longues():
-    a = np.ones(10, dtype=int)
-    assert _episodes_alerte(a, pas_max_episode=4) == [(0, 3), (4, 7), (8, 9)]
-    # pas_max_episode=None désactive explicitement le redécoupage
-    assert _episodes_alerte(a, pas_max_episode=None) == [(0, 9)]
+@pytest.mark.parametrize(
+    "alertes,pas_max,attendu",
+    [
+        ([0, 0, 0, 0, 0], 48, []),
+        ([1, 1, 1, 1, 1], 48, [(0, 4)]),
+        ([0, 1, 1, 0, 0, 1, 0, 1, 1, 1], 48, [(1, 2), (5, 5), (7, 9)]),
+        ([1] * 10, 4, [(0, 3), (4, 7), (8, 9)]),  # les séries longues sont redécoupées
+        ([1] * 10, None, [(0, 9)]),  # None désactive le redécoupage
+    ],
+)
+def test_episodes_alerte(alertes, pas_max, attendu):
+    assert _episodes_alerte(np.array(alertes), pas_max_episode=pas_max) == attendu
 
 
 def test_episodes_alerte_pas_max_defaut_scinde_alerte_dun_mois():
@@ -150,3 +145,42 @@ def test_trouver_seuil_pour_budget_fa_maximise_recall_dans_budget():
 
     assert meilleur_seuil == 0.5
     assert meilleures_metriques["recall_evenementiel"] == 1.0
+
+
+def test_aucune_alerte_sur_une_machine_qui_ne_tourne_pas():
+    """Week-end ou réparation : même avec un risque élevé, pas d'épisode d'alerte."""
+    n = 20
+    df = _creer_df_machine_unique(n, index_panne=15).assign(etat="marche")
+    df.loc[0:5, "etat"] = "arret"
+    probas = np.zeros(n)
+    probas[0:4] = 0.9  # risque élevé pendant l'arrêt : ignoré
+    metrics = metriques_evenementielles(df, probas, threshold=0.5, pas_horizon=10)
+    assert metrics["nb_episodes"] == 0
+
+
+def test_precision_et_recall_avec_preavis_utile():
+    """Deux pannes attrapées, l'une 1 h avant (trop tard), l'autre 5 h avant ; une fausse alerte."""
+    n = 60
+    df = _creer_df_machine_unique(n, index_panne=20)
+    df.loc[50, ["panne", "mode_panne"]] = [1, "TWF"]
+    probas = np.zeros(n)
+    probas[18:20] = 0.9  # 1 h avant la première panne
+    probas[40:42] = 0.9  # 5 h avant la seconde
+    probas[2:4] = 0.9  # hors de tout horizon : fausse alerte
+    metrics = metriques_evenementielles(df, probas, threshold=0.5, pas_horizon=12)
+    assert metrics["recall_evenementiel"] == 1.0
+    assert metrics["recall_preavis_4h"] == 0.5
+    assert metrics["precision_alertes"] == pytest.approx(2 / 3)
+
+
+def test_bilan_economique_valeur_des_pannes_moins_les_inspections():
+    n = 30
+    df = _creer_df_machine_unique(n, index_panne=15).assign(etat="marche", type_machine="M")
+    df.loc[15:23, "etat"] = "panne"  # la ligne de panne puis 8 pas de réparation : 4 h
+    probas = np.zeros(n)
+    probas[12:15] = 0.9  # attrape la panne
+    probas[0:2] = 0.9  # fausse alerte
+    metrics = metriques_evenementielles(df, probas, threshold=0.5, pas_horizon=10)
+    bilan = bilan_economique(df, metrics)
+    assert bilan["valeur_pannes_evitees"] == pytest.approx(gain_panne_evitee("M", 4.0))
+    assert bilan["gain_net"] == pytest.approx(gain_panne_evitee("M", 4.0) - COUT_INSPECTION)

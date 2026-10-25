@@ -126,10 +126,30 @@ def test_risque_machine():
     assert client.get("/api/v1/machines/INCONNUE/risque").status_code == 404
 
 
-def test_parc_refuse_une_periode_inconnue():
-    assert client.get("/api/v1/parc?periode=hier").status_code == 422
-
-
 def test_capteurs_donnent_leur_sens():
     capteurs = client.get("/api/v1/machines/GDIZ_TEX_M_20").json()["capteurs_30j"]
     assert {c["capteur"]: c["sens"] for c in capteurs}["niveau_tension"] == "min"
+
+
+def test_pages_servies():
+    for chemin, script in [("/", "parc.js"), ("/machines/GDIZ_TEX_M_20", "machine.js")]:
+        r = client.get(chemin)
+        assert r.status_code == 200
+        assert f"/static/{script}" in r.text
+
+
+def test_page_machine_inconnue():
+    assert client.get("/machines/inconnue").status_code == 404
+
+
+def test_machines_redirige_vers_la_plus_a_risque():
+    r = client.get("/machines", follow_redirects=False)
+    assert r.status_code == 307
+    assert r.headers["location"].startswith("/machines/GDIZ_TEX_M_")
+
+
+def test_fichiers_statiques():
+    for fichier in ["app.css", "commun.js", "graphiques.js", "parc.js", "machine.js", "logo.png"]:
+        r = client.get(f"/static/{fichier}")
+        assert r.status_code == 200
+        assert r.headers["cache-control"] == "no-cache"

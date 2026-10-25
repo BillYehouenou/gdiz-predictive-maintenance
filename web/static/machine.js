@@ -1,5 +1,5 @@
-import { CAUSES, FAMILLES, LIBELLES_STATUT, compter, erreur, esc, lire, nombre, pourcent, squelette } from "./api.js";
-import { anneau, courbeRisque } from "./charts.js";
+import { CAUSES, FAMILLES, LIBELLES_STATUT, compter, erreur, esc, lire, nombre, pourcent, squelette } from "./commun.js";
+import { anneau, courbeRisque } from "./graphiques.js";
 
 const conteneur = document.getElementById("fiche");
 const idMachine = conteneur.dataset.machine;
@@ -158,7 +158,7 @@ function afficher(f) {
     ${carte(`${titre("Risque de panne", `<span class="discret">${JOURS} derniers jours</span>`)}
       <div class="defile" id="courbe">${squelette(220)}</div>
       <ul class="legende trait">
-        <li><span class="temoin-courbe" aria-hidden="true"></span>Risque au pas de 2 h</li>
+        <li><span class="temoin-courbe" aria-hidden="true"></span>Risque au pas de 2 h, quand la machine tourne</li>
         <li><span class="temoin-delestage" aria-hidden="true"></span>Délestage SBEE (pas de mesure)</li>
         <li><span class="temoin-panne" aria-hidden="true">✕</span>Panne constatée</li>
       </ul>`, "", "gap: 12px")}

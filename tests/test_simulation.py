@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from simulation.generer import COLONNES_CAPTEURS, defaillances_capteurs
 from simulation.meteo import au_pas
-from simulation.observation import COLONNES_CAPTEURS, AgregateurDonnees
 from simulation.physique import ConfigDonneesSynthetiques, EvolueurEtatMachine, GenerateurContexteExogene
 
 
@@ -53,7 +53,7 @@ def test_injecter_donnees_manquantes_compat_pandas3_copy_on_write(df_capteur_fac
     original_cow = pd.options.mode.copy_on_write
     try:
         pd.options.mode.copy_on_write = True
-        result = AgregateurDonnees(ConfigDonneesSynthetiques()).injecter_donnees_manquantes(df_capteur_factice)
+        result = defaillances_capteurs(df_capteur_factice, ConfigDonneesSynthetiques())
     finally:
         pd.options.mode.copy_on_write = original_cow
 
@@ -64,7 +64,7 @@ def test_injecter_donnees_manquantes_compat_pandas3_copy_on_write(df_capteur_fac
 
 def test_injecter_donnees_manquantes_produit_rafales_correlees(df_capteur_factice):
     """Les valeurs manquantes doivent former des rafales corrélées dans le temps."""
-    result = AgregateurDonnees(ConfigDonneesSynthetiques()).injecter_donnees_manquantes(df_capteur_factice)
+    result = defaillances_capteurs(df_capteur_factice, ConfigDonneesSynthetiques())
 
     is_nan = result["vibration"].isna().to_numpy().astype(int)
     assert is_nan.sum() > 0, "aucune rafale générée sur cet essai ; augmenter la taille de l'échantillon"

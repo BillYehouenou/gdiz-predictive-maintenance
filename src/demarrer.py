@@ -21,13 +21,13 @@ URL_TABLEAU_DE_BORD = "http://localhost:8000"
 
 def _repond(url: str) -> bool:
     try:
-        urllib.request.urlopen(f"{url}/health", timeout=1)
-        return True
+        return bool(urllib.request.urlopen(f"{url}/health", timeout=1))
     except OSError:
         return False
 
 
-def _lancer(module: str) -> None:
+def _lancer(message: str, module: str) -> None:
+    print(message, flush=True)
     subprocess.run([sys.executable, "-m", module], check=True, cwd=RACINE)
 
 
@@ -67,15 +67,12 @@ def _demarrer_registre() -> subprocess.Popen | None:
 def preparer() -> None:
     """Données, entraînement et scoring, chacun seulement s'il manque."""
     if not CHEMIN_DB.exists():
-        print("Génération des données (téléchargement de la météo au premier lancement)…", flush=True)
-        _lancer("simulation.generer")
+        _lancer("Génération des données (téléchargement de la météo au premier lancement)…", "simulation.generer")
     entraine = not _champion_existe()
     if entraine:
-        print("Entraînement du modèle…", flush=True)
-        _lancer("src.train")
+        _lancer("Entraînement du modèle…", "src.train")
     if entraine or not _predictions_existent():
-        print("Scoring des 60 derniers jours…", flush=True)
-        _lancer("src.score")
+        _lancer("Scoring des 60 derniers jours…", "src.modele")
 
 
 def main():

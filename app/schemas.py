@@ -1,3 +1,5 @@
+"""Schémas d'entrée et de sortie de l'API : ils documentent /docs et vérifient ce que l'API renvoie."""
+
 from datetime import date, datetime
 from typing import Literal, Optional, Union
 
@@ -5,51 +7,38 @@ from pydantic import BaseModel, Field
 
 
 class DonneesMachine(BaseModel):
-    """Schéma d'entrée pour les données de la machine."""
+    """Un relevé de capteurs et de compteurs GMAO ; avec id_machine, l'historique en base complète les features."""
 
-    id_machine: Optional[str] = Field(default=None, description="ID de la machine", examples=["GDIZ_TEX_M_01"])
-    temperature_ambiante: float = Field(..., description="Température ambiante en °C", examples=[28.0])
-    temperature_process: float = Field(..., description="Température du process en °C", examples=[52.0])
-    vitesse_rotation: float = Field(..., description="Vitesse de rotation (tr/min)", examples=[1200.0])
-    couple: float = Field(..., description="Couple en Nm", examples=[35.0])
-    niveau_activite: float = Field(..., ge=0.0, le=1.0, description="Taux d'activité de la machine (0-1)", examples=[0.6])
-    vibration: float = Field(..., description="Niveau de vibration (mm/s)", examples=[1.5])
-    humidite: float = Field(..., description="Humidité relative (%)", examples=[60.0])
-    concentration_poussiere: float = Field(..., description="Concentration de poussière (µg/m³)", examples=[120.0])
-    niveau_tension: float = Field(..., description="Tension réseau SBEE (V)", examples=[222.0])
-    precipitation_mm: float = Field(..., ge=0.0, description="Précipitations sur le dernier pas de 30 min (mm)", examples=[0.0])
-    indicateur_coupure: int = Field(..., ge=0, le=1, description="Délestage SBEE (0/1)", examples=[0])
-    type_machine: str = Field(..., description="Qualité de machine (L, M, H)", examples=["M"])
+    id_machine: Optional[str] = Field(default=None, examples=["GDIZ_TEX_M_01"])
+    temperature_ambiante: float = Field(description="°C", examples=[28.0])
+    temperature_process: float = Field(description="°C", examples=[52.0])
+    vitesse_rotation: float = Field(description="tr/min", examples=[1200.0])
+    couple: float = Field(description="Nm", examples=[35.0])
+    niveau_activite: float = Field(ge=0.0, le=1.0, description="Taux d'activité (0-1)", examples=[0.6])
+    vibration: float = Field(description="mm/s", examples=[1.5])
+    humidite: float = Field(description="Humidité relative (%)", examples=[60.0])
+    concentration_poussiere: float = Field(description="µg/m³", examples=[120.0])
+    niveau_tension: float = Field(description="Tension réseau SBEE (V)", examples=[222.0])
+    precipitation_mm: float = Field(ge=0.0, description="Pluie sur le dernier pas de 30 min (mm)", examples=[0.0])
+    indicateur_coupure: int = Field(ge=0, le=1, description="Délestage SBEE (0/1)", examples=[0])
+    type_machine: str = Field(description="Gamme : L, M ou H", examples=["M"])
     heures_depuis_changement_outil: float = Field(
-        ..., ge=0.0, description="Heures de fonctionnement depuis le dernier changement d'outil (GMAO)", examples=[2400.0]
+        ge=0.0, description="Heures de marche depuis le changement d'outil", examples=[2400.0]
     )
-    heures_depuis_maintenance: float = Field(
-        ..., ge=0.0, description="Heures depuis la dernière intervention de maintenance (GMAO)", examples=[600.0]
-    )
+    heures_depuis_maintenance: float = Field(ge=0.0, description="Heures depuis la dernière intervention", examples=[600.0])
 
 
 class ReponsePrediction(BaseModel):
-    """Schéma de sortie renvoyé par l'API."""
-
-    prediction: int = Field(..., description="0 pour Sain, 1 pour Panne")
-    probabilite_panne: float = Field(..., description="Probabilité de panne entre 0 et 1")
-    status: str = Field(default="success")
+    prediction: int = Field(description="1 si le risque dépasse le seuil d'alerte")
+    probabilite_panne: float = Field(description="Probabilité de panne dans les 5 jours")
+    status: str = "success"
 
 
 class InfoModele(BaseModel):
-    """Schéma de sortie de /api/v1/info — version et seuil du modèle actuellement chargé."""
-
-    model_name: str = Field(..., description="Nom du modèle enregistré dans MLflow")
-    model_version: str = Field(..., description="Version @champion actuellement chargée en mémoire")
-    threshold: float = Field(..., description="Seuil de décision courant")
-
-
-class ReponseRechargement(BaseModel):
-    """Schéma de sortie de /api/v1/reload."""
-
-    model_version: str = Field(..., description="Version @champion chargée après rechargement")
-    threshold: float = Field(..., description="Seuil de décision après rechargement")
-    status: str = Field(default="success")
+    model_name: str
+    model_version: str = Field(description="Version @champion chargée en mémoire")
+    threshold: float = Field(description="Seuil d'alerte enregistré avec ce modèle")
+    status: str = "success"
 
 
 class Indicateurs(BaseModel):
@@ -87,15 +76,12 @@ class TableauParc(BaseModel):
     cout_serie_precedente: list[PointCout]
 
 
-Statut = Literal["normal", "surveillance", "panne_predite", "en_panne"]
-
-
 class EtatMachine(BaseModel):
     id_machine: str
     numero: str
     nom: str = Field(description="Cardeuse, continu à filer, métier à tisser ou rameuse")
     gamme: str
-    statut: Statut
+    statut: Literal["normal", "surveillance", "panne_predite", "en_panne"]
     risque: float = Field(description="Probabilité de panne à 5 jours")
     criticite: float = Field(description="Part de production perdue si la machine s'arrête, sur 10")
     zone: Optional[Literal["surveiller", "planifier", "agir"]]
@@ -145,6 +131,6 @@ class FicheMachine(EtatMachine):
 
 class PointRisque(BaseModel):
     timestamp: datetime
-    risque: float
+    risque: Optional[float] = Field(description="Vide quand la machine n'a pas tourné (arrêt, panne, délestage)")
     delestage: bool
     panne: bool
