@@ -1,4 +1,4 @@
-# Image de l'API et du tableau de bord (les données sont montées par docker-compose, le modèle vient de MLflow)
+# Image de l'API et du pipeline (données, entraînement, scoring) ; les données vivent dans un volume, le modèle dans MLflow
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -14,7 +14,8 @@ RUN uv sync --frozen --no-dev --no-install-project --no-cache
 
 COPY . .
 
-RUN useradd --create-home appuser && chown -R appuser:appuser /app
+# data/raw appartient à appuser : le volume des données en hérite à sa création
+RUN mkdir -p data/raw && useradd --create-home appuser && chown -R appuser:appuser /app
 USER appuser
 
 EXPOSE 8000

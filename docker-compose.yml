@@ -1,4 +1,5 @@
-# Deux services : le registre MLflow (le seul, partagé avec make train / score / serve) et l'API.
+# docker compose up : le registre MLflow, puis le pipeline (données, entraînement et scoring, seulement s'ils manquent),
+# puis l'API et le tableau de bord sur http://localhost:8000. Données et registre sont gardés dans des volumes.
 services:
   mlflow:
     image: ghcr.io/mlflow/mlflow:v3.11.1  # même version que le client (uv.lock)
@@ -20,17 +21,31 @@ services:
       timeout: 5s
       retries: 5
 
-  api:
+  pipeline:
     build: .
+    image: gdiz-maintenance  # une seule image pour le pipeline et l'API
+    command: [".venv/bin/python", "-m", "src.demarrer", "--preparer"]
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - PYTHONHASHSEED=0
+      - GIT_PYTHON_REFRESH=quiet  # pas de git dans l'image : MLflow n'a pas à le signaler
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    volumes:
+      - donnees:/app/data
+
+  api:
+    image: gdiz-maintenance
     ports:
       - "8000:8000"
     environment:
       - MLFLOW_TRACKING_URI=http://mlflow:5000
     depends_on:
-      mlflow:
-        condition: service_healthy
+      pipeline:
+        condition: service_completed_successfully
     volumes:
-      - ./data:/app/data:ro
+      - donnees:/app/data:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
@@ -39,3 +54,4 @@ services:
 
 volumes:
   mlflow_data:
+  donnees:

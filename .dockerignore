@@ -11,11 +11,11 @@ __pycache__/
 .claude/
 Makefile
 
-# Hors de l'image : documentation, tests, générateur, données et artefacts (montés ou servis par MLflow)
+# Hors de l'image : documentation, tests, données et artefacts (volume Docker et registre MLflow)
 notebooks/
 README.md
+docs/
 tests/
-simulation/
 data/
 mlruns/
 mlflow.db

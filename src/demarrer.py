@@ -1,6 +1,7 @@
 """
 Lance tout le projet sans Docker et ouvre le tableau de bord : python -m src.demarrer (make demo).
 Registre MLflow local si aucun ne répond, données, entraînement et scoring seulement s'ils manquent. Ctrl+C arrête tout.
+Avec --preparer : seulement les données, l'entraînement et le scoring manquants (service pipeline de docker-compose).
 """
 
 import subprocess
@@ -63,19 +64,27 @@ def _demarrer_registre() -> subprocess.Popen | None:
     raise RuntimeError(f"Le registre MLflow ne répond pas sur {URI_MLFLOW}.")
 
 
+def preparer() -> None:
+    """Données, entraînement et scoring, chacun seulement s'il manque."""
+    if not CHEMIN_DB.exists():
+        print("Génération des données (téléchargement de la météo au premier lancement)…", flush=True)
+        _lancer("simulation.generer")
+    entraine = not _champion_existe()
+    if entraine:
+        print("Entraînement du modèle…", flush=True)
+        _lancer("src.train")
+    if entraine or not _predictions_existent():
+        print("Scoring des 60 derniers jours…", flush=True)
+        _lancer("src.score")
+
+
 def main():
+    if "--preparer" in sys.argv:
+        preparer()
+        return
     serveur = _demarrer_registre()
     try:
-        if not CHEMIN_DB.exists():
-            print("Génération des données (téléchargement de la météo au premier lancement)…", flush=True)
-            _lancer("simulation.generer")
-        entraine = not _champion_existe()
-        if entraine:
-            print("Entraînement du modèle…", flush=True)
-            _lancer("src.train")
-        if entraine or not _predictions_existent():
-            print("Scoring des 60 derniers jours…", flush=True)
-            _lancer("src.score")
+        preparer()
         print(f"Tableau de bord sur {URL_TABLEAU_DE_BORD} (Ctrl+C pour tout arrêter)", flush=True)
         threading.Timer(3, webbrowser.open, [URL_TABLEAU_DE_BORD]).start()
         subprocess.run([sys.executable, "-m", "uvicorn", "app.main:app", "--port", "8000"], cwd=RACINE)

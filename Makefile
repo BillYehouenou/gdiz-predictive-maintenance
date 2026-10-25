@@ -49,10 +49,11 @@ check: lint test  ## Lint + tests
 serve: mlflow  ## API et tableau de bord sur http://localhost:8000
 	$(UV_RUN) uvicorn app.main:app --reload --reload-dir app --reload-dir src --reload-dir web --host 0.0.0.0 --port 8000
 
-docker-up:  ## Construit et démarre toute la stack (MLflow + API)
-	docker compose up --build -d
+docker-up:  ## Tout le projet dans Docker : registre, données et modèle si besoin, tableau de bord sur :8000
+	docker compose up --build -d --wait
+	@echo "Tableau de bord sur http://localhost:8000"
 
-docker-down:  ## Arrête la stack (le registre MLflow est conservé dans son volume)
+docker-down:  ## Arrête la stack (données et registre sont conservés dans leurs volumes)
 	docker compose down
 
 clean:  ## Supprime les caches Python
