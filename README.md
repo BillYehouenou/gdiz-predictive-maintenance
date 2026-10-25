@@ -27,9 +27,10 @@ src/donnees.py + src/features.py     - cible à 120h, features glissantes (24h /
 src/train.py                         - LightGBM (NaN et catégories natives) --> calibration sigmoïde sur les log-odds
         │                              (pas de plancher de risque sur les machines saines) --> seuil choisi
         │                              sur la validation (recall événementiel sous budget de fausses alertes)
-        │                              --> MLflow Registry : @champion remplacé seulement si le recall ne régresse pas
+        │                              --> registre MLflow : @champion remplacé seulement si le recall ne régresse pas,
+        │                              seuil enregistré avec le modèle
         │
-src/score.py                         - score tout le parc une fois --> table DuckDB `predictions`
+src/score.py                         - score les 60 derniers jours --> table DuckDB `predictions`
         │                              (risque, niveau, cause probable SHAP des machines en alerte)
         │
 app/main.py (FastAPI)                - API et tableau de bord sur le même port
@@ -56,31 +57,32 @@ Le HTML ne contient aucune donnée : chaque écran lit l'API, avec un état de c
 
 ## Installation 
 
-Prérequis : Python 3.11+, uv
+Prérequis : Python 3.11+, uv, Docker (pour le registre MLflow)
 
 ```bash
-# Clone et installe les dépendances
 git clone <url-du-repo>
 cd gdiz-predictive-maintenance
-uv sync --frozen
+make install
 
 # Génère le dataset (télécharge la météo Open-Meteo au premier lancement, puis cache DuckDB)
 make generate-data
 
-# Entraîne le modèle (MLflow) puis score le parc (table predictions)
+# Entraîne le modèle puis score les 60 derniers jours. Démarre au passage le registre MLflow
+# (Docker), consultable sur http://localhost:5050
 make train score
 
 # API et tableau de bord sur http://localhost:8000 (documentation de l'API : /docs)
 make serve
-
-# Optionnel : MLflow UI
-make mlflow-ui
 ```
+
+`make help` liste toutes les commandes.
 
 
 ## Choix du modèle
 
-Recall événementiel au budget de 0,2 fausse alerte par machine et par jour (`make compare`) :
+Recall événementiel au budget de 0,2 fausse alerte par machine et par jour
+([notebooks/1_comparaison_modeles.ipynb](notebooks/1_comparaison_modeles.ipynb), qui détaille aussi les décisions
+de modélisation) :
 
 | Modèle | Validation (T2-T4 2024, 65 pannes) | Test 2025 (115 pannes) | Taille |
 |---|---|---|---|
@@ -98,16 +100,31 @@ s'accordent pas. LightGBM 150 arbres est donc conservé. Départager plus fineme
 
 ## Déploiement Docker
 
-La stack Compose orchestre deux services : l'API (avec le tableau de bord, port 8000) et MLflow (port 5000).
+La stack Compose orchestre deux services : MLflow (registre et suivi des entraînements, port 5050) et l'API avec
+le tableau de bord (port 8000). C'est le même registre que celui utilisé par `make train` : l'API Docker charge
+le @champion et son seuil depuis ce serveur, et lit les données dans `data/`, monté en lecture seule.
 
 ```bash
-# Placer les artefacts pré-entraînés dans models/ et les données dans data/ avant le build.
-docker compose up --build -d # Démarre les services en arrière-plan
-docker compose down # Arrête et supprime les conteneurs
+make docker-up    # construit et démarre les deux services
+make docker-down  # les arrête (le registre est conservé dans son volume)
 ```
 
-L'image Docker ne contient ni données d'entraînement ni artefacts de modèle.
-*GitHub Actions* : lint + mypy ; tests avec génération de données et entraînement à la volée (mis en cache entre les runs) - build Docker S'exécute sur chaque push/PR vers la branche main.
+*GitHub Actions* : lint + mypy ; tests avec génération des données et entraînement à la volée (mis en cache
+entre les runs, registre SQLite local) ; build Docker. S'exécute sur chaque push et PR vers main.
+
+
+## Limites
+
+1. **Données synthétiques, pas des capteurs GDIZ réels** : le générateur reproduit des dynamiques physiques
+   plausibles (calendrier saisonnier béninois, réseau SBEE, Harmattan), mais reste une simulation calibrée.
+2. **La surcharge mécanique (OSF) reste le point faible**, faute d'exemples ; les pannes électriques et aléatoires
+   n'ont pas de signe avant-coureur et ne sont pas apprises.
+3. **Préavis médian d'environ 12 h**, pas plusieurs jours : assez pour planifier une intervention le jour même, pas
+   pour commander une pièce.
+4. **Pas d'authentification sur l'API** (dont `POST /reload`) : inutile pour une démo locale, indispensable avant de
+   l'exposer.
+5. **La cause probable est une famille physique (SHAP)** — usure, surchauffe, surcharge, environnement — et non un
+   diagnostic du mode de panne : un classifieur multi-classe testé à part était trop instable pour être exposé.
 
 
 ## Structure du projet
@@ -127,14 +144,16 @@ gdiz-predictive-maintenance/
 │   ├── donnees.py          # Chargement DuckDB, cible à horizon, split avec tampon et machines réservées
 │   ├── features.py         # Features glissantes (une seule fonction pour l'entraînement et l'inférence)
 │   ├── evaluation.py       # Métrique événementielle : recall @ budget de fausses alertes
-│   ├── modeles.py          # Candidats et comparaison : python -m src.modeles (make compare)
-│   ├── train.py            # Modèle retenu + calibration + seuil + promotion @champion
-│   ├── predicteur.py       # Chargement du @champion et prédiction
+│   ├── train.py            # LightGBM retenu + calibration + seuil + promotion @champion
+│   ├── predicteur.py       # Chargement du @champion et de son seuil, prédiction
 │   ├── explain.py          # Cause probable par famille physique (SHAP)
 │   ├── usine.py            # Chaîne de production, criticité, coûts par gamme
 │   ├── metier.py           # Indicateurs, coût réel des pannes, fiche machine (lecture DuckDB)
-│   ├── score.py            # Scoring du parc --> table predictions (make score)
-│   └── drift.py            # PSI des 30 derniers jours vs entraînement (make check-drift)
+│   ├── score.py            # Scoring des 60 derniers jours --> table predictions (make score)
+│   └── drift.py            # PSI des capteurs, 30 derniers jours vs entraînement (make check-drift)
+├── notebooks/
+│   ├── 0_exploration_donnees.ipynb   # Volume, états, pannes par gamme et mode, capteurs
+│   └── 1_comparaison_modeles.ipynb   # Cinq modèles comparés, importance des variables, décisions
 ├── tests/                  # Suite pytest
 ├── web/                    # Tableau de bord (sans framework ni étape de build)
 │   ├── templates/          # Gabarit commun + Parc et Machine (Jinja2)
@@ -143,7 +162,7 @@ gdiz-predictive-maintenance/
 │       ├── img/            # logo.png : icône d'usine par Icons8 (https://icons8.com)
 │       └── js/             # api.js, nav.js, charts.js (SVG) + un script par écran
 ├── Dockerfile
-├── docker-compose.yml
+├── docker-compose.yml      # MLflow (registre) + API
 ├── Makefile
 └── pyproject.toml
 ```

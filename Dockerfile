@@ -1,33 +1,21 @@
-# Utilisation d'une image Python stable et légère
+# Image de l'API et du tableau de bord (les données sont montées par docker-compose, le modèle vient de MLflow)
 FROM python:3.11-slim
 
-# Définition du répertoire de travail dans le conteneur
 WORKDIR /app
 
-# curl : requis par les healthchecks docker-compose (mlflow/api).
-# libgomp1 : runtime OpenMP requis par LightGBM, absent de python:3.11-slim.
+# curl : healthcheck de docker-compose ; libgomp1 : OpenMP, requis par LightGBM
 RUN apt-get update && apt-get install -y --no-install-recommends curl libgomp1 && rm -rf /var/lib/apt/lists/*
 
-# Installation de uv pour une gestion rapide des dépendances
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.8 /uv /bin/
 
-# Copie des fichiers de configuration
+# Dépendances de production seules, avant le code pour profiter du cache Docker
 COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project --no-cache
 
-# Installation des dépendances (sans le projet lui-même pour optimiser le cache)
-RUN uv sync --frozen --no-cache
-
-# Copie de tout le code source et des dossiers nécessaires
 COPY . .
 
-# Exécution en utilisateur non-root (hardening) 
-RUN mkdir -p /app/mlflow && \
-    useradd --create-home --shell /bin/bash appuser && \
-    chown -R appuser:appuser /app
+RUN useradd --create-home appuser && chown -R appuser:appuser /app
 USER appuser
 
-# Exposition du port FastAPI (API et tableau de bord)
 EXPOSE 8000
-
-# Commande pour lancer l'API
-CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD [".venv/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

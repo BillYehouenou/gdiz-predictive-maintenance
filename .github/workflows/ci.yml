@@ -56,10 +56,9 @@ jobs:
         with:
           path: |
             data/raw
-            models
             mlflow.db
             mlruns
-          key: pipeline-${{ hashFiles('simulation/**/*.py', 'src/**/*.py') }}
+          key: pipeline-${{ hashFiles('simulation/**/*.py', 'src/**/*.py', 'uv.lock') }}
 
       - name: Générer les données et entraîner le modèle (si le cache ne correspond pas)
         if: steps.cache-pipeline.outputs.cache-hit != 'true'
