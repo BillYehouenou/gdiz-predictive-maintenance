@@ -45,7 +45,7 @@ class FichiersStatiques(StaticFiles):
 
 app.mount("/static", FichiersStatiques(directory=RACINE / "web" / "static"), name="static")
 gabarits = Jinja2Templates(directory=RACINE / "web" / "templates")
-predicteur = Predicteur(utiliser_mlflow=True)
+predicteur = Predicteur()
 explicateur = ExplicateurCause(predicteur.modele)
 
 
@@ -186,7 +186,7 @@ def recharger():
     """Recharge le @champion sans redémarrer, après `make train score`."""
     global predicteur, explicateur
     try:
-        predicteur = Predicteur(utiliser_mlflow=True)
+        predicteur = Predicteur()
         explicateur = ExplicateurCause(predicteur.modele)
     except Exception:
         logger.exception("Erreur lors du rechargement du modèle")

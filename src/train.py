@@ -1,22 +1,22 @@
 """
-Entraînement du modèle retenu (src/modeles.py) --> calibration sigmoïde et seuil choisis sur la validation
---> métriques sur le test --> MLflow. Le @champion n'est remplacé que si le recall événementiel ne régresse pas.
-Usage : python -m src.train
+Entraînement du LightGBM retenu --> calibration sigmoïde et seuil choisis sur la validation --> métriques sur le
+test --> MLflow. Le @champion n'est remplacé que si le recall événementiel ne régresse pas.
+Pourquoi LightGBM : notebooks/1_comparaison_modeles.ipynb. Usage : python -m src.train
 """
 
-import json
 import logging
+from typing import Any
 
-import joblib
 import mlflow
 import mlflow.sklearn
 import numpy as np
 import pandas as pd
+from lightgbm import LGBMClassifier
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.frozen import FrozenEstimator
 from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
 
-from src.config import CIBLE, DOSSIER_MODELES, NOM_EXPERIENCE, NOM_MODELE, URI_MLFLOW
+from src.config import ALIAS_CHAMPION, CIBLE, NOM_EXPERIENCE, NOM_MODELE, URI_MLFLOW
 from src.donnees import DATE_TEST, DATE_VALIDATION, HORIZON, MACHINES_RESERVEES, charger, decouper
 from src.evaluation import (
     BUDGET_FAUSSES_ALERTES_PAR_MACHINE_JOUR,
@@ -26,19 +26,42 @@ from src.evaluation import (
     trouver_seuil_pour_budget_fa,
 )
 from src.features import preparer_X
-from src.modeles import CANDIDATS, MODELE_RETENU
 
 logger = logging.getLogger(__name__)
 
-ALIAS_CHAMPION = "champion"
+# Peu de feuilles et forte régularisation : le signal de panne est rare
+HYPERPARAMETRES_LIGHTGBM: dict[str, Any] = {
+    "n_estimators": 150,
+    "learning_rate": 0.1,
+    "num_leaves": 15,
+    "min_child_samples": 80,
+    "subsample": 0.7,
+    "colsample_bytree": 0.7,
+    "reg_alpha": 0.3,
+    "reg_lambda": 0.3,
+}
 METRIQUE_PROMOTION = "recall_evenementiel"
+
+
+class LGBMLogOdds(LGBMClassifier):
+    """
+    LightGBM qui expose ses log-odds. La calibration sigmoïde s'ajuste alors sur un score non borné : sur la probabilité
+    brute (bornée à 0), elle imposait un plancher d'environ 2,8 % à toutes les machines saines.
+    """
+
+    def decision_function(self, X):
+        return self.predict(X, raw_score=True)
+
+
+def nouveau_modele() -> LGBMLogOdds:
+    return LGBMLogOdds(**HYPERPARAMETRES_LIGHTGBM, random_state=42, n_jobs=-1, verbose=-1)
 
 
 def entrainer(df: pd.DataFrame) -> tuple[CalibratedClassifierCV, float, dict]:
     train, validation, test = decouper(df)
     logger.info(f"Train {len(train):,} | validation {len(validation):,} | test {len(test):,} lignes")
 
-    modele = CANDIDATS[MODELE_RETENU]().fit(preparer_X(train), train[CIBLE])
+    modele = nouveau_modele().fit(preparer_X(train), train[CIBLE])
     # Sigmoïde plutôt qu'isotonique : des probabilités continues permettent de régler finement le seuil.
     # Elle s'ajuste sur les log-odds du modèle (decision_function), pas sur sa probabilité bornée.
     calibre = CalibratedClassifierCV(FrozenEstimator(modele), method="sigmoid").fit(preparer_X(validation), validation[CIBLE])
@@ -95,12 +118,12 @@ def main():
     mlflow.set_experiment(NOM_EXPERIENCE)
     calibre, seuil, metriques = entrainer(charger())
 
-    with mlflow.start_run(run_name=f"{MODELE_RETENU}_entrainement"):
+    with mlflow.start_run(run_name="lightgbm_entrainement"):
         mlflow.log_params(
             {
-                "modele": MODELE_RETENU,
+                "modele": "lightgbm",
                 **modele_params(calibre),
-                "seuil_optimal": round(seuil, 4),
+                "seuil_optimal": seuil,  # valeur exacte : relue par l'API avec le modèle
                 "budget_fa_machine_jour": BUDGET_FAUSSES_ALERTES_PAR_MACHINE_JOUR,
                 "horizon_heures": HORIZON / pd.Timedelta("1h"),
                 "date_validation": str(DATE_VALIDATION.date()),
@@ -110,10 +133,7 @@ def main():
         mlflow.log_metrics(metriques)
         info = mlflow.sklearn.log_model(sk_model=calibre, name="model_pipeline", registered_model_name=NOM_MODELE)
 
-    if promouvoir_si_meilleur(mlflow.MlflowClient(), info.registered_model_version, metriques[METRIQUE_PROMOTION]):
-        DOSSIER_MODELES.mkdir(exist_ok=True)
-        joblib.dump(calibre, DOSSIER_MODELES / "model_pipeline.pkl")
-        (DOSSIER_MODELES / "seuil_optimal.json").write_text(json.dumps({"threshold": seuil}))
+    promouvoir_si_meilleur(mlflow.MlflowClient(), info.registered_model_version, metriques[METRIQUE_PROMOTION])
 
     for nom, valeur in metriques.items():
         print(f"{nom}: {valeur:.4f}" if isinstance(valeur, float) else f"{nom}: {valeur}")

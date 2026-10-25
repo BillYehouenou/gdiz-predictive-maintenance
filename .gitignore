@@ -12,9 +12,8 @@ __pycache__/
 # Notebooks Jupyter
 .ipynb_checkpoints/
 
-# Données, modèles et artefacts binaires lourds
+# Données (générées par make generate-data)
 data/
-models/
 
 # Suivi d'expériences MLflow
 mlruns/

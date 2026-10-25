@@ -38,7 +38,7 @@ def serie_machine(type_machine: str = "M", n: int = 60, **mesures) -> pd.DataFra
 
 @pytest.fixture(scope="session")
 def predicteur():
-    return Predicteur(utiliser_mlflow=True)
+    return Predicteur()
 
 
 @pytest.fixture

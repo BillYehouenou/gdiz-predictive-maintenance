@@ -1,43 +1,26 @@
-"""Chargement du modèle @champion (MLflow, ou fichier local en repli) et prédiction."""
+"""Le @champion du registre MLflow, avec le seuil choisi lors de son entraînement."""
 
-import json
-import logging
-
-import joblib
 import mlflow
 import mlflow.sklearn
 import pandas as pd
 
-from src.config import DOSSIER_MODELES, NOM_MODELE, URI_MLFLOW
+from src.config import ALIAS_CHAMPION, NOM_MODELE, URI_MLFLOW
 from src.features import preparer_X
-
-logger = logging.getLogger(__name__)
-
-SEUIL_DEFAUT = 0.5
 
 
 class Predicteur:
-    def __init__(self, utiliser_mlflow: bool = True):
+    def __init__(self):
         mlflow.set_tracking_uri(URI_MLFLOW)
+        client = mlflow.MlflowClient()
+        try:
+            version = client.get_model_version_by_alias(NOM_MODELE, ALIAS_CHAMPION)
+        except Exception as e:
+            raise RuntimeError(f"Aucun @{ALIAS_CHAMPION} dans le registre MLflow ({URI_MLFLOW}) : lancer `make train`.") from e
         self.nom_modele = NOM_MODELE
-        self.version = "local"
-        self.modele = self._charger_modele(utiliser_mlflow)
-        chemin_seuil = DOSSIER_MODELES / "seuil_optimal.json"
-        self.threshold = json.loads(chemin_seuil.read_text())["threshold"] if chemin_seuil.exists() else SEUIL_DEFAUT
-
-    def _charger_modele(self, utiliser_mlflow: bool):
-        if utiliser_mlflow:
-            try:
-                modele = mlflow.sklearn.load_model(f"models:/{NOM_MODELE}@champion")
-                self.version = str(mlflow.MlflowClient().get_model_version_by_alias(NOM_MODELE, "champion").version)
-                return modele
-            except Exception as e:
-                logger.warning(f"MLflow indisponible ({e}), repli sur le fichier local.")
-
-        chemin = DOSSIER_MODELES / "model_pipeline.pkl"
-        if not chemin.exists():
-            raise FileNotFoundError(f"Aucun modèle : ni @champion MLflow, ni {chemin}.")
-        return joblib.load(chemin)
+        self.version = str(version.version)
+        self.modele = mlflow.sklearn.load_model(f"models:/{NOM_MODELE}@{ALIAS_CHAMPION}")
+        # Le seuil vient du même entraînement que le modèle : les deux ne peuvent pas diverger
+        self.threshold = float(client.get_run(str(version.run_id)).data.params["seuil_optimal"])
 
     def predire(self, df: pd.DataFrame) -> pd.DataFrame:
         """df : lignes avec features calculées (src.features.calculer_features)."""
