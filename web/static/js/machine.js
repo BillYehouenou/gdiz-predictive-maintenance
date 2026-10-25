@@ -1,4 +1,4 @@
-import { CAUSES, FAMILLES, LIBELLES_STATUT, erreur, esc, lire, nombre, pourcent, squelette } from "./api.js";
+import { CAUSES, FAMILLES, LIBELLES_STATUT, compter, erreur, esc, lire, nombre, pourcent, squelette } from "./api.js";
 import { anneau, courbeRisque } from "./charts.js";
 
 const conteneur = document.getElementById("fiche");
@@ -10,6 +10,43 @@ const carte = (contenu, classe = "", style = "") => `<section class="carte ${cla
 const titre = (texte, droite = "") => `<div class="carte-tete"><h2>${esc(texte)}</h2>${droite}</div>`;
 const COULEURS_STATUT = { normal: "var(--gray-c)", surveillance: "var(--warn)", panne_predite: "var(--orange)", en_panne: "var(--danger)" };
 const ENCRES_STATUT = { normal: "var(--text-3)", surveillance: "var(--warn-ink)", panne_predite: "var(--orange-ink)", en_panne: "var(--danger-ink)" };
+
+// Ce que signale chaque famille de causes, et le geste de maintenance qui y répond
+const CAUSES_METIER = {
+  "Usure et entretien": {
+    sens: "Les compteurs d'usure ont dépassé ce que le modèle associe d'habitude à une panne : l'outil arrive en fin de vie.",
+    action: "Planifier le changement d'outil et une maintenance préventive dans les prochains jours, avant la panne.",
+  },
+  Surchauffe: {
+    sens: "La température de process et l'écart avec l'atelier sortent de la normale : la machine évacue mal sa chaleur.",
+    action: "Contrôler la ventilation, la lubrification et l'encrassement ; alléger la charge si la température reste haute.",
+  },
+  "Surcharge mécanique": {
+    sens: "Le couple et les vibrations montrent un effort anormal sur la mécanique.",
+    action: "Vérifier roulements, alignement et tension des courroies ; réduire la cadence en attendant l'intervention.",
+  },
+  "Environnement / réseau": {
+    sens: "La poussière, l'humidité ou la tension du réseau SBEE fragilisent la machine.",
+    action: "Nettoyer les filtres à poussière et vérifier l'alimentation électrique (régulateur, onduleur).",
+  },
+};
+
+function carteCause(f) {
+  const metier = CAUSES_METIER[f.cause];
+  if (!f.cause || !metier) {
+    return carte(`<h2 class="discret" style="font-size: 13px; font-weight: 500">Cause probable</h2>
+      <p class="grand">Aucune dominante</p>
+      <p class="discret" style="margin: 0">${f.statut === "normal" ? "La machine est sous le seuil d'alerte : aucun signal ne domine." : "Plusieurs familles de signaux se partagent le risque."}</p>`, "", "gap: 8px");
+  }
+  const signaux = f.contributions.filter((c) => c.famille === f.cause);
+  const total = f.contributions.reduce((s, c) => s + c.contribution, 0);
+  const part = total ? Math.round((signaux.reduce((s, c) => s + c.contribution, 0) / total) * 100) : 0;
+  return carte(`<h2 style="font-size: 13px; font-weight: 500">Cause probable</h2>
+    <p class="grand">${esc(f.cause)}</p>
+    <p class="cause-texte">${esc(metier.sens)}${part ? ` Elle porte <b>${part} %</b> des signaux principaux du modèle.` : ""}</p>
+    ${signaux.length ? `<ul class="signaux">${signaux.map((c, i) => `<li style="--i: ${i}">${esc(c.libelle)} <b>${valeurContribution(c)}</b></li>`).join("")}</ul>` : ""}
+    <p class="cause-action"><b>À faire</b>${esc(metier.action)}</p>`, "cause", "gap: 10px");
+}
 
 function valeurContribution(c) {
   if (c.valeur == null) return "—";
@@ -40,7 +77,7 @@ function frise(historique, finIso, statut) {
   const aria = historique.map((e) => `${new Date(e.date).toLocaleDateString("fr-FR")} ${(CAUSES[e.cause]?.libelle ?? e.cause).toLowerCase()}`).join(", ") || "aucune panne";
   return `<div class="frise" role="img" aria-label="Pannes des 24 derniers mois : ${esc(aria)} ; aujourd'hui ${esc(LIBELLES_STATUT[statut].toLowerCase())}" style="height: ${60 + 2 * haut}px">
     <div class="frise-ligne" style="top: ${27 + haut}px"></div>
-    ${evenements.map((e) => `<div class="frise-evt${e.x === 100 ? " fin" : e.x < 6 ? " debut" : ""}" style="left: ${e.x.toFixed(1)}%; top: ${e.rang ? 0 : haut}px">
+    ${evenements.map((e, i) => `<div class="frise-evt${e.x === 100 ? " fin" : e.x < 6 ? " debut" : ""}" style="--i: ${i}; left: ${e.x.toFixed(1)}%; top: ${e.rang ? 0 : haut}px">
       <b style="color: ${e.encre}">${esc(e.date)}</b>
       <i aria-hidden="true" style="background: ${e.couleur}; ${e.rang ? `margin-top: ${6 + haut}px; margin-bottom: ${6 + haut}px` : ""}"></i>
       <span style="color: ${e.encreCause}">${esc(e.cause)}</span>
@@ -49,7 +86,7 @@ function frise(historique, finIso, statut) {
 }
 
 // Plage d'un capteur : vert jusqu'à la limite, rouge au-delà (l'inverse pour un minimum) ; le point est la pire valeur
-function capteur(c) {
+function capteur(c, i) {
   const minimum = c.libelle.includes("min");
   const bas = c.limite * (minimum ? 0.9 : 0.5), haut = c.limite * (minimum ? 1.15 : 1.25);
   const pos = (v) => Math.min(98, Math.max(2, ((v - bas) / (haut - bas)) * 100)).toFixed(1);
@@ -58,7 +95,7 @@ function capteur(c) {
   const piste = minimum
     ? `linear-gradient(90deg, var(--danger-weak) ${l}%, var(--good-weak) ${l}%)`
     : `linear-gradient(90deg, var(--good-weak) ${l}%, var(--danger-weak) ${l}%)`;
-  return `<div class="capteur">
+  return `<div class="capteur" style="--i: ${i}">
     <div class="capteur-nom"><b>${esc(c.libelle)}</b><span>${minimum ? "minimum" : "limite"} ${nombre(c.limite, 1)} ${esc(c.unite)}</span></div>
     <div class="plage" role="img" aria-label="${esc(c.libelle)} ${c.valeur == null ? "sans mesure" : `${nombre(c.valeur, decimales)} ${esc(c.unite)}, ${c.hors_limite ? "hors limite" : "dans la limite"}`} (${nombre(c.limite, 1)})" style="background: ${piste}">
       <span class="limite" aria-hidden="true" style="left: ${l}%"></span>
@@ -72,7 +109,6 @@ function afficher(f) {
   const max = Math.max(...f.contributions.map((c) => c.contribution), 1);
   const familles = [...new Set(f.contributions.map((c) => c.famille).filter(Boolean))];
   const s = sante(f);
-  const principal = f.contributions[0];
   document.getElementById("badges").innerHTML = `<span class="badge statut-${esc(f.statut)}">${esc(LIBELLES_STATUT[f.statut])}</span>
     <span class="badge doux">${esc(f.nom)}</span><span class="badge doux">Gamme ${esc(f.gamme)}</span>`;
   conteneur.innerHTML = `
@@ -85,21 +121,15 @@ function afficher(f) {
           <p class="discret" style="margin: 0">Score sur 100, déduit du risque de panne.</p>
         </div>`, "", "flex-direction: row; align-items: center; gap: 18px")}
       ${carte(`<h2 class="discret" style="font-size: 13px; font-weight: 500">Risque de panne à 5 jours</h2>
-        <span style="font-size: 38px; font-weight: 700; letter-spacing: -0.04em; line-height: 1">${pourcent(f.risque)}</span>
+        <span style="font-size: 38px; font-weight: 700; letter-spacing: -0.04em; line-height: 1" data-compte="${f.risque * 100}" data-dec="1" data-suffixe=" %">${pourcent(f.risque)}</span>
         <div class="risque-barre" aria-hidden="true"><div style="background: var(--danger); width: ${Math.max(f.risque * 100, 1).toFixed(1)}%"></div></div>
         <p class="discret" style="margin: 0">Probabilité que la machine tombe en panne dans les 120 prochaines heures.</p>`, "", "gap: 10px")}
-      ${f.cause
-        ? carte(`<h2 style="font-size: 13px; font-weight: 500">Cause probable</h2>
-          <p class="grand">${esc(f.cause)}</p>
-          ${principal ? `<p style="margin: 0; font-size: 12px; color: var(--cause-ink)">Premier signal : ${esc(principal.libelle.toLowerCase())} à ${valeurContribution(principal)}.</p>` : ""}`, "cause", "gap: 8px")
-        : carte(`<h2 class="discret" style="font-size: 13px; font-weight: 500">Cause probable</h2>
-          <p class="grand">Aucune dominante</p>
-          <p class="discret" style="margin: 0">La machine est sous le seuil d'alerte.</p>`, "", "gap: 8px")}
+      ${carteCause(f)}
     </section>
 
     <div class="grille">
       ${carte(`${titre("Pourquoi ce risque", '<span class="discret">Contributions SHAP</span>')}
-        ${f.contributions.length ? f.contributions.map((c) => `<div class="shap">
+        ${f.contributions.length ? f.contributions.map((c, i) => `<div class="shap" style="--i: ${i}">
           <div class="shap-tete"><span><span style="font-weight: 500">${esc(c.libelle)}</span><span style="color: var(--text-3)"> · ${valeurContribution(c)}</span></span><b style="font-weight: 600">+${nombre(c.contribution, 2)}</b></div>
           <div class="shap-piste" role="img" aria-label="${esc(c.libelle)} : contribution +${nombre(c.contribution, 2)}"><div style="width: ${((c.contribution / max) * 100).toFixed(1)}%; background: ${FAMILLES[c.famille] ?? "var(--gray-c)"}"></div></div>
         </div>`).join("") : '<p class="vide">Aucune variable ne pousse vers la panne.</p>'}
@@ -118,7 +148,7 @@ function afficher(f) {
         <div><h2 id="t-capteurs">Capteurs</h2><span class="discret">Pire valeur des 30 derniers jours face à la limite du parc</span></div>
         <span class="puce ${f.pannes_30j ? "mauvais" : "bon"}">${f.pannes_30j} panne${f.pannes_30j > 1 ? "s" : ""} sur 30 jours</span>
       </div>
-      <div class="capteurs">${f.capteurs_30j.map(capteur).join("")}</div>`)}
+      <div class="capteurs">${f.capteurs_30j.map((c, i) => capteur(c, i)).join("")}</div>`)}
 
     ${carte(`${titre("Risque de panne", `<span class="discret">${JOURS} derniers jours</span>`)}
       <div class="defile" id="courbe">${squelette(220)}</div>
@@ -128,6 +158,7 @@ function afficher(f) {
         <li><span aria-hidden="true" style="width: 9px; height: 9px; transform: rotate(45deg); background: var(--text)"></span>Panne constatée</li>
       </ul>`, "", "gap: 12px")}
   </div>`;
+  compter(conteneur);
   chargerCourbe();
 }
 

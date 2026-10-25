@@ -31,7 +31,18 @@ app = FastAPI(
     version="4.0.0",
 )
 router = APIRouter(prefix="/api/v1")
-app.mount("/static", StaticFiles(directory=RACINE / "web" / "static"), name="static")
+
+
+class FichiersStatiques(StaticFiles):
+    """Le navigateur revalide chaque fichier (ETag) : une mise à jour n'est jamais mêlée à d'anciens scripts en cache."""
+
+    def file_response(self, *args, **kwargs):
+        reponse = super().file_response(*args, **kwargs)
+        reponse.headers["Cache-Control"] = "no-cache"
+        return reponse
+
+
+app.mount("/static", FichiersStatiques(directory=RACINE / "web" / "static"), name="static")
 gabarits = Jinja2Templates(directory=RACINE / "web" / "templates")
 predicteur = Predicteur(utiliser_mlflow=True)
 explicateur = ExplicateurCause(predicteur.modele)
@@ -160,10 +171,11 @@ def recharger():
 app.include_router(router)
 
 
-# Pages du tableau de bord : le HTML ne contient aucune donnée, le JavaScript lit l'API
+# Pages du tableau de bord : le HTML ne contient que les libellés des périodes, le JavaScript lit l'API
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def page_parc(request: Request):
-    return gabarits.TemplateResponse(request, "parc.html", {"titre": "Parc", "page": "parc"})
+    periodes = metier.libelles_periodes(_lire(metier.fin_donnees))
+    return gabarits.TemplateResponse(request, "parc.html", {"titre": "Parc", "page": "parc", "periodes": periodes})
 
 
 @app.get("/machines", include_in_schema=False)

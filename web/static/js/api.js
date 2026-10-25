@@ -27,6 +27,24 @@ export const dateCourte = (iso) => new Date(iso).toLocaleDateString("fr-FR", { d
 export const dateHeure = (iso) =>
   new Date(iso).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(" ", " · ");
 
+export const mouvementReduit = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// Les nombres marqués data-compte défilent jusqu'à leur valeur (depuis data-depart, 0 par défaut)
+export function compter(racine = document) {
+  racine.querySelectorAll("[data-compte]").forEach((el) => {
+    const cible = Number(el.dataset.compte), depart = Number(el.dataset.depart ?? 0), dec = Number(el.dataset.dec ?? 0);
+    const format = (v) => `${nombre(v, dec)}${el.dataset.suffixe ?? ""}`;
+    if (mouvementReduit() || !Number.isFinite(cible)) { el.textContent = format(cible); return; }
+    const debut = performance.now(), duree = 1100;
+    const pas = (t) => {
+      const k = Math.min(1, (t - debut) / duree);
+      el.textContent = format(depart + (cible - depart) * (1 - Math.pow(1 - k, 4)));
+      if (k < 1) requestAnimationFrame(pas);
+    };
+    requestAnimationFrame(pas);
+  });
+}
+
 export const LIBELLES_STATUT = { normal: "Normal", surveillance: "Surveillance", panne_predite: "Panne prédite", en_panne: "En panne" };
 export const CAUSES = {
   TWF: { libelle: "Usure", couleur: "var(--yellow)" },

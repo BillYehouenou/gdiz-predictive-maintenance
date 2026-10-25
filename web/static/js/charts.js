@@ -1,5 +1,5 @@
 // Graphiques en SVG écrit à la main : chaque fonction renvoie une chaîne SVG, couleurs lues dans les tokens CSS.
-import { esc, pourcent } from "./api.js";
+import { esc, mouvementReduit, pourcent } from "./api.js";
 
 const texte = (x, y, contenu, attrs = "") => `<text x="${x}" y="${y}" font-size="10" fill="var(--text-3)" ${attrs}>${esc(contenu)}</text>`;
 const ligne = (x1, y1, x2, y2, attrs) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" ${attrs}></line>`;
@@ -17,9 +17,9 @@ export function matrice(machines, seuil) {
   const alertes = machines.filter((m) => m.statut === "surveillance" || m.statut === "panne_predite");
   const etiquette = (x, y, mot, encre) => texte(x, y, mot, `font-weight="700" letter-spacing="0.06em" fill="${encre}"`);
   let svg = `<svg viewBox="0 0 480 290" role="img" aria-label="Risque × criticité : ${alertes.map((m) => `M${m.numero} en zone ${m.zone}`).join(", ") || "aucune machine en alerte"}">
-    <rect x="47" y="10" width="${x3 - 49}" height="${y4 - 12}" rx="10" fill="var(--zone-planifier)"></rect>
-    <rect x="47" y="${y4 + 2}" width="${x3 - 49}" height="${259 - y4 - 2}" rx="10" fill="var(--zone-surveiller)"></rect>
-    <rect x="${x3 + 2}" y="10" width="${470 - x3 - 2}" height="249" rx="10" fill="var(--zone-agir)"></rect>
+    <rect class="zone" style="--i: 0" x="47" y="10" width="${x3 - 49}" height="${y4 - 12}" rx="10" fill="var(--zone-planifier)"></rect>
+    <rect class="zone" style="--i: 1" x="47" y="${y4 + 2}" width="${x3 - 49}" height="${259 - y4 - 2}" rx="10" fill="var(--zone-surveiller)"></rect>
+    <rect class="zone" style="--i: 2" x="${x3 + 2}" y="10" width="${470 - x3 - 2}" height="249" rx="10" fill="var(--zone-agir)"></rect>
     ${etiquette(57, y4 - 12, "PLANIFIER", "var(--warn-ink)")}
     ${etiquette(57, 249, "SURVEILLER", "var(--text-3)")}
     ${etiquette(x3 + 12, 249, "AGIR", "var(--danger-ink)")}
@@ -30,17 +30,18 @@ export function matrice(machines, seuil) {
   [[0.01, "1 %"], [0.1, "10 %"], [1, "100 %"]].forEach(([r, l], i) => {
     svg += ligne(X(r), 262, X(r), 266, 'stroke="var(--text-3)"') + texte(X(r), 280, l, `text-anchor="${i === 0 ? "start" : i === 2 ? "end" : "middle"}"`);
   });
-  alertes.forEach((m) => {
+  alertes.forEach((m, i) => {
     const x = X(m.risque), y = Y(m.criticite);
     const gauche = x > 420;
     if (m.statut === "panne_predite") {
       const xl = gauche ? x - 52 : x + 12;
-      svg += `<circle cx="${x}" cy="${y}" r="7" fill="var(--orange)" stroke="var(--surface)" stroke-width="2"></circle>
+      svg += `<circle class="onde" cx="${x}" cy="${y}" r="7" fill="var(--orange)"></circle>
+        <g class="pt" style="--i: ${i}"><circle cx="${x}" cy="${y}" r="7" fill="var(--orange)" stroke="var(--surface)" stroke-width="2"></circle>
         <rect x="${xl}" y="${y - 10}" width="40" height="20" rx="10" fill="var(--ink-btn)"></rect>
-        <text x="${xl + 20}" y="${y + 4}" font-size="10.5" font-weight="600" fill="var(--ink-btn-text)" text-anchor="middle">M${esc(m.numero)}</text>`;
+        <text x="${xl + 20}" y="${y + 4}" font-size="10.5" font-weight="600" fill="var(--ink-btn-text)" text-anchor="middle">M${esc(m.numero)}</text></g>`;
     } else {
-      svg += `<circle cx="${x}" cy="${y}" r="5.5" fill="var(--warn)" stroke="var(--surface)" stroke-width="2"></circle>
-        <text x="${gauche ? x - 9 : x + 9}" y="${y + 4}" font-size="10.5" font-weight="600" fill="var(--text)" text-anchor="${gauche ? "end" : "start"}">M${esc(m.numero)}</text>`;
+      svg += `<g class="pt" style="--i: ${i}"><circle cx="${x}" cy="${y}" r="5.5" fill="var(--warn)" stroke="var(--surface)" stroke-width="2"></circle>
+        <text x="${gauche ? x - 9 : x + 9}" y="${y + 4}" font-size="10.5" font-weight="600" fill="var(--text)" text-anchor="${gauche ? "end" : "start"}">M${esc(m.numero)}</text></g>`;
     }
   });
   return svg + "</svg>";
@@ -58,6 +59,9 @@ export function courbeRisque(points) {
     svg += ligne(0, y, 960, y, r === 0.001 ? 'stroke="var(--border-strong)"' : 'stroke="var(--border)" stroke-dasharray="2 4"') + texte(-8, y + 4, l, 'font-size="11" text-anchor="end"');
   });
   points.forEach((p, i) => { if (p.delestage) svg += `<rect x="${(X(i) - 1.5).toFixed(1)}" y="0" width="3" height="200" rx="1.5" fill="var(--gray-c)" opacity="0.6"></rect>`; });
+  // Un rideau découvre la courbe de gauche à droite (absent si les animations sont réduites)
+  const rideau = mouvementReduit() ? "" : '<animate attributeName="width" from="0" to="1004" dur="1.6s" calcMode="spline" keySplines="0.2 0.8 0.2 1" fill="freeze"></animate>';
+  svg += `<clipPath id="revele"><rect x="-44" y="-10" width="1004" height="236">${rideau}</rect></clipPath><g clip-path="url(#revele)">`;
   const segments = [[]];
   points.forEach((p, i) => (p.delestage ? segments.push([]) : segments[segments.length - 1].push([X(i).toFixed(1), Y(p.risque).toFixed(1)])));
   segments.filter((s) => s.length).forEach((s) => {
@@ -66,13 +70,14 @@ export function courbeRisque(points) {
       <polyline points="${trace}" fill="none" stroke="var(--danger)" stroke-width="1.75" stroke-linejoin="round"></polyline>`;
   });
   points.forEach((p, i) => { if (p.panne) svg += `<path d="M${X(i)} ${Y(p.risque) - 7} l7 7 -7 7 -7 -7 Z" fill="var(--text)" stroke="var(--surface)" stroke-width="1.5"></path>`; });
+  svg += "</g>";
   for (let k = 0; k <= 4; k++) {
     const i = Math.round((k * n) / 4);
     const d = new Date(points[Math.min(i, points.length - 1)].timestamp);
     svg += texte(X(i), 222, d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" }), `font-size="11" text-anchor="${k === 0 ? "start" : k === 4 ? "end" : "middle"}"`);
   }
   const fin = points[points.length - 1];
-  if (fin) svg += `<circle cx="960" cy="${Y(fin.risque).toFixed(1)}" r="5" fill="var(--danger)" stroke="var(--surface)" stroke-width="2"></circle>`;
+  if (fin) svg += `<circle class="fin" cx="960" cy="${Y(fin.risque).toFixed(1)}" r="5" fill="var(--danger)" stroke="var(--surface)" stroke-width="2"></circle>`;
   return svg + "</svg>";
 }
 
@@ -81,7 +86,7 @@ export function anneau(sante, couleur, fond) {
   const tour = 2 * Math.PI * 50;
   return `<svg class="anneau" width="104" height="104" viewBox="0 0 120 120" role="img" aria-label="Santé ${sante} sur 100">
     <circle cx="60" cy="60" r="50" fill="none" stroke="${fond}" stroke-width="14"></circle>
-    <circle cx="60" cy="60" r="50" fill="none" stroke="${couleur}" stroke-width="14" stroke-linecap="round" stroke-dasharray="${((Math.max(sante, 1) / 100) * tour).toFixed(1)} ${tour.toFixed(1)}" transform="rotate(-90 60 60)"></circle>
-    <text x="60" y="68" font-size="26" font-weight="700" fill="var(--text)" text-anchor="middle">${sante}</text>
+    <circle class="arc" cx="60" cy="60" r="50" fill="none" stroke="${couleur}" stroke-width="14" stroke-linecap="round" stroke-dasharray="${((Math.max(sante, 1) / 100) * tour).toFixed(1)} ${tour.toFixed(1)}" transform="rotate(-90 60 60)"></circle>
+    <text x="60" y="68" font-size="26" font-weight="700" fill="var(--text)" text-anchor="middle" data-compte="${sante}">${sante}</text>
   </svg>`;
 }

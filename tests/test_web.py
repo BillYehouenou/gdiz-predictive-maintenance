@@ -24,4 +24,6 @@ def test_machines_redirige_vers_la_plus_a_risque():
 
 def test_fichiers_statiques():
     for fichier in ["css/tokens.css", "css/app.css", "js/api.js", "js/charts.js", "js/nav.js"]:
-        assert client.get(f"/static/{fichier}").status_code == 200
+        r = client.get(f"/static/{fichier}")
+        assert r.status_code == 200
+        assert r.headers["cache-control"] == "no-cache"

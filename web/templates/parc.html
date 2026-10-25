@@ -7,11 +7,7 @@
   </div>
   <div class="actions">
     <div class="pilules" role="group" aria-label="Période des indicateurs" id="periodes">
-      <button type="button" data-periode="30j">30 j</button>
-      <button type="button" data-periode="t4">T4</button>
-      <button type="button" data-periode="s2">S2</button>
-      <button type="button" data-periode="annee">Année</button>
-      <button type="button" data-periode="tout">2024-2025</button>
+      {% for code, libelle in periodes.items() %}<button type="button" data-periode="{{ code }}">{{ libelle }}</button>{% endfor %}
     </div>
     <button type="button" class="btn" data-export="parc">
       <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg>

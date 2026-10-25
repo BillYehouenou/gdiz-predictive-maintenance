@@ -177,6 +177,13 @@ select.champ { min-height: 38px; min-width: 96px; padding: 0 16px; border: 0; bo
 .risque-barre div { height: 100%; border-radius: 3px; background: var(--orange); }
 .carte.cause { background: var(--cause-fond); }
 .carte.cause h2 { color: var(--cause-ink); }
+.cause-texte { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--text-2); }
+.cause-texte b { color: var(--text); font-weight: 600; }
+.signaux { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.signaux li { padding: 4px 10px; border-radius: 999px; background: color-mix(in srgb, var(--surface) 70%, transparent); font-size: 12px; color: var(--text-2); }
+.signaux b { font-weight: 600; color: var(--text); }
+.cause-action { margin: 2px 0 0; padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--cause-ink) 18%, transparent); font-size: 12.5px; line-height: 1.5; color: var(--text); }
+.cause-action b { display: block; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--cause-ink); }
 .grand { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
 .shap { display: flex; flex-direction: column; gap: 6px; }
 .shap-tete { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
@@ -211,7 +218,52 @@ select.champ { min-height: 38px; min-width: 96px; padding: 0 16px; border: 0; bo
 @keyframes reflet { to { background-position: -200% 0; } }
 .vide { margin: 0; padding: 20px; border: 1.5px dashed var(--border-strong); border-radius: 14px; text-align: center; font-size: 13px; color: var(--text-3); }
 .erreur { padding: 16px; border-radius: 14px; background: var(--danger-weak); color: var(--danger-ink); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }
-@media (prefers-reduced-motion: reduce) { *, *::before, *::backdrop { animation: none !important; transition: none !important; } .case:hover { transform: none; } }
+
+/* Animations à la Apple : entrée des cartes, ressort des points, croissance des barres, tracé des courbes */
+:root { --ressort: cubic-bezier(0.34, 1.56, 0.64, 1); --doux: cubic-bezier(0.2, 0.8, 0.2, 1); }
+@keyframes monter { from { opacity: 0; transform: translateY(16px) scale(0.985); } }
+@keyframes eclore { from { opacity: 0; transform: scale(0.5); } }
+@keyframes pousser { from { transform: scaleY(0); } }
+@keyframes etirer { from { transform: scaleX(0); } }
+@keyframes apparaitre { from { opacity: 0; } }
+@keyframes remplir { from { stroke-dasharray: 0 400; } }
+@keyframes pouls { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--orange) 60%, transparent); } to { box-shadow: 0 0 0 9px transparent; } }
+@keyframes onde { from { transform: scale(1); opacity: 0.6; } to { transform: scale(2.8); opacity: 0; } }
+@keyframes menu { from { opacity: 0; transform: scale(0.92) translateY(-6px); } }
+
+.page > * { animation: monter 0.7s var(--doux) backwards; }
+.page > :nth-child(2) { animation-delay: 70ms; }
+.page > :nth-child(3) { animation-delay: 140ms; }
+.page > :nth-child(4) { animation-delay: 210ms; }
+.page > :nth-child(5) { animation-delay: 280ms; }
+.page > :nth-child(n + 6) { animation-delay: 350ms; }
+.kpi { animation: monter 0.6s var(--doux) backwards; animation-delay: calc(var(--i, 0) * 70ms); transition: transform 0.3s var(--doux), box-shadow 0.3s var(--doux), background-color 0.4s; }
+.kpi:hover { transform: translateY(-3px); box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04), 0 12px 28px rgba(0, 0, 0, 0.08); }
+.case { animation: eclore 0.5s var(--ressort) backwards; animation-delay: calc(var(--i, 0) * 9ms + 150ms); }
+.case.statut-panne_predite::before { content: ""; position: absolute; inset: 0; border-radius: inherit; animation: pouls 2s ease-out infinite; }
+.etats li { animation: apparaitre 0.5s ease backwards; animation-delay: calc(var(--i, 0) * 60ms + 500ms); }
+.groupe .barre div, .cout .paire div { transform-origin: bottom; animation: pousser 0.9s var(--doux) backwards; animation-delay: calc(var(--i, 0) * 40ms + 100ms); }
+.groupe .barre span, .cout .barre > span { animation: apparaitre 0.4s ease backwards; animation-delay: calc(var(--i, 0) * 40ms + 600ms); }
+.barre:hover::before { animation: apparaitre 0.15s ease; }
+.risque-barre div, .shap-piste div { transform-origin: left; animation: etirer 1s var(--doux) backwards; animation-delay: calc(var(--i, 0) * 80ms + 250ms); }
+.plage .valeur, .frise-evt i { animation: eclore 0.55s var(--ressort) backwards; animation-delay: calc(var(--i, 0) * 70ms + 350ms); }
+.frise-evt b, .frise-evt span { animation: apparaitre 0.5s ease backwards; animation-delay: calc(var(--i, 0) * 70ms + 450ms); }
+.signaux li { animation: eclore 0.45s var(--ressort) backwards; animation-delay: calc(var(--i, 0) * 70ms + 400ms); }
+svg .pt { transform-box: fill-box; transform-origin: center; animation: eclore 0.6s var(--ressort) backwards; animation-delay: calc(var(--i, 0) * 90ms + 350ms); }
+svg .onde { transform-box: fill-box; transform-origin: center; animation: onde 2.2s ease-out infinite; }
+svg .zone { animation: apparaitre 0.6s ease backwards; animation-delay: calc(var(--i, 0) * 80ms + 100ms); }
+svg .fin { transform-box: fill-box; transform-origin: center; animation: eclore 0.5s var(--ressort) 1.5s backwards; }
+.anneau .arc { animation: remplir 1.3s var(--doux) 0.2s backwards; }
+.menu { animation: menu 0.22s var(--ressort); transform-origin: top right; }
+.btn, .pilules a, .pilules button, .plus, .fermer, select.champ, .compte > button { transition: transform 0.15s var(--doux), background-color 0.25s, color 0.25s; }
+.btn:active, .pilules button:active, .plus:active, .fermer:active, .compte > button:active { transform: scale(0.96); }
+body, .carte, .entete-app { transition: background-color 0.4s ease, color 0.4s ease; }
+/* Sélecteur de période : la pastille bleue glisse d'un choix à l'autre */
+.pilules.glisse { position: relative; }
+.curseur { position: absolute; top: 4px; bottom: 4px; left: 0; width: 0; border-radius: 999px; background: var(--selection); box-shadow: 0 2px 8px color-mix(in srgb, var(--selection) 35%, transparent); transition: transform 0.45s var(--ressort), width 0.45s var(--ressort); }
+.curseur.immobile { transition: none; }
+.pilules.glisse button { position: relative; z-index: 1; }
+.pilules.glisse button[aria-pressed="true"] { background: transparent; }
 
 /* Rapport PDF : uniquement le contenu, en clair, sans couper les cartes */
 @media print {
@@ -224,3 +276,6 @@ select.champ { min-height: 38px; min-width: 96px; padding: 0 16px; border: 0; bo
   .defile { overflow: visible; }
   .groupes, .cout, .cout-mois { min-width: 0; }
 }
+
+/* Animations coupées si le système le demande */
+@media (prefers-reduced-motion: reduce) { *, *::before, *::backdrop { animation: none !important; transition: none !important; } .case:hover, .kpi:hover { transform: none; } }

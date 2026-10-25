@@ -11,7 +11,7 @@ def conn():
         yield c
 
 
-@pytest.mark.parametrize("code", list(metier.PERIODES))
+@pytest.mark.parametrize("code", metier.PERIODES)
 def test_tableau_parc_pour_chaque_periode(conn, code):
     t = metier.tableau_parc(conn, code)
     ind = t["indicateurs"]
@@ -25,6 +25,12 @@ def test_bornes_periode_precedente_de_meme_nature():
     b = metier.bornes_periode("t4", pd.Timestamp("2025-12-30 23:30"))
     assert (b["debut"], b["fin"]) == (pd.Timestamp("2025-10-01"), pd.Timestamp("2025-12-31"))
     assert b["precedente"]["libelle"] == "T3 2025"
+
+
+def test_libelles_periodes_dates_par_les_donnees():
+    libelles = metier.libelles_periodes(pd.Timestamp("2025-12-30 23:30"))
+    assert list(libelles.values()) == ["30 j", "T4 2025", "S2 2025", "2025", "2024-2025"]
+    assert list(libelles) == list(metier.PERIODES)
 
 
 def test_evenements_duree_issue_de_l_etat(conn):

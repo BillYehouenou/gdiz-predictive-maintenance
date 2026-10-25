@@ -13,7 +13,7 @@ from src.config import CHEMIN_DB, PAS, TABLE, TABLE_PREDICTIONS
 from src.donnees import DATE_TEST
 from src.usine import cout_panne, criticite, nom_machine, sante, statut, zone
 
-PERIODES = {"30j": "30 j", "t4": "T4", "s2": "S2", "annee": "Année", "tout": "2024-2025"}
+PERIODES = ("30j", "t4", "s2", "annee", "tout")
 CAPTEURS_FICHE = {
     "vibration": ("Vibration max", "mm/s", "max"),
     "temperature_process": ("Temp. process max", "°C", "max"),
@@ -37,6 +37,12 @@ def fin_donnees(conn: duckdb.DuckDBPyConnection) -> pd.Timestamp:
     return pd.Timestamp(_ligne(conn, f"SELECT MAX(timestamp) FROM {TABLE}")[0])
 
 
+def libelles_periodes(fin: pd.Timestamp) -> dict[str, str]:
+    """Libellé court de chaque période pour le sélecteur, daté par l'année des dernières données."""
+    a = fin.year
+    return {"30j": "30 j", "t4": f"T4 {a}", "s2": f"S2 {a}", "annee": str(a), "tout": f"{a - 1}-{a}"}
+
+
 def bornes_periode(code: str, fin: pd.Timestamp) -> dict:
     """Début et fin (exclue) de la période, et de la période précédente de même nature."""
     fin_excl = fin.normalize() + timedelta(days=1)
@@ -56,9 +62,9 @@ def bornes_periode(code: str, fin: pd.Timestamp) -> dict:
     elif code == "annee":
         debut = pd.Timestamp(annee, 1, 1)
         prec = (pd.Timestamp(annee - 1, 1, 1), debut)
-        libelles = (f"Année {annee}", str(annee - 1))
+        libelles = (str(annee), str(annee - 1))
     elif code == "tout":
-        return {"debut": pd.Timestamp("2000-01-01"), "fin": fin_excl, "libelle": "2024-2025", "precedente": None}
+        return {"debut": pd.Timestamp("2000-01-01"), "fin": fin_excl, "libelle": f"{annee - 1}-{annee}", "precedente": None}
     else:
         raise ValueError(f"Période inconnue : {code}")
     return {
