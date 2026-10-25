@@ -4,7 +4,7 @@ import { anneau, courbeRisque } from "./charts.js";
 const conteneur = document.getElementById("fiche");
 const idMachine = conteneur.dataset.machine;
 const choix = document.getElementById("choix-machine");
-let jours = 60;
+const JOURS = 60;
 
 const carte = (contenu, classe = "", style = "") => `<section class="carte ${classe}" style="${style}">${contenu}</section>`;
 const titre = (texte, droite = "") => `<div class="carte-tete"><h2>${esc(texte)}</h2>${droite}</div>`;
@@ -86,7 +86,7 @@ function afficher(f) {
         </div>`, "", "flex-direction: row; align-items: center; gap: 18px")}
       ${carte(`<h2 class="discret" style="font-size: 13px; font-weight: 500">Risque de panne à 5 jours</h2>
         <span style="font-size: 38px; font-weight: 700; letter-spacing: -0.04em; line-height: 1">${pourcent(f.risque)}</span>
-        <div class="risque-barre" aria-hidden="true"><div style="width: ${Math.max(f.risque * 100, 1).toFixed(1)}%"></div></div>
+        <div class="risque-barre" aria-hidden="true"><div style="background: var(--danger); width: ${Math.max(f.risque * 100, 1).toFixed(1)}%"></div></div>
         <p class="discret" style="margin: 0">Probabilité que la machine tombe en panne dans les 120 prochaines heures.</p>`, "", "gap: 10px")}
       ${f.cause
         ? carte(`<h2 style="font-size: 13px; font-weight: 500">Cause probable</h2>
@@ -120,24 +120,22 @@ function afficher(f) {
       </div>
       <div class="capteurs">${f.capteurs_30j.map(capteur).join("")}</div>`)}
 
-    ${carte(`${titre("Risque de panne", `<div class="fenetre" role="group" aria-label="Fenêtre"><button type="button" data-jours="30" aria-pressed="${jours === 30}">30 derniers jours</button><button type="button" data-jours="60" aria-pressed="${jours === 60}">60 derniers jours</button></div>`)}
+    ${carte(`${titre("Risque de panne", `<span class="discret">${JOURS} derniers jours</span>`)}
       <div class="defile" id="courbe">${squelette(220)}</div>
       <ul class="legende trait">
-        <li><span aria-hidden="true" style="width: 14px; height: 2px; border-radius: 1px; background: var(--orange)"></span>Risque au pas de 2 h</li>
+        <li><span aria-hidden="true" style="width: 14px; height: 2px; border-radius: 1px; background: var(--danger)"></span>Risque au pas de 2 h</li>
         <li><span aria-hidden="true" style="width: 4px; height: 12px; border-radius: 2px; background: var(--gray-c)"></span>Délestage SBEE (pas de mesure)</li>
-        <li><span aria-hidden="true" style="width: 9px; height: 9px; transform: rotate(45deg); background: var(--danger)"></span>Panne constatée</li>
+        <li><span aria-hidden="true" style="width: 9px; height: 9px; transform: rotate(45deg); background: var(--text)"></span>Panne constatée</li>
       </ul>`, "", "gap: 12px")}
   </div>`;
-  conteneur.querySelectorAll("[data-jours]").forEach((b) => b.addEventListener("click", () => { jours = Number(b.dataset.jours); chargerCourbe(); }));
   chargerCourbe();
 }
 
 async function chargerCourbe() {
   const zone = document.getElementById("courbe");
-  conteneur.querySelectorAll("[data-jours]").forEach((b) => b.setAttribute("aria-pressed", String(Number(b.dataset.jours) === jours)));
   zone.innerHTML = squelette(220);
   try {
-    const points = await lire(`/machines/${idMachine}/risque?jours=${jours}`);
+    const points = await lire(`/machines/${idMachine}/risque?jours=${JOURS}`);
     zone.innerHTML = points.length ? courbeRisque(points) : '<p class="vide">Pas de relevé sur la période.</p>';
   } catch (e) {
     erreur(zone, e, chargerCourbe);

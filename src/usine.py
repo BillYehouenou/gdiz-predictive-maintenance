@@ -66,9 +66,9 @@ def statut(niveau: str, etat: str) -> str:
 
 
 def zone(risque: float, seuil: float, crit: float) -> str | None:
-    """Agir : risque ≥ 3 × seuil, ou criticité ≥ 7 au-dessus du seuil. Planifier : criticité ≥ 4. Sinon surveiller."""
+    """Au-dessus du seuil. Agir : risque ≥ 3 × seuil. Sinon planifier si criticité ≥ 4, surveiller en dessous."""
     if risque < seuil:
         return None
-    if risque >= 3 * seuil or crit >= 7:
+    if risque >= 3 * seuil:
         return "agir"
     return "planifier" if crit >= 4 else "surveiller"

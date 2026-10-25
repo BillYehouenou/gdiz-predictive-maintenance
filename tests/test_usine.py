@@ -29,7 +29,14 @@ def test_sante_et_statut():
 
 @pytest.mark.parametrize(
     "risque,crit,attendu",
-    [(0.01, 10, None), (0.03, 1.7, "surveiller"), (0.03, 5, "planifier"), (0.03, 10, "agir"), (0.3, 1.7, "agir")],
+    [
+        (0.01, 10, None),
+        (0.03, 1.7, "surveiller"),
+        (0.03, 5, "planifier"),
+        (0.03, 10, "planifier"),
+        (0.3, 1.7, "agir"),
+        (0.3, 10, "agir"),
+    ],
 )
 def test_zone(risque, crit, attendu):
     assert zone(risque, 0.029, crit) == attendu

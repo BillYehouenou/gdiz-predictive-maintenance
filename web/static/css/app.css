@@ -104,11 +104,6 @@ h1, h2, h3, h4 { margin: 0; }
 @keyframes grandir { from { opacity: 0; transform: scale(0.9) translateY(16px); } to { opacity: 1; transform: none; } }
 @keyframes fondu { from { opacity: 0; } to { opacity: 1; } }
 
-/* Fenêtre de la courbe : boutons texte, l'actif sur fond gris */
-.fenetre { display: flex; gap: 4px; }
-.fenetre button { min-height: 30px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: var(--text-3); font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; }
-.fenetre button[aria-pressed="true"] { background: var(--case); color: var(--text); font-weight: 600; }
-
 /* Statuts des machines : couleur et symbole, jamais la couleur seule */
 .plan { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 10px; padding: 4px 0; }
 .case {
@@ -222,7 +217,7 @@ select.champ { min-height: 38px; min-width: 96px; padding: 0 16px; border: 0; bo
 @media print {
   :root { color-scheme: light; }
   body { background: #ffffff; font-size: 12px; }
-  .onglets, .compte, .actions, .plus, .fenetre, .pied { display: none !important; }
+  .onglets, .compte, .actions, .plus, .pied { display: none !important; }
   .entete-app { position: static; background: none; backdrop-filter: none; }
   .page { padding: 0; max-width: none; }
   .carte, .kpi { box-shadow: none; border: 1px solid #e8e8ed; break-inside: avoid; }
