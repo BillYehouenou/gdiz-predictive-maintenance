@@ -183,14 +183,15 @@ select.champ { min-height: 38px; min-width: 96px; padding: 0 16px; border: 0; bo
 .shap-tete { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
 .shap-piste { height: 8px; border-radius: 4px; background: var(--track); }
 .shap-piste div { height: 100%; border-radius: 4px; }
-.frise { position: relative; margin: 0 4px; }
+.frise { position: relative; margin: 0 6px; min-height: 46px; }
 .frise-ligne { position: absolute; left: 0; right: 0; height: 2px; border-radius: 1px; background: var(--border); }
-.frise-evt { position: absolute; display: flex; flex-direction: column; align-items: center; transform: translateX(-50%); }
-.frise-evt.debut { align-items: flex-start; transform: translateX(-6px); }
-.frise-evt.fin { align-items: flex-end; transform: translateX(calc(-100% + 6px)); }
-.frise-evt b { height: 16px; font-size: 11px; font-weight: 600; white-space: nowrap; }
-.frise-evt i { width: 12px; height: 12px; margin: 6px 0; border-radius: 50%; border: 2.5px solid var(--surface); box-shadow: 0 0 0 1px var(--border); }
-.frise-evt span { font-size: 11px; white-space: nowrap; color: var(--text-3); }
+.frise-evt { position: absolute; display: flex; flex-direction: column; align-items: center; transform: translateX(-50%); line-height: 15px; }
+.frise-evt.debut { align-items: flex-start; transform: translateX(-0.5px); }
+.frise-evt.fin { align-items: flex-end; transform: translateX(calc(-100% + 0.5px)); }
+.frise-evt b, .frise-evt span { padding: 0 3px; background: var(--surface); font-size: 11px; white-space: nowrap; }
+.frise-evt b { font-weight: 600; }
+.frise-evt .tige { width: 1px; background: var(--border-strong); }
+.frise-point { position: absolute; z-index: 50; width: 12px; height: 12px; margin: -6px 0 0 -6px; box-sizing: border-box; border-radius: 50%; border: 2.5px solid var(--surface); box-shadow: 0 0 0 1px var(--border); }
 /* Témoins de légende : mêmes traits et mêmes couleurs que la courbe de risque */
 .temoin-courbe { width: 16px; height: 10px; border-top: 1.75px solid var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
 .temoin-delestage { width: 3px; height: 12px; border-radius: 1.5px; background: var(--gray-c); opacity: 0.6; }
@@ -245,7 +246,7 @@ select.champ { min-height: 38px; min-width: 96px; padding: 0 16px; border: 0; bo
 .groupe .barre span, .cout .barre > span { animation: apparaitre 0.4s ease backwards; animation-delay: calc(var(--i, 0) * 40ms + 600ms); }
 .barre:hover::before { animation: apparaitre 0.15s ease; }
 .risque-barre div, .shap-piste div { transform-origin: left; animation: etirer 1s var(--doux) backwards; animation-delay: calc(var(--i, 0) * 80ms + 250ms); }
-.plage .valeur, .frise-evt i { animation: eclore 0.55s var(--ressort) backwards; animation-delay: calc(var(--i, 0) * 70ms + 350ms); }
+.plage .valeur, .frise-point { animation: eclore 0.55s var(--ressort) backwards; animation-delay: calc(var(--i, 0) * 70ms + 350ms); }
 .frise-evt b, .frise-evt span { animation: apparaitre 0.5s ease backwards; animation-delay: calc(var(--i, 0) * 70ms + 450ms); }
 svg .pt { transform-box: fill-box; transform-origin: center; animation: eclore 0.6s var(--ressort) backwards; animation-delay: calc(var(--i, 0) * 90ms + 350ms); }
 svg .onde { transform-box: fill-box; transform-origin: center; animation: onde 2.2s ease-out infinite; }

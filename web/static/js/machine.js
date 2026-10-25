@@ -23,29 +23,64 @@ function sante(f) {
   return { libelle: "Bonne", couleur: "var(--good)", fond: "var(--good-weak)", encre: "var(--good-ink)" };
 }
 
-// Frise des 24 derniers mois : dates au-dessus de la ligne, causes en dessous ; deux rangées quand les pannes sont proches
+// Frise des 24 derniers mois : un point par panne sur la ligne, l'étiquette (date, cause) au-dessus
 function frise(historique, finIso, statut) {
   const fin = new Date(finIso).getTime(), debut = fin - 730 * 864e5;
   const position = (iso) => Math.min(100, Math.max(0, ((new Date(iso).getTime() - debut) / (fin - debut)) * 100));
-  const derniers = [-Infinity, -Infinity];
-  const evenements = historique.map((e) => {
-    const x = position(e.date);
-    const rang = x - derniers[0] >= 12 || x - derniers[0] >= x - derniers[1] ? 0 : 1;
-    derniers[rang] = x;
-    return { x, rang, date: new Date(e.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" }), cause: (CAUSES[e.cause]?.libelle ?? e.cause).toLowerCase(), couleur: CAUSES[e.cause]?.couleur ?? "var(--gray-c)", encre: "var(--text)", encreCause: "var(--text-3)" };
-  });
-  const deuxRangs = evenements.some((e) => e.rang === 1);
-  evenements.push({ x: 100, rang: 0, date: "Aujourd'hui", cause: LIBELLES_STATUT[statut].toLowerCase(), couleur: COULEURS_STATUT[statut], encre: ENCRES_STATUT[statut], encreCause: ENCRES_STATUT[statut] });
-  const haut = deuxRangs ? 18 : 0;
+  const evenements = historique.map((e) => ({
+    x: position(e.date),
+    date: new Date(e.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" }),
+    cause: (CAUSES[e.cause]?.libelle ?? e.cause).toLowerCase(),
+    couleur: CAUSES[e.cause]?.couleur ?? "var(--gray-c)",
+    encre: "var(--text)",
+    encreCause: "var(--text-3)",
+  }));
+  evenements.push({ x: 100, date: "Aujourd'hui", cause: LIBELLES_STATUT[statut].toLowerCase(), couleur: COULEURS_STATUT[statut], encre: ENCRES_STATUT[statut], encreCause: ENCRES_STATUT[statut] });
   const aria = historique.map((e) => `${new Date(e.date).toLocaleDateString("fr-FR")} ${(CAUSES[e.cause]?.libelle ?? e.cause).toLowerCase()}`).join(", ") || "aucune panne";
-  return `<div class="frise" role="img" aria-label="Pannes des 24 derniers mois : ${esc(aria)} ; aujourd'hui ${esc(LIBELLES_STATUT[statut].toLowerCase())}" style="height: ${60 + 2 * haut}px">
-    <div class="frise-ligne" style="top: ${27 + haut}px"></div>
-    ${evenements.map((e, i) => `<div class="frise-evt${e.x === 100 ? " fin" : e.x < 6 ? " debut" : ""}" style="--i: ${i}; left: ${e.x.toFixed(1)}%; top: ${e.rang ? 0 : haut}px">
-      <b style="color: ${e.encre}">${esc(e.date)}</b>
-      <i aria-hidden="true" style="background: ${e.couleur}; ${e.rang ? `margin-top: ${6 + haut}px; margin-bottom: ${6 + haut}px` : ""}"></i>
-      <span style="color: ${e.encreCause}">${esc(e.cause)}</span>
-    </div>`).join("")}
+  return `<div class="frise" role="img" aria-label="Pannes des 24 derniers mois : ${esc(aria)} ; aujourd'hui ${esc(LIBELLES_STATUT[statut].toLowerCase())}">
+    <div class="frise-ligne"></div>
+    ${evenements.map((e, i) => `<div class="frise-evt${e.x > 94 ? " fin" : e.x < 6 ? " debut" : ""}" style="--i: ${i}; left: ${e.x.toFixed(1)}%">
+      <b style="color: ${e.encre}">${esc(e.date)}</b><span style="color: ${e.encreCause}">${esc(e.cause)}</span><i class="tige" aria-hidden="true"></i>
+    </div>
+    <i class="frise-point" aria-hidden="true" style="--i: ${i}; left: ${e.x.toFixed(1)}%; background: ${e.couleur}"></i>`).join("")}
   </div>`;
+}
+
+// Chaque étiquette prend la rangée la plus basse où elle ne touche aucune autre étiquette et où les traits de
+// liaison ne coupent pas d'étiquette ; la ligne est sous la rangée 0
+const RANGEE = 36;
+function rangerFrise(frise) {
+  const etiquettes = [...frise.querySelectorAll(".frise-evt")];
+  const largeur = frise.getBoundingClientRect().width, gauche = frise.getBoundingClientRect().left;
+  const poses = []; // { rang, g, d, x } : étiquette posée (bords en px) et abscisse de son trait
+  const rangs = etiquettes.map((el) => {
+    const boite = el.getBoundingClientRect();
+    const g = boite.left - gauche - 6, d = boite.right - gauche + 6, x = (parseFloat(el.style.left) / 100) * largeur;
+    // Un chevauchement de textes est exclu ; un trait qui coupe une étiquette est seulement pénalisé
+    // (inévitable quand deux pannes sont presque le même jour) : on garde la rangée la moins pénalisée
+    const cout = (rang) =>
+      poses.reduce(
+        (total, p) =>
+          total +
+          (p.rang === rang && g < p.d && d > p.g ? 1000 : 0) + // chevauche une étiquette de la même rangée
+          (p.rang > rang && p.x > g && p.x < d ? 1 : 0) + // coupée par le trait d'une étiquette plus haute
+          (p.rang < rang && x > p.g && x < p.d ? 1 : 0), // son trait couperait une étiquette plus basse
+        rang * 0.01, // à égalité, la rangée la plus basse
+      );
+    const rang = [...Array(poses.length + 1).keys()].reduce((meilleur, r) => (cout(r) < cout(meilleur) ? r : meilleur), 0);
+    poses.push({ rang, g, d, x });
+    return rang;
+  });
+  const rangees = Math.max(...rangs) + 1;
+  const ligne = rangees * RANGEE;
+  frise.style.height = `${ligne + 10}px`;
+  frise.querySelector(".frise-ligne").style.top = `${ligne}px`;
+  frise.querySelectorAll(".frise-point").forEach((p) => { p.style.top = `${ligne + 1}px`; });
+  etiquettes.forEach((el, i) => {
+    el.style.top = `${(rangees - 1 - rangs[i]) * RANGEE}px`;
+    el.style.zIndex = rangees - rangs[i]; // les étiquettes basses passent devant les traits des étiquettes hautes
+    el.querySelector(".tige").style.height = `${rangs[i] * RANGEE + 4}px`;
+  });
 }
 
 // Plage d'un capteur : vert jusqu'à la limite, rouge au-delà (l'inverse pour un minimum) ; le point est la pire valeur
@@ -72,7 +107,7 @@ function afficher(f) {
   const max = Math.max(...f.contributions.map((c) => c.contribution), 1);
   const familles = [...new Set(f.contributions.map((c) => c.famille).filter(Boolean))];
   const s = sante(f);
-  const principal = f.contributions[0];
+  const principal = f.contributions.find((c) => c.famille === f.cause); // signal de la famille retenue, pas la gamme
   document.getElementById("badges").innerHTML = `<span class="badge statut-${esc(f.statut)}">${esc(LIBELLES_STATUT[f.statut])}</span>
     <span class="badge doux">${esc(f.nom)}</span><span class="badge doux">Gamme ${esc(f.gamme)}</span>`;
   conteneur.innerHTML = `
@@ -128,6 +163,9 @@ function afficher(f) {
         <li><span class="temoin-panne" aria-hidden="true">✕</span>Panne constatée</li>
       </ul>`, "", "gap: 12px")}
   </div>`;
+  const laFrise = conteneur.querySelector(".frise");
+  rangerFrise(laFrise);
+  new ResizeObserver(() => rangerFrise(laFrise)).observe(laFrise);
   compter(conteneur);
   chargerCourbe();
 }
