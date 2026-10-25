@@ -10,6 +10,7 @@ CHEMIN_DB = RACINE / "data" / "raw" / "gdiz_maintenance.db"
 DOSSIER_MODELES = RACINE / "models"
 TABLE = "factory_telemetry"
 TABLE_PREDICTIONS = "predictions"
+JOURS_PREDICTIONS = 60  # seuls les 60 derniers jours sont scorés : dernier risque et courbe de la fiche machine
 PAS = pd.Timedelta("30min")
 
 # Mesures brutes vues par le modèle : capteurs + compteurs GMAO (les features glissantes sont dans src/features.py)

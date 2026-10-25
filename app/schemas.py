@@ -130,6 +130,7 @@ class Capteur(BaseModel):
     unite: str
     valeur: Optional[float]
     limite: float = Field(description="99e centile du parc (1er pour la tension) sur la période d'entraînement")
+    sens: Literal["max", "min"] = Field(description="max : alerte au-dessus de la limite ; min : en dessous")
     hors_limite: bool
 
 

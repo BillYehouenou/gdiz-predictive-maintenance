@@ -1,7 +1,6 @@
 """
-Score tout le parc avec le @champion et écrit dans DuckDB :
-- `predictions` : risque, niveau et cause probable, lus par l'API.
-Usage : python -m src.score (après chaque entraînement)
+Score les 60 derniers jours du parc avec le @champion et écrit dans DuckDB la table `predictions`
+(risque, niveau et cause probable), lue par l'API. Usage : python -m src.score (après chaque entraînement)
 """
 
 import logging
@@ -10,7 +9,7 @@ import duckdb
 import numpy as np
 import pandas as pd
 
-from src.config import CHEMIN_DB, TABLE_PREDICTIONS
+from src.config import CHEMIN_DB, JOURS_PREDICTIONS, TABLE_PREDICTIONS
 from src.donnees import charger
 from src.explain import ExplicateurCause
 from src.predicteur import Predicteur
@@ -39,7 +38,8 @@ def scorer(df: pd.DataFrame, predicteur: Predicteur, explicateur: ExplicateurCau
 
 def main():
     predicteur = Predicteur()
-    df = charger()
+    df = charger()  # features calculées sur tout l'historique, puis seule la fenêtre affichée est scorée
+    df = df[df["timestamp"] > df["timestamp"].max() - pd.Timedelta(days=JOURS_PREDICTIONS)].reset_index(drop=True)
     predictions = scorer(df, predicteur, ExplicateurCause(predicteur.modele))
     with duckdb.connect(str(CHEMIN_DB)) as conn:
         conn.register("df_predictions", predictions)

@@ -124,3 +124,12 @@ def test_risque_machine():
     assert r.status_code == 200
     assert len(r.json()) == 7 * 12  # pas de 2 h
     assert client.get("/api/v1/machines/INCONNUE/risque").status_code == 404
+
+
+def test_parc_refuse_une_periode_inconnue():
+    assert client.get("/api/v1/parc?periode=hier").status_code == 422
+
+
+def test_capteurs_donnent_leur_sens():
+    capteurs = client.get("/api/v1/machines/GDIZ_TEX_M_20").json()["capteurs_30j"]
+    assert {c["capteur"]: c["sens"] for c in capteurs}["niveau_tension"] == "min"

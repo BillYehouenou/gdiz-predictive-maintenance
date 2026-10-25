@@ -50,7 +50,7 @@ function frise(historique, finIso, statut) {
 
 // Plage d'un capteur : vert jusqu'à la limite, rouge au-delà (l'inverse pour un minimum) ; le point est la pire valeur
 function capteur(c, i) {
-  const minimum = c.libelle.includes("min");
+  const minimum = c.sens === "min";
   const bas = c.limite * (minimum ? 0.9 : 0.5), haut = c.limite * (minimum ? 1.15 : 1.25);
   const pos = (v) => Math.min(98, Math.max(2, ((v - bas) / (haut - bas)) * 100)).toFixed(1);
   const l = pos(c.limite);

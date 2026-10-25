@@ -5,6 +5,7 @@ Lit la télémétrie et la table predictions dans DuckDB ; le front n'affiche qu
 
 from datetime import timedelta
 from functools import lru_cache
+from typing import Literal, get_args
 
 import duckdb
 import pandas as pd
@@ -13,7 +14,8 @@ from src.config import CHEMIN_DB, PAS, TABLE, TABLE_PREDICTIONS
 from src.donnees import DATE_TEST
 from src.usine import cout_panne, criticite, nom_machine, sante, statut, zone
 
-PERIODES = ("30j", "t4", "s2", "annee", "tout")
+CodePeriode = Literal["30j", "t4", "s2", "annee", "tout"]
+PERIODES = get_args(CodePeriode)
 CAPTEURS_FICHE = {
     "vibration": ("Vibration max", "mm/s", "max"),
     "temperature_process": ("Temp. process max", "°C", "max"),
@@ -214,6 +216,7 @@ def fiche_machine(conn: duckdb.DuckDBPyConnection, id_machine: str, seuil: float
                 "unite": unite,
                 "valeur": valeur,
                 "limite": limites[colonne],
+                "sens": sens,
                 "hors_limite": hors_limite,
             }
         )

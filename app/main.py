@@ -19,7 +19,7 @@ from app.schemas import (
     TableauParc,
 )
 from src import metier
-from src.config import PAS, RACINE, TABLE
+from src.config import JOURS_PREDICTIONS, PAS, RACINE, TABLE
 from src.explain import ExplicateurCause
 from src.features import LIGNES_HISTORIQUE, calculer_features
 from src.predicteur import Predicteur
@@ -123,7 +123,7 @@ def predire_lot(donnees: list[DonneesMachine]):
 
 
 @router.get("/parc", response_model=TableauParc)
-def parc(periode: str = Query("annee", pattern="^(30j|t4|s2|annee|tout)$")):
+def parc(periode: metier.CodePeriode = "annee"):
     """Indicateurs de la période et de la précédente, pannes par gamme et cause, coût des pannes par mois ou semaine."""
     return _lire(metier.tableau_parc, periode)
 
@@ -167,7 +167,7 @@ def machine(id_machine: str):
 
 
 @router.get("/machines/{id_machine}/risque", response_model=list[PointRisque])
-def risque(id_machine: str, jours: int = Query(60, ge=1, le=730)):
+def risque(id_machine: str, jours: int = Query(JOURS_PREDICTIONS, ge=1, le=JOURS_PREDICTIONS)):
     """Risque prédit par pas de 2 h, avec les délestages (pas de mesure) et les pannes constatées."""
     serie = _lire(metier.serie_risque, id_machine, jours)
     if serie.empty:
