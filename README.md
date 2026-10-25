@@ -140,6 +140,7 @@ gdiz-predictive-maintenance/
 │   ├── templates/          # Gabarit commun + Parc et Machine (Jinja2)
 │   └── static/
 │       ├── css/            # tokens.css (couleurs, thèmes clair/sombre) + app.css
+│       ├── img/            # logo.png : icône d'usine par Icons8 (https://icons8.com)
 │       └── js/             # api.js, nav.js, charts.js (SVG) + un script par écran
 ├── Dockerfile
 ├── docker-compose.yml

@@ -13,7 +13,8 @@ h1, h2, h3, h4 { margin: 0; }
 .entete-app { position: sticky; top: 0; z-index: 5; background: var(--bg-verre); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); }
 .entete-app > div { max-width: 1200px; margin: 0 auto; padding: 12px 24px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; }
 .marque { display: flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 600; letter-spacing: -0.02em; color: var(--text); text-decoration: none; }
-.logo { width: 26px; height: 26px; border-radius: 7px; background: var(--ink-btn); color: var(--ink-btn-text); display: flex; align-items: center; justify-content: center; }
+/* Icône d'usine (Icons8) en masque : elle prend la couleur du texte, donc reste visible en thème sombre */
+.logo { width: 26px; height: 26px; background: var(--text); -webkit-mask: url("/static/img/logo.png") center / contain no-repeat; mask: url("/static/img/logo.png") center / contain no-repeat; }
 .pilules { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 4px; border-radius: 999px; background: var(--surface); box-shadow: var(--shadow-pilule); }
 .pilules a, .pilules button {
   min-height: 32px; padding: 0 16px; border: 0; border-radius: 999px; background: transparent; display: flex; align-items: center;
@@ -91,8 +92,8 @@ h1, h2, h3, h4 { margin: 0; }
   width: min(680px, calc(100% - 48px)); max-height: calc(100vh - 48px); padding: 32px 36px 36px; border: 0; border-radius: 28px;
   background: var(--surface); color: var(--text); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.25);
 }
-.detail[open] { display: flex; flex-direction: column; gap: 20px; animation: grandir 0.35s cubic-bezier(0.2, 0.8, 0.2, 1); }
-.detail::backdrop { background: var(--voile); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); animation: fondu 0.25s ease; }
+.detail[open] { display: flex; flex-direction: column; gap: 20px; animation: grandir 0.32s cubic-bezier(0.2, 0.8, 0.2, 1); will-change: transform, opacity; }
+.detail::backdrop { background: var(--voile); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); animation: fondu 0.2s ease; }
 .detail h2 { font-size: 15px; font-weight: 600; }
 .detail .detail-valeur { margin: 8px 0 0; font-size: 44px; font-weight: 700; letter-spacing: -0.04em; line-height: 1.05; }
 .detail .detail-valeur small { font-size: 17px; }
@@ -177,13 +178,6 @@ select.champ { min-height: 38px; min-width: 96px; padding: 0 16px; border: 0; bo
 .risque-barre div { height: 100%; border-radius: 3px; background: var(--orange); }
 .carte.cause { background: var(--cause-fond); }
 .carte.cause h2 { color: var(--cause-ink); }
-.cause-texte { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--text-2); }
-.cause-texte b { color: var(--text); font-weight: 600; }
-.signaux { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
-.signaux li { padding: 4px 10px; border-radius: 999px; background: color-mix(in srgb, var(--surface) 70%, transparent); font-size: 12px; color: var(--text-2); }
-.signaux b { font-weight: 600; color: var(--text); }
-.cause-action { margin: 2px 0 0; padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--cause-ink) 18%, transparent); font-size: 12.5px; line-height: 1.5; color: var(--text); }
-.cause-action b { display: block; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--cause-ink); }
 .grand { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
 .shap { display: flex; flex-direction: column; gap: 6px; }
 .shap-tete { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
@@ -197,6 +191,10 @@ select.champ { min-height: 38px; min-width: 96px; padding: 0 16px; border: 0; bo
 .frise-evt b { height: 16px; font-size: 11px; font-weight: 600; white-space: nowrap; }
 .frise-evt i { width: 12px; height: 12px; margin: 6px 0; border-radius: 50%; border: 2.5px solid var(--surface); box-shadow: 0 0 0 1px var(--border); }
 .frise-evt span { font-size: 11px; white-space: nowrap; color: var(--text-3); }
+/* Témoins de légende : mêmes traits et mêmes couleurs que la courbe de risque */
+.temoin-courbe { width: 16px; height: 10px; border-top: 1.75px solid var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.temoin-delestage { width: 3px; height: 12px; border-radius: 1.5px; background: var(--gray-c); opacity: 0.6; }
+.temoin-panne { font-size: 12px; font-weight: 700; line-height: 1; color: var(--text); }
 .chiffres { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .chiffres div { background: var(--surface-2); border-radius: 12px; padding: 10px 12px; }
 .chiffres b { display: block; font-size: 17px; font-weight: 600; letter-spacing: -0.02em; }
@@ -231,12 +229,13 @@ select.champ { min-height: 38px; min-width: 96px; padding: 0 16px; border: 0; bo
 @keyframes onde { from { transform: scale(1); opacity: 0.6; } to { transform: scale(2.8); opacity: 0; } }
 @keyframes menu { from { opacity: 0; transform: scale(0.92) translateY(-6px); } }
 
-.page > * { animation: monter 0.7s var(--doux) backwards; }
+/* La fenêtre de détail est exclue : elle s'ouvre tout de suite, sans délai de cascade */
+.page > :not(dialog) { animation: monter 0.7s var(--doux) backwards; }
 .page > :nth-child(2) { animation-delay: 70ms; }
 .page > :nth-child(3) { animation-delay: 140ms; }
 .page > :nth-child(4) { animation-delay: 210ms; }
 .page > :nth-child(5) { animation-delay: 280ms; }
-.page > :nth-child(n + 6) { animation-delay: 350ms; }
+.page > :nth-child(n + 6):not(dialog) { animation-delay: 350ms; }
 .kpi { animation: monter 0.6s var(--doux) backwards; animation-delay: calc(var(--i, 0) * 70ms); transition: transform 0.3s var(--doux), box-shadow 0.3s var(--doux), background-color 0.4s; }
 .kpi:hover { transform: translateY(-3px); box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04), 0 12px 28px rgba(0, 0, 0, 0.08); }
 .case { animation: eclore 0.5s var(--ressort) backwards; animation-delay: calc(var(--i, 0) * 9ms + 150ms); }
@@ -248,7 +247,6 @@ select.champ { min-height: 38px; min-width: 96px; padding: 0 16px; border: 0; bo
 .risque-barre div, .shap-piste div { transform-origin: left; animation: etirer 1s var(--doux) backwards; animation-delay: calc(var(--i, 0) * 80ms + 250ms); }
 .plage .valeur, .frise-evt i { animation: eclore 0.55s var(--ressort) backwards; animation-delay: calc(var(--i, 0) * 70ms + 350ms); }
 .frise-evt b, .frise-evt span { animation: apparaitre 0.5s ease backwards; animation-delay: calc(var(--i, 0) * 70ms + 450ms); }
-.signaux li { animation: eclore 0.45s var(--ressort) backwards; animation-delay: calc(var(--i, 0) * 70ms + 400ms); }
 svg .pt { transform-box: fill-box; transform-origin: center; animation: eclore 0.6s var(--ressort) backwards; animation-delay: calc(var(--i, 0) * 90ms + 350ms); }
 svg .onde { transform-box: fill-box; transform-origin: center; animation: onde 2.2s ease-out infinite; }
 svg .zone { animation: apparaitre 0.6s ease backwards; animation-delay: calc(var(--i, 0) * 80ms + 100ms); }
@@ -256,14 +254,14 @@ svg .fin { transform-box: fill-box; transform-origin: center; animation: eclore 
 .anneau .arc { animation: remplir 1.3s var(--doux) 0.2s backwards; }
 .menu { animation: menu 0.22s var(--ressort); transform-origin: top right; }
 .btn, .pilules a, .pilules button, .plus, .fermer, select.champ, .compte > button { transition: transform 0.15s var(--doux), background-color 0.25s, color 0.25s; }
-.btn:active, .pilules button:active, .plus:active, .fermer:active, .compte > button:active { transform: scale(0.96); }
+.btn:active, .plus:active, .fermer:active, .compte > button:active { transform: scale(0.96); }
 body, .carte, .entete-app { transition: background-color 0.4s ease, color 0.4s ease; }
-/* Sélecteur de période : la pastille bleue glisse d'un choix à l'autre */
+/* Onglets et période : la pastille bleue glisse d'un choix à l'autre */
 .pilules.glisse { position: relative; }
-.curseur { position: absolute; top: 4px; bottom: 4px; left: 0; width: 0; border-radius: 999px; background: var(--selection); box-shadow: 0 2px 8px color-mix(in srgb, var(--selection) 35%, transparent); transition: transform 0.45s var(--ressort), width 0.45s var(--ressort); }
+.curseur { position: absolute; top: 4px; bottom: 4px; left: 0; width: 0; border-radius: 999px; background: var(--selection); transition: transform 0.42s var(--ressort), width 0.42s var(--ressort); }
 .curseur.immobile { transition: none; }
-.pilules.glisse button { position: relative; z-index: 1; }
-.pilules.glisse button[aria-pressed="true"] { background: transparent; }
+.pilules.glisse a, .pilules.glisse button { position: relative; z-index: 1; transition: color 0.3s ease; }
+.pilules.glisse [aria-current="page"], .pilules.glisse [aria-pressed="true"] { background: transparent; }
 
 /* Rapport PDF : uniquement le contenu, en clair, sans couper les cartes */
 @media print {

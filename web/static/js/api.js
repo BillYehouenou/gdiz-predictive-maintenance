@@ -45,6 +45,26 @@ export function compter(racine = document) {
   });
 }
 
+// Pastille de sélection qui glisse sous l'élément actif d'un groupe de pilules ; renvoie la fonction qui la replace
+export function pastille(groupe, actif) {
+  const curseur = document.createElement("span");
+  curseur.className = "curseur immobile";
+  curseur.setAttribute("aria-hidden", "true");
+  groupe.classList.add("glisse");
+  groupe.prepend(curseur);
+  const placer = (cible = groupe.querySelector(actif), anime = true) => {
+    if (!cible) return;
+    curseur.classList.toggle("immobile", !anime);
+    curseur.style.width = `${cible.offsetWidth}px`;
+    curseur.style.transform = `translateX(${cible.offsetLeft}px)`;
+  };
+  const replacer = () => placer(undefined, false);
+  replacer();
+  window.addEventListener("resize", replacer);
+  document.fonts?.ready.then(replacer);
+  return placer;
+}
+
 export const LIBELLES_STATUT = { normal: "Normal", surveillance: "Surveillance", panne_predite: "Panne prédite", en_panne: "En panne" };
 export const CAUSES = {
   TWF: { libelle: "Usure", couleur: "var(--yellow)" },

@@ -47,7 +47,7 @@ export function matrice(machines, seuil) {
   return svg + "</svg>";
 }
 
-// Risque de panne au pas de 2 h, sans lissage, échelle log ; délestages en barres grises, pannes constatées en losanges
+// Risque de panne au pas de 2 h, sans lissage, échelle log ; délestages en barres grises, pannes constatées en croix
 export function courbeRisque(points) {
   const n = Math.max(points.length - 1, 1);
   const X = (i) => (i * 960) / n;
@@ -69,7 +69,11 @@ export function courbeRisque(points) {
     svg += `<polygon points="${trace} ${s[s.length - 1][0]},200 ${s[0][0]},200" fill="var(--danger)" opacity="0.1"></polygon>
       <polyline points="${trace}" fill="none" stroke="var(--danger)" stroke-width="1.75" stroke-linejoin="round"></polyline>`;
   });
-  points.forEach((p, i) => { if (p.panne) svg += `<path d="M${X(i)} ${Y(p.risque) - 7} l7 7 -7 7 -7 -7 Z" fill="var(--text)" stroke="var(--surface)" stroke-width="1.5"></path>`; });
+  points.forEach((p, i) => {
+    if (!p.panne) return;
+    const x = X(i), y = Y(p.risque), croix = `M${x - 5} ${y - 5} L${x + 5} ${y + 5} M${x + 5} ${y - 5} L${x - 5} ${y + 5}`;
+    svg += `<path d="${croix}" stroke="var(--surface)" stroke-width="5" stroke-linecap="round"></path><path d="${croix}" stroke="var(--text)" stroke-width="2.25" stroke-linecap="round"></path>`;
+  });
   svg += "</g>";
   for (let k = 0; k <= 4; k++) {
     const i = Math.round((k * n) / 4);

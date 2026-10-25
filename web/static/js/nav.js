@@ -1,4 +1,6 @@
-// Commun aux deux pages : menu du compte, thème, export du rapport en PDF.
+// Commun aux deux pages : onglets, menu du compte, thème, export du rapport en PDF.
+import { mouvementReduit, pastille } from "./api.js";
+
 const racine = document.documentElement;
 const bouton = document.getElementById("compte");
 const menu = document.getElementById("menu-compte");
@@ -22,6 +24,22 @@ theme.addEventListener("click", () => {
   majInterrupteur();
 });
 majInterrupteur();
+
+// Onglets : la pastille glisse vers l'onglet cliqué, puis la page change
+const onglets = document.querySelector(".onglets");
+const placerOnglet = pastille(onglets, '[aria-current="page"]');
+onglets.querySelectorAll("a").forEach((lien) =>
+  lien.addEventListener("click", (e) => {
+    if (lien.getAttribute("aria-current") === "page" || e.metaKey || e.ctrlKey || e.shiftKey || mouvementReduit()) return;
+    e.preventDefault();
+    onglets.querySelector('[aria-current="page"]')?.removeAttribute("aria-current");
+    lien.setAttribute("aria-current", "page");
+    placerOnglet(lien);
+    setTimeout(() => { window.location.href = lien.href; }, 320);
+  }),
+);
+// Retour arrière depuis le cache du navigateur : l'onglet affiché doit redevenir celui de la page
+window.addEventListener("pageshow", (e) => { if (e.persisted) window.location.reload(); });
 
 // L'impression du navigateur produit le PDF ; le nom du fichier vient du titre de la page
 document.querySelectorAll("[data-export]").forEach((b) =>

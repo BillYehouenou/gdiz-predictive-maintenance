@@ -11,43 +11,6 @@ const titre = (texte, droite = "") => `<div class="carte-tete"><h2>${esc(texte)}
 const COULEURS_STATUT = { normal: "var(--gray-c)", surveillance: "var(--warn)", panne_predite: "var(--orange)", en_panne: "var(--danger)" };
 const ENCRES_STATUT = { normal: "var(--text-3)", surveillance: "var(--warn-ink)", panne_predite: "var(--orange-ink)", en_panne: "var(--danger-ink)" };
 
-// Ce que signale chaque famille de causes, et le geste de maintenance qui y répond
-const CAUSES_METIER = {
-  "Usure et entretien": {
-    sens: "Les compteurs d'usure ont dépassé ce que le modèle associe d'habitude à une panne : l'outil arrive en fin de vie.",
-    action: "Planifier le changement d'outil et une maintenance préventive dans les prochains jours, avant la panne.",
-  },
-  Surchauffe: {
-    sens: "La température de process et l'écart avec l'atelier sortent de la normale : la machine évacue mal sa chaleur.",
-    action: "Contrôler la ventilation, la lubrification et l'encrassement ; alléger la charge si la température reste haute.",
-  },
-  "Surcharge mécanique": {
-    sens: "Le couple et les vibrations montrent un effort anormal sur la mécanique.",
-    action: "Vérifier roulements, alignement et tension des courroies ; réduire la cadence en attendant l'intervention.",
-  },
-  "Environnement / réseau": {
-    sens: "La poussière, l'humidité ou la tension du réseau SBEE fragilisent la machine.",
-    action: "Nettoyer les filtres à poussière et vérifier l'alimentation électrique (régulateur, onduleur).",
-  },
-};
-
-function carteCause(f) {
-  const metier = CAUSES_METIER[f.cause];
-  if (!f.cause || !metier) {
-    return carte(`<h2 class="discret" style="font-size: 13px; font-weight: 500">Cause probable</h2>
-      <p class="grand">Aucune dominante</p>
-      <p class="discret" style="margin: 0">${f.statut === "normal" ? "La machine est sous le seuil d'alerte : aucun signal ne domine." : "Plusieurs familles de signaux se partagent le risque."}</p>`, "", "gap: 8px");
-  }
-  const signaux = f.contributions.filter((c) => c.famille === f.cause);
-  const total = f.contributions.reduce((s, c) => s + c.contribution, 0);
-  const part = total ? Math.round((signaux.reduce((s, c) => s + c.contribution, 0) / total) * 100) : 0;
-  return carte(`<h2 style="font-size: 13px; font-weight: 500">Cause probable</h2>
-    <p class="grand">${esc(f.cause)}</p>
-    <p class="cause-texte">${esc(metier.sens)}${part ? ` Elle porte <b>${part} %</b> des signaux principaux du modèle.` : ""}</p>
-    ${signaux.length ? `<ul class="signaux">${signaux.map((c, i) => `<li style="--i: ${i}">${esc(c.libelle)} <b>${valeurContribution(c)}</b></li>`).join("")}</ul>` : ""}
-    <p class="cause-action"><b>À faire</b>${esc(metier.action)}</p>`, "cause", "gap: 10px");
-}
-
 function valeurContribution(c) {
   if (c.valeur == null) return "—";
   if (typeof c.valeur === "string") return esc(c.valeur);
@@ -109,6 +72,7 @@ function afficher(f) {
   const max = Math.max(...f.contributions.map((c) => c.contribution), 1);
   const familles = [...new Set(f.contributions.map((c) => c.famille).filter(Boolean))];
   const s = sante(f);
+  const principal = f.contributions[0];
   document.getElementById("badges").innerHTML = `<span class="badge statut-${esc(f.statut)}">${esc(LIBELLES_STATUT[f.statut])}</span>
     <span class="badge doux">${esc(f.nom)}</span><span class="badge doux">Gamme ${esc(f.gamme)}</span>`;
   conteneur.innerHTML = `
@@ -124,7 +88,13 @@ function afficher(f) {
         <span style="font-size: 38px; font-weight: 700; letter-spacing: -0.04em; line-height: 1" data-compte="${f.risque * 100}" data-dec="1" data-suffixe=" %">${pourcent(f.risque)}</span>
         <div class="risque-barre" aria-hidden="true"><div style="background: var(--danger); width: ${Math.max(f.risque * 100, 1).toFixed(1)}%"></div></div>
         <p class="discret" style="margin: 0">Probabilité que la machine tombe en panne dans les 120 prochaines heures.</p>`, "", "gap: 10px")}
-      ${carteCause(f)}
+      ${f.cause
+        ? carte(`<h2 style="font-size: 13px; font-weight: 500">Cause probable</h2>
+          <p class="grand">${esc(f.cause)}</p>
+          ${principal ? `<p style="margin: 0; font-size: 12px; color: var(--cause-ink)">Premier signal : ${esc(principal.libelle.toLowerCase())} à ${valeurContribution(principal)}.</p>` : ""}`, "cause", "gap: 8px")
+        : carte(`<h2 class="discret" style="font-size: 13px; font-weight: 500">Cause probable</h2>
+          <p class="grand">Aucune dominante</p>
+          <p class="discret" style="margin: 0">La machine est sous le seuil d'alerte.</p>`, "", "gap: 8px")}
     </section>
 
     <div class="grille">
@@ -153,9 +123,9 @@ function afficher(f) {
     ${carte(`${titre("Risque de panne", `<span class="discret">${JOURS} derniers jours</span>`)}
       <div class="defile" id="courbe">${squelette(220)}</div>
       <ul class="legende trait">
-        <li><span aria-hidden="true" style="width: 14px; height: 2px; border-radius: 1px; background: var(--danger)"></span>Risque au pas de 2 h</li>
-        <li><span aria-hidden="true" style="width: 4px; height: 12px; border-radius: 2px; background: var(--gray-c)"></span>Délestage SBEE (pas de mesure)</li>
-        <li><span aria-hidden="true" style="width: 9px; height: 9px; transform: rotate(45deg); background: var(--text)"></span>Panne constatée</li>
+        <li><span class="temoin-courbe" aria-hidden="true"></span>Risque au pas de 2 h</li>
+        <li><span class="temoin-delestage" aria-hidden="true"></span>Délestage SBEE (pas de mesure)</li>
+        <li><span class="temoin-panne" aria-hidden="true">✕</span>Panne constatée</li>
       </ul>`, "", "gap: 12px")}
   </div>`;
   compter(conteneur);

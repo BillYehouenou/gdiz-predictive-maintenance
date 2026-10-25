@@ -1,4 +1,4 @@
-import { CAUSES, LIBELLES_STATUT, compter, dateHeure, erreur, esc, lire, millions, nombre, pourcent, squelette } from "./api.js";
+import { CAUSES, LIBELLES_STATUT, compter, dateHeure, erreur, esc, lire, millions, nombre, pastille, pourcent, squelette } from "./api.js";
 import { matrice } from "./charts.js";
 
 const $ = (id) => document.getElementById(id);
@@ -141,22 +141,7 @@ const majSousTitre = () => {
 };
 
 // Pastille bleue sous la période choisie, qui glisse au changement
-const selecteur = $("periodes");
-const curseur = document.createElement("span");
-curseur.className = "curseur immobile";
-curseur.setAttribute("aria-hidden", "true");
-selecteur.classList.add("glisse");
-selecteur.prepend(curseur);
-function placerCurseur() {
-  const actif = selecteur.querySelector('[aria-pressed="true"]');
-  if (!actif) return;
-  curseur.style.width = `${actif.offsetWidth}px`;
-  curseur.style.transform = `translateX(${actif.offsetLeft}px)`;
-  requestAnimationFrame(() => curseur.classList.remove("immobile"));
-}
-const replacer = () => { curseur.classList.add("immobile"); placerCurseur(); };
-window.addEventListener("resize", replacer);
-document.fonts?.ready.then(replacer);
+const placerCurseur = pastille($("periodes"), '[aria-pressed="true"]');
 
 async function chargerPeriode(code) {
   document.querySelectorAll("#periodes button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.periode === code)));
