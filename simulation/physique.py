@@ -23,19 +23,19 @@ class ConfigDonneesSynthetiques:
     ids_machines = [f"GDIZ_TEX_M_{i:02d}" for i in range(1, nb_machines + 1)]
     fichier_duckdb = CHEMIN_DB
 
-    # Usure outil (%) : ~4 à 8 pannes par machine sur 2 ans
-    increment_usure_base, plage_usure_initiale = 0.005, (10, 70)
+    # Usure outil (%) : ~12 à 16 pannes par machine sur 2 ans
+    increment_usure_base, plage_usure_initiale = 0.011, (10, 70)
     # TWF : seuil de rupture propre à chaque machine dans [65, 99] %, risque en rampe juste avant
     seuil_min_use, plage_seuil_use, beta_a_seuil_use, beta_b_seuil_use = 65.0, 34.0, 4.0, 2.0
     bande_rampe_use, exposant_rampe_use, coeff_risque_use = 12.0, 3.0, 0.08
     # HDF : surchauffe soutenue sur 4 h au-delà de 38 °C d'écart à l'ambiant
-    pas_fenetre_shd, seuil_surchauffe_shd, coeff_risque_shd = 8, 38.0, 0.00012
+    pas_fenetre_shd, seuil_surchauffe_shd, coeff_risque_shd = 8, 38.0, 0.00035
     # OSF : couple élevé sur un outil ou des roulements usés
-    coeff_risque_sm, taux_base_usure_roulements, coeff_vibration_roulements, poids_roulements_osf = 0.0007, 0.004, 2.0, 0.25
+    coeff_risque_sm, taux_base_usure_roulements, coeff_vibration_roulements, poids_roulements_osf = 0.0018, 0.004, 2.0, 0.25
     probabilite_choc_coupure = 0.04  # PWF : choc au retour du courant
     risque_base_pa = 0.000018  # RNF : risque résiduel sans précurseur
 
-    # Chaleur et encrassement (poussière --> moins de dissipation --> HDF)
+    # Chaleur et encrassement
     facteur_chaleur_usure, facteur_chaleur_encrassement = 3.0, 1.8  # °C à 100 %
     taux_base_encrassement, residu_reinitialisation_encrassement = 0.06, 10.0  # % par pas à 100 µg/m³
     coef_lissage_temperature, facteur_temperature_frottement = 0.55, 25.0

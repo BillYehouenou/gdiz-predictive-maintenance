@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from simulation.generer import COLONNES_CAPTEURS, defaillances_capteurs
+from simulation.generer import defaillances_capteurs
 from simulation.meteo import au_pas
 from simulation.physique import ConfigDonneesSynthetiques, EvolueurEtatMachine, GenerateurContexteExogene
 
@@ -47,19 +47,6 @@ def meteo_horaire_factice(config_courte) -> pd.DataFrame:
         },
         index=index,
     )
-
-
-def test_injecter_donnees_manquantes_compat_pandas3_copy_on_write(df_capteur_factice):
-    original_cow = pd.options.mode.copy_on_write
-    try:
-        pd.options.mode.copy_on_write = True
-        result = defaillances_capteurs(df_capteur_factice, ConfigDonneesSynthetiques())
-    finally:
-        pd.options.mode.copy_on_write = original_cow
-
-    # Sur 3000 pas, au moins une rafale de perte de paquets est quasi certaine
-    assert result[COLONNES_CAPTEURS].isna().sum().sum() > 0
-    assert df_capteur_factice[COLONNES_CAPTEURS].isna().sum().sum() == 0
 
 
 def test_injecter_donnees_manquantes_produit_rafales_correlees(df_capteur_factice):

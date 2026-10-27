@@ -1,6 +1,5 @@
 """
-Météo extérieure réelle de Glo-Djigbé via Open-Meteo : archive ERA5 (température, humidité, pluie) et qualité de
-l'air CAMS (poussière d'Harmattan). Téléchargée une fois, puis gardée en cache dans DuckDB.
+Météo via l'API Open-Meteo : archive ERA5 (température, humidité, pluie) et qualité de l'air CAMS (poussière d'Harmattan)
 """
 
 import json
@@ -35,7 +34,7 @@ def _telecharger(url: str, variables: list[str], debut: date, fin: date) -> pd.D
 
 def telecharger_meteo(debut: date, fin: date) -> pd.DataFrame:
     """Météo horaire sur [debut, fin], heure locale béninoise (UTC+1, sans heure d'été)."""
-    logger.info(f"Téléchargement Open-Meteo ({debut} → {fin})…")
+    logger.info(f"Téléchargement Open-Meteo ({debut} -> {fin})…")
     meteo = _telecharger("https://archive-api.open-meteo.com/v1/archive", list(NOMS)[:3], debut, fin)
     poussiere = _telecharger("https://air-quality-api.open-meteo.com/v1/air-quality", ["dust"], debut, fin)
     # Trous ponctuels possibles côté CAMS : interpolation dans le temps

@@ -42,10 +42,16 @@ BORNES = {"temperature_process": (-50, 200), "temperature_ambiante": (-20, 60), 
 
 
 def calculer_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Ajoute les features glissantes. Retourne le DataFrame trié par (id_machine, timestamp), index réinitialisé."""
+    """
+    Ajoute les features glissantes, calculées sur les seuls relevés en marche : à l'arrêt, les capteurs tombent à zéro
+    et fausseraient les moyennes du lundi matin. Un relevé sans état (API) compte comme en marche. Retourne le
+    DataFrame trié par (id_machine, timestamp), index réinitialisé.
+    """
     df = df.sort_values(["id_machine", "timestamp"]).reset_index(drop=True)
     df["ecart_thermique"] = df["temperature_process"] - df["temperature_ambiante"]
-    groupes = df.set_index("timestamp").groupby("id_machine", sort=False)[CAPTEURS]
+    en_marche = df["etat"].fillna("marche").eq("marche") if "etat" in df else pd.Series(True, index=df.index)
+    mesures = df[CAPTEURS].where(en_marche).assign(timestamp=df["timestamp"], id_machine=df["id_machine"])
+    groupes = mesures.set_index("timestamp").groupby("id_machine", sort=False)[CAPTEURS]
     fenetre_24h = groupes.rolling(HISTORIQUE, min_periods=1)
     moyenne, maximum, ecart_type = fenetre_24h.mean(), fenetre_24h.max(), fenetre_24h.std()
     minimum_4h = groupes.rolling("4h", min_periods=1).min()

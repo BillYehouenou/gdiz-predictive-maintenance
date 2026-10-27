@@ -1,6 +1,6 @@
 """
-Génère le dataset GDIZ : météo réelle (Open-Meteo) --> physique des machines --> défaillances des capteurs IoT
---> DuckDB. Usage : python -m simulation.generer
+Construction du jeu de données simulé, avec la physique des machines et les événements exogènes (météo, pannes,
+dérives de capteurs, etc.). Usage : python -m simulation.generer
 """
 
 import logging
@@ -31,7 +31,7 @@ COLONNES_CAPTEURS = [
 def _rafales(rng, valeurs: np.ndarray, reglage: tuple, mode: str, derive_max: float = 0.0) -> np.ndarray:
     """
     Événements indépendants de durée log-normale sur la série d'un capteur : « nan » (paquets perdus), « bloque »
-    (valeur figée) ou « derive » (biais silencieux qui croît jusqu'à derive_max, de signe aléatoire).
+    (valeur figée) ou « derive » (biais silencieux).
     """
     probabilite, pas_moyens, sigma, plage = reglage
     sortie = valeurs.copy()
@@ -45,7 +45,7 @@ def _rafales(rng, valeurs: np.ndarray, reglage: tuple, mode: str, derive_max: fl
 
 
 def defaillances_capteurs(df: pd.DataFrame, config: ConfigDonneesSynthetiques) -> pd.DataFrame:
-    """Dérives, capteurs figés et rafales de valeurs manquantes, tirés indépendamment par (machine, capteur)."""
+    """Dérives, capteurs figés et rafales de valeurs manquantes."""
     rng = np.random.default_rng(config.graine_globale)
     df = df.copy()
     colonnes = [c for c in COLONNES_CAPTEURS if c in df.columns]
@@ -74,7 +74,7 @@ def generer(config: ConfigDonneesSynthetiques | None = None) -> pd.DataFrame:
     debut = config.date_debut.date()
     meteo = charger_meteo(config.fichier_duckdb, debut, debut + timedelta(days=config.duree_jours - 1))
     df_global = GenerateurContexteExogene(config).generer_contexte_global(meteo)
-    gammes = ["L", "M", "H"]  # 17 / 17 / 16 machines
+    gammes = ["L", "M", "H"]
     machines = [
         EvolueurEtatMachine(m, gammes[i % 3], df_global, config).evoluer_etats() for i, m in enumerate(config.ids_machines)
     ]

@@ -88,3 +88,10 @@ def test_preparer_x_categorie_stable_meme_avec_un_seul_type():
     X = preparer_X(calculer_features(serie_machine("H")))
     assert list(X.columns) == FEATURES
     assert list(X["type_machine"].cat.categories) == ["L", "M", "H"]
+
+
+def test_moyennes_ignorent_les_releves_a_larret():
+    """Capteurs à zéro le week-end : la moyenne du lundi ne doit voir que les relevés en marche."""
+    serie = serie_machine("M", n=48, vibration=2.0).assign(etat="marche")
+    serie.loc[:23, ["vibration", "etat"]] = [0.0, "arret"]
+    assert calculer_features(serie)["vibration_moyenne_24h"].iloc[-1] == 2.0
