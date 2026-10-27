@@ -35,20 +35,6 @@ make docker-down  # arrête (docker compose down -v efface aussi les données et
 *GitHub Actions* : lint + mypy ; tests avec génération des données et entraînement à la volée ; build Docker. S'exécute sur chaque push et PR vers main.
 
 
-## Sous le capot
-
-- **Des données crédibles** : météo réelle Open-Meteo, physique d'usure et de surchauffe, capteurs IoT qui
-  décrochent ou dérivent ; l'état réel des machines reste caché, seuls les capteurs et la GMAO sont visibles.
-- **Une métrique métier soutenable** : part des pannes annoncées dans les 5 jours (et avec au moins 4 h de préavis),
-  sous un budget de fausses alertes comptées en interventions, avec la précision des alertes et le bilan en FCFA.
-- **Un modèle honnête** : LightGBM comparé à trois autres modèles (régression logistique, arbre, HistGradientBoosting), appris sur les seules
-  machines en marche, probabilités calibrées, cause probable regroupée par famille physique.
-- **Du MLOps adéquat** : registre MLflow (le modèle n'est promu que si son gain net en validation ne baisse pas, avec
-  son seuil), suivi de la performance réelle des 60 derniers jours et de la dérive à saison égale (`make check-drift`),
-  DuckDB embarqué, API FastAPI, tableau de bord HTML/CSS/JS sans framework, tests, CI et Docker.
-
-
-
 ## Méthodologie
 
 Toute la documentation technique est accessible dans le document : [architecture.pdf](docs/architecture.pdf). Il détaille la physique simulée, les capteurs IoT, la GMAO, le protocole de validation, les modèles comparés et l'API.
