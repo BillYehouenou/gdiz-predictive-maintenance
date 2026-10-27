@@ -27,9 +27,9 @@ _PERTE_MAX = max(1 / len(etape["ids"]) for etape in CHAINE)
 # Coûts (FCFA) : production perdue par heure d'arrêt, pièces par panne, tissu rebuté au crash
 TAUX_TECHNICIEN, COUT_MATIERE = 3_250, 800  # par heure, par mètre
 GAMMES: dict[str, dict[str, Any]] = {
-    "L": {"capacite_m_h": 15, "marge_m": 1_200, "pieces": 90_000, "rebut_m": 5},
-    "M": {"capacite_m_h": 20, "marge_m": 1_500, "pieces": 180_000, "rebut_m": 8},
-    "H": {"capacite_m_h": 35, "marge_m": 2_000, "pieces": 500_000, "rebut_m": 15},
+    "L": {"capacite_m_h": 15, "marge_m": 400, "pieces": 25_000, "rebut_m": 5},
+    "M": {"capacite_m_h": 20, "marge_m": 500, "pieces": 50_000, "rebut_m": 8},
+    "H": {"capacite_m_h": 35, "marge_m": 650, "pieces": 120_000, "rebut_m": 15},
 }
 # Valeur du modèle : une panne annoncée devient un arrêt planifié court, sans rebut ; une alerte coûte une inspection
 DUREE_INTERVENTION_PLANIFIEE_H, COUT_INSPECTION = 2.0, TAUX_TECHNICIEN  # une heure de technicien, machine en marche
@@ -102,7 +102,7 @@ def fin_donnees(conn: duckdb.DuckDBPyConnection) -> pd.Timestamp:
 def libelles_periodes(fin: pd.Timestamp) -> dict[str, str]:
     """Libellé court de chaque période pour le sélecteur, daté par l'année des dernières données."""
     a = fin.year
-    return {"30j": "30 j", "t4": f"T4 {a}", "s2": f"S2 {a}", "annee": str(a), "tout": f"{a - 1}-{a}"}
+    return {"30j": "30j", "t4": f"T4 {a}", "s2": f"S2 {a}", "annee": str(a), "tout": f"{a - 1}-{a}"}
 
 
 def bornes_periode(code: str, fin: pd.Timestamp, debut_donnees: pd.Timestamp | None = None) -> dict:
@@ -254,7 +254,7 @@ def fiche_machine(conn: duckdb.DuckDBPyConnection, id_machine: str, seuil: float
         return None
     fin = fin_donnees(conn)
     fin_excl = fin + PAS
-    historique = evenements(conn, fin_excl - timedelta(days=730), fin_excl, id_machine)
+    historique = evenements(conn, fin_excl - timedelta(days=365), fin_excl, id_machine)
     annee = indicateurs(conn, fin_excl - timedelta(days=365), fin_excl, id_machine)
     debut_30j = fin_excl - timedelta(days=30)
     agregats = ", ".join(f"{s.upper()}({c})" for c, (_, _, s) in CAPTEURS_FICHE.items())
@@ -289,11 +289,12 @@ def fiche_machine(conn: duckdb.DuckDBPyConnection, id_machine: str, seuil: float
 def serie_risque(conn: duckdb.DuckDBPyConnection, id_machine: str, jours: int) -> pd.DataFrame:
     """
     Risque au dernier relevé en marche de chaque pas de 2 h (vide si la machine n'a pas tourné : arrêt, panne,
-    délestage), délestages et pannes.
+    délestage), arrêts planifiés (week-end), délestages et pannes.
     """
     return conn.execute(
         f"""SELECT time_bucket(INTERVAL 2 HOUR, t.timestamp) AS timestamp,
                    arg_max(p.probabilite_panne, t.timestamp) FILTER (WHERE p.probabilite_panne IS NOT NULL) AS risque,
+                   BOOL_AND(t.etat = 'arret') AS arret,
                    MAX(t.indicateur_coupure) AS delestage,
                    MAX(t.panne) AS panne
             FROM {TABLE} t LEFT JOIN {TABLE_PREDICTIONS} p USING (id_machine, timestamp)

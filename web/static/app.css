@@ -199,7 +199,12 @@ h1, h2, h3, h4 { margin: 0; }
   color: var(--text); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
 }
 .btn:hover { background: var(--surface-2); }
-select.champ { min-height: 38px; min-width: 96px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--surface); box-shadow: var(--shadow-pilule); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; }
+/* Sélecteur : flèche dessinée dans la pilule (la flèche native déborde de l'arrondi) */
+select.champ {
+  min-height: 38px; min-width: 96px; padding: 0 36px 0 16px; border: 0; border-radius: 999px; box-shadow: var(--shadow-pilule);
+  color: var(--text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; -webkit-appearance: none; appearance: none;
+  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%236e6e73' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 15px center;
+}
 
 /* Écran Machine */
 .anneau { flex: 0 0 104px; }
@@ -255,7 +260,6 @@ select.champ { min-height: 38px; min-width: 96px; padding: 0 16px; border: 0; bo
 @keyframes etirer { from { transform: scaleX(0); } }
 @keyframes apparaitre { from { opacity: 0; } }
 @keyframes remplir { from { stroke-dasharray: 0 400; } }
-@keyframes pouls { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--orange) 60%, transparent); } to { box-shadow: 0 0 0 9px transparent; } }
 @keyframes onde { from { transform: scale(1); opacity: 0.6; } to { transform: scale(2.8); opacity: 0; } }
 @keyframes menu { from { opacity: 0; transform: scale(0.92) translateY(-6px); } }
 
@@ -269,7 +273,6 @@ select.champ { min-height: 38px; min-width: 96px; padding: 0 16px; border: 0; bo
 .kpi { animation: monter 0.6s var(--doux) backwards; animation-delay: calc(var(--i, 0) * 70ms); transition: transform 0.3s var(--doux), box-shadow 0.3s var(--doux), background-color 0.4s; }
 .kpi:hover { transform: translateY(-3px); box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04), 0 12px 28px rgba(0, 0, 0, 0.08); }
 .case { animation: eclore 0.5s var(--ressort) backwards; animation-delay: calc(var(--i, 0) * 9ms + 150ms); }
-.case.statut-panne_predite::before { content: ""; position: absolute; inset: 0; border-radius: inherit; animation: pouls 2s ease-out infinite; }
 .etats li { animation: apparaitre 0.5s ease backwards; animation-delay: calc(var(--i, 0) * 60ms + 500ms); }
 .groupe .barre div, .cout .paire div { transform-origin: bottom; animation: pousser 0.9s var(--doux) backwards; animation-delay: calc(var(--i, 0) * 40ms + 100ms); }
 .groupe .barre span, .cout .barre > span { animation: apparaitre 0.4s ease backwards; animation-delay: calc(var(--i, 0) * 40ms + 600ms); }

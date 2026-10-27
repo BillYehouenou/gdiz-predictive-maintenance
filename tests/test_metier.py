@@ -29,7 +29,7 @@ def test_bornes_periode_precedente_de_meme_nature():
 
 def test_libelles_periodes_dates_par_les_donnees():
     libelles = metier.libelles_periodes(pd.Timestamp("2025-12-30 23:30"))
-    assert list(libelles.values()) == ["30 j", "T4 2025", "S2 2025", "2025", "2024-2025"]
+    assert list(libelles.values()) == ["30j", "T4 2025", "S2 2025", "2025", "2024-2025"]
     assert list(libelles) == list(metier.PERIODES)
 
 

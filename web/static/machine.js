@@ -4,7 +4,15 @@ import { anneau, courbeRisque } from "./graphiques.js";
 const conteneur = document.getElementById("fiche");
 const idMachine = conteneur.dataset.machine;
 const choix = document.getElementById("choix-machine");
-const JOURS = 60;
+const JOURS = 30;
+
+// Ce que la cause veut dire pour l'atelier, en une phrase courte
+const EXPLICATIONS_CAUSE = {
+  "Usure et entretien": "Outil usé : prévoir son remplacement avant la rupture.",
+  Surchauffe: "Chauffe anormale : nettoyer la machine et vérifier le refroidissement.",
+  "Surcharge mécanique": "Effort excessif : contrôler roulements, alignement et charge.",
+  "Environnement / réseau": "Poussière ou tension instable : protéger la machine.",
+};
 
 const carte = (contenu, classe = "", style = "") => `<section class="carte ${classe}" style="${style}">${contenu}</section>`;
 const titre = (texte, droite = "") => `<div class="carte-tete"><h2>${esc(texte)}</h2>${droite}</div>`;
@@ -23,9 +31,9 @@ function sante(f) {
   return { libelle: "Bonne", couleur: "var(--good)", fond: "var(--good-weak)", encre: "var(--good-ink)" };
 }
 
-// Frise des 24 derniers mois : un point par panne sur la ligne, l'étiquette (date, cause) au-dessus
+// Frise des 12 derniers mois : un point par panne sur la ligne, l'étiquette (date, cause) au-dessus
 function frise(historique, finIso, statut) {
-  const fin = new Date(finIso).getTime(), debut = fin - 730 * 864e5;
+  const fin = new Date(finIso).getTime(), debut = fin - 365 * 864e5;
   const position = (iso) => Math.min(100, Math.max(0, ((new Date(iso).getTime() - debut) / (fin - debut)) * 100));
   const evenements = historique.map((e) => ({
     x: position(e.date),
@@ -37,7 +45,7 @@ function frise(historique, finIso, statut) {
   }));
   evenements.push({ x: 100, date: "Aujourd'hui", cause: LIBELLES_STATUT[statut].toLowerCase(), couleur: COULEURS_STATUT[statut], encre: ENCRES_STATUT[statut], encreCause: ENCRES_STATUT[statut] });
   const aria = historique.map((e) => `${new Date(e.date).toLocaleDateString("fr-FR")} ${(CAUSES[e.cause]?.libelle ?? e.cause).toLowerCase()}`).join(", ") || "aucune panne";
-  return `<div class="frise" role="img" aria-label="Pannes des 24 derniers mois : ${esc(aria)} ; aujourd'hui ${esc(LIBELLES_STATUT[statut].toLowerCase())}">
+  return `<div class="frise" role="img" aria-label="Pannes des 12 derniers mois : ${esc(aria)} ; aujourd'hui ${esc(LIBELLES_STATUT[statut].toLowerCase())}">
     <div class="frise-ligne"></div>
     ${evenements.map((e, i) => `<div class="frise-evt${e.x > 94 ? " fin" : e.x < 6 ? " debut" : ""}" style="--i: ${i}; left: ${e.x.toFixed(1)}%">
       <b style="color: ${e.encre}">${esc(e.date)}</b><span style="color: ${e.encreCause}">${esc(e.cause)}</span><i class="tige" aria-hidden="true"></i>
@@ -126,6 +134,7 @@ function afficher(f) {
       ${f.cause
         ? carte(`<h2 style="font-size: 13px; font-weight: 500">Cause probable</h2>
           <p class="grand">${esc(f.cause)}</p>
+          ${EXPLICATIONS_CAUSE[f.cause] ? `<p style="margin: 0; font-size: 13px; color: var(--text-2)">${esc(EXPLICATIONS_CAUSE[f.cause])}</p>` : ""}
           ${principal ? `<p style="margin: 0; font-size: 12px; color: var(--cause-ink)">Premier signal : ${esc(principal.libelle.toLowerCase())} à ${valeurContribution(principal)}.</p>` : ""}`, "cause", "gap: 8px")
         : carte(`<h2 class="discret" style="font-size: 13px; font-weight: 500">Cause probable</h2>
           <p class="grand">Aucune dominante</p>
@@ -139,7 +148,7 @@ function afficher(f) {
           <div class="shap-piste" role="img" aria-label="${esc(c.libelle)} : contribution +${nombre(c.contribution, 2)}"><div style="width: ${((c.contribution / max) * 100).toFixed(1)}%; background: ${FAMILLES[c.famille] ?? "var(--gray-c)"}"></div></div>
         </div>`).join("") : '<p class="vide">Aucune variable ne pousse vers la panne.</p>'}
         ${familles.length ? `<ul class="legende trait">${familles.map((fa) => `<li><span class="point" style="background: ${FAMILLES[fa]}"></span>${esc(fa)}</li>`).join("")}</ul>` : ""}`)}
-      ${carte(`${titre("Historique", '<span class="discret">24 derniers mois</span>')}
+      ${carte(`${titre("Historique", '<span class="discret">12 derniers mois</span>')}
         ${frise(f.historique, f.fin_donnees, f.statut)}
         <div class="chiffres">${[
           [pourcent(f.douze_mois.disponibilite, 2), "disponibilité"],
@@ -158,7 +167,7 @@ function afficher(f) {
     ${carte(`${titre("Risque de panne", `<span class="discret">${JOURS} derniers jours</span>`)}
       <div class="defile" id="courbe">${squelette(220)}</div>
       <ul class="legende trait">
-        <li><span class="temoin-courbe" aria-hidden="true"></span>Risque au pas de 2 h, quand la machine tourne</li>
+        <li><span class="temoin-courbe" aria-hidden="true"></span>Risque au pas de 2 h, figé pendant l'arrêt du week-end</li>
         <li><span class="temoin-delestage" aria-hidden="true"></span>Délestage SBEE (pas de mesure)</li>
         <li><span class="temoin-panne" aria-hidden="true">✕</span>Panne constatée</li>
       </ul>`, "", "gap: 12px")}

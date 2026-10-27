@@ -132,5 +132,6 @@ class FicheMachine(EtatMachine):
 class PointRisque(BaseModel):
     timestamp: datetime
     risque: Optional[float] = Field(description="Vide quand la machine n'a pas tourné (arrêt, panne, délestage)")
+    arret: bool = Field(description="Arrêt planifié (week-end) sur tout le pas : l'état de la machine est figé")
     delestage: bool
     panne: bool

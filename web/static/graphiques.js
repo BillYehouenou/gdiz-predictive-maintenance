@@ -8,6 +8,28 @@ const ligne = (x1, y1, x2, y2, attrs) => `<line x1="${x1}" y1="${y1}" x2="${x2}"
 const echelleLog = (r, x0, largeur) => x0 + ((Math.log10(Math.min(Math.max(r, 0.001), 1)) + 3) / 3) * largeur;
 const GRADUATIONS = [[0.001, "0,1 %"], [0.01, "1 %"], [0.1, "10 %"], [1, "100 %"]];
 
+// Étiquettes de la matrice : pour chaque point, la première position autour de lui qui ne touche ni une étiquette déjà
+// posée ni un point, dans le cadre ; au-delà des positions voisines, l'étiquette s'éloigne et un trait la relie au point
+function placerEtiquettes(ordre, pts) {
+  const poses = [];
+  const touche = (a, b) => a.g < b.g + b.l + 2 && a.g + a.l + 2 > b.g && a.h < b.h + b.ht + 2 && a.h + a.ht + 2 > b.h;
+  const surPoint = (e) => pts.some((q) => q.x + q.r > e.g && q.x - q.r < e.g + e.l && q.y + q.r > e.h && q.y - q.r < e.h + e.ht);
+  const dedans = (e) => e.g >= 47 && e.g + e.l <= 470 && e.h >= 10 && e.h + e.ht <= 259;
+  ordre.forEach((p) => {
+    const l = p.m.statut === "panne_predite" ? 40 : 30, ht = p.m.statut === "panne_predite" ? 20 : 16, d = p.r + 4;
+    const voisines = [[d, -ht / 2], [-d - l, -ht / 2], [-l / 2, -d - ht], [-l / 2, d], [d, -d - ht], [d, d], [-d - l, -d - ht], [-d - l, d]];
+    const lointaines = [];
+    for (let k = 1; k <= 6; k++) {
+      const e = d + k * 18;
+      lointaines.push([-l / 2, -e - ht], [-l / 2, e], [e, -e - ht / 2], [e, e - ht / 2], [-e - l, -e - ht / 2], [-e - l, e - ht / 2]);
+    }
+    const candidats = [...voisines.map((c) => [...c, false]), ...lointaines.map((c) => [...c, true])].map(([dx, dy, loin]) => ({ p, g: p.x + dx, h: p.y + dy, l, ht, loin }));
+    const libre = (e) => dedans(e) && !surPoint(e) && !poses.some((q) => touche(e, q));
+    poses.push(candidats.find(libre) ?? candidats.find((e) => dedans(e) && !poses.some((q) => touche(e, q))) ?? candidats[0]);
+  });
+  return poses;
+}
+
 // Risque × criticité des machines en alerte. Trois rectangles : agir (risque ≥ 3 × seuil), puis planifier (criticité ≥ 4)
 // ou surveiller ; risque en échelle log de 1 % à 100 %
 export function matrice(machines, seuil) {
@@ -30,30 +52,39 @@ export function matrice(machines, seuil) {
   [[0.01, "1 %"], [0.1, "10 %"], [1, "100 %"]].forEach(([r, l], i) => {
     svg += ligne(X(r), 262, X(r), 266, 'stroke="var(--text-3)"') + texte(X(r), 280, l, `text-anchor="${i === 0 ? "start" : i === 2 ? "end" : "middle"}"`);
   });
-  alertes.forEach((m, i) => {
-    const x = X(m.risque), y = Y(m.criticite);
-    const gauche = x > 420;
-    if (m.statut === "panne_predite") {
-      const xl = gauche ? x - 52 : x + 12;
-      svg += `<circle class="onde" cx="${x}" cy="${y}" r="7" fill="var(--orange)"></circle>
-        <g class="pt" style="--i: ${i}"><circle cx="${x}" cy="${y}" r="7" fill="var(--orange)" stroke="var(--surface)" stroke-width="2"></circle>
-        <rect x="${xl}" y="${y - 10}" width="40" height="20" rx="10" fill="var(--ink-btn)"></rect>
-        <text x="${xl + 20}" y="${y + 4}" font-size="10.5" font-weight="600" fill="var(--ink-btn-text)" text-anchor="middle">M${esc(m.numero)}</text></g>`;
-    } else {
-      svg += `<g class="pt" style="--i: ${i}"><circle cx="${x}" cy="${y}" r="5.5" fill="var(--warn)" stroke="var(--surface)" stroke-width="2"></circle>
-        <text x="${gauche ? x - 9 : x + 9}" y="${y + 4}" font-size="10.5" font-weight="600" fill="var(--text)" text-anchor="${gauche ? "end" : "start"}">M${esc(m.numero)}</text></g>`;
-    }
+  // Les points d'abord, puis les étiquettes posées sans chevauchement (panne prédite d'abord, puis risque décroissant)
+  const pts = alertes.map((m, i) => ({ m, i, x: X(m.risque), y: Y(m.criticite), r: m.statut === "panne_predite" ? 7 : 5.5 }));
+  pts.forEach(({ m, i, x, y, r }) => {
+    const couleur = m.statut === "panne_predite" ? "var(--orange)" : "var(--warn)";
+    if (m.statut === "panne_predite") svg += `<circle class="onde" cx="${x}" cy="${y}" r="7" fill="var(--orange)"></circle>`;
+    svg += `<g class="pt" style="--i: ${i}"><circle cx="${x}" cy="${y}" r="${r}" fill="${couleur}" stroke="var(--surface)" stroke-width="2"></circle></g>`;
+  });
+  const ordre = [...pts].sort((a, b) => (b.m.statut === "panne_predite") - (a.m.statut === "panne_predite") || b.m.risque - a.m.risque);
+  placerEtiquettes(ordre, pts).forEach(({ p, g, h, l, ht, loin }) => {
+    const pilule = p.m.statut === "panne_predite";
+    const cx = g + l / 2, cy = h + ht / 2;
+    if (loin) svg += ligne(p.x, p.y, cx, cy, 'stroke="var(--text-3)" stroke-width="1"');
+    svg += `<g class="pt" style="--i: ${p.i}">${pilule
+      ? `<rect x="${g}" y="${h}" width="${l}" height="${ht}" rx="${ht / 2}" fill="var(--ink-btn)"></rect>
+        <text x="${cx}" y="${cy + 4}" font-size="10.5" font-weight="600" fill="var(--ink-btn-text)" text-anchor="middle">M${esc(p.m.numero)}</text>`
+      : `<rect x="${g}" y="${h}" width="${l}" height="${ht}" rx="4" fill="var(--surface)" opacity="${loin ? 0.9 : 0}"></rect>
+        <text x="${cx}" y="${cy + 4}" font-size="10.5" font-weight="600" fill="var(--text)" text-anchor="middle">M${esc(p.m.numero)}</text>`}</g>`;
   });
   return svg + "</svg>";
 }
 
-// Risque de panne au pas de 2 h, sans lissage, échelle log, seulement quand la machine tourne ; délestages en barres
-// grises, pannes constatées en croix
-export function courbeRisque(points) {
+// Risque de panne au pas de 2 h, sans lissage, échelle log ; pendant l'arrêt du week-end, l'état de la machine est figé
+// et la courbe garde le dernier risque. Délestages en barres grises, pannes constatées en croix
+export function courbeRisque(brut) {
+  let dernier = null; // le week-end prolonge le dernier risque noté
+  const points = brut.map((p) => {
+    if (p.risque != null) dernier = p.risque;
+    return p.risque == null && p.arret && dernier != null ? { ...p, risque: dernier } : p;
+  });
   const n = Math.max(points.length - 1, 1);
   const X = (i) => (i * 960) / n;
   const Y = (r) => 200 - ((Math.log10(Math.min(Math.max(r, 0.001), 1)) + 3) / 3) * 200;
-  // Pas de risque quand la machine ne tourne pas (week-end, panne, délestage) : la courbe s'interrompt
+  // Pas de risque en panne ou en délestage : la courbe s'interrompt
   const notes = points.map((p, i) => [i, p.risque]).filter(([, r]) => r != null);
   const risques = notes.map(([, r]) => r);
   const derniere = notes[notes.length - 1];

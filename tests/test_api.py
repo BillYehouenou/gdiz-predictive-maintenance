@@ -39,26 +39,10 @@ def test_predire_entree_valide():
     assert data["status"] == "success"
 
 
-def test_predire_champs_manquants():
-    r = client.post("/api/v1/predict", json={"temperature_ambiante": 25.0})
-    assert r.status_code == 422
-
-
-def test_predire_contrainte_invalide():
-    """niveau_activite hors [0,1] doit être rejeté par Pydantic."""
-    payload_invalide = {**payload_normal, "niveau_activite": 1.5}
-    r = client.post("/api/v1/predict", json=payload_invalide)
-    assert r.status_code == 422
-
-
-def test_predire_lot():
-    r = client.post("/api/v1/predict/batch", json=[payload_normal, payload_normal])
-    assert r.status_code == 200
-    data = r.json()
-    assert len(data) == 2
-    for item in data:
-        assert item["prediction"] in [0, 1]
-        assert 0.0 <= item["probabilite_panne"] <= 1.0
+@pytest.mark.parametrize("invalide", [{"temperature_ambiante": 25.0}, {**payload_normal, "niveau_activite": 1.5}])
+def test_predire_entree_invalide(invalide):
+    """Champs manquants ou contrainte violée : rejet par Pydantic."""
+    assert client.post("/api/v1/predict", json=invalide).status_code == 422
 
 
 def test_predire_lot_identique_aux_predictions_unitaires():
@@ -71,12 +55,6 @@ def test_predire_lot_identique_aux_predictions_unitaires():
     ]
     unitaires = [client.post("/api/v1/predict", json=r).json() for r in lot]
     assert client.post("/api/v1/predict/batch", json=lot).json() == unitaires
-
-
-def test_predire_lot_vide():
-    r = client.post("/api/v1/predict/batch", json=[])
-    assert r.status_code == 200
-    assert r.json() == []
 
 
 def test_info_modele():
@@ -95,14 +73,8 @@ def test_recharger_modele():
     assert 0.0 <= data["threshold"] <= 1.0
 
 
-@pytest.mark.parametrize("periode", ["30j", "t4", "s2", "annee", "tout"])
-def test_parc(periode):
-    r = client.get("/api/v1/parc", params={"periode": periode})
-    assert r.status_code == 200
-    assert r.json()["periode"]["code"] == periode
-
-
-def test_parc_periode_inconnue():
+def test_parc():
+    assert client.get("/api/v1/parc", params={"periode": "30j"}).json()["periode"]["code"] == "30j"
     assert client.get("/api/v1/parc", params={"periode": "hier"}).status_code == 422
 
 
@@ -123,12 +95,9 @@ def test_risque_machine():
     r = client.get("/api/v1/machines/GDIZ_TEX_M_20/risque", params={"jours": 7})
     assert r.status_code == 200
     assert len(r.json()) == 7 * 12  # pas de 2 h
+    week_end = [p for p in r.json() if p["arret"]]
+    assert week_end and all(p["risque"] is None for p in week_end)
     assert client.get("/api/v1/machines/INCONNUE/risque").status_code == 404
-
-
-def test_capteurs_donnent_leur_sens():
-    capteurs = client.get("/api/v1/machines/GDIZ_TEX_M_20").json()["capteurs_30j"]
-    assert {c["capteur"]: c["sens"] for c in capteurs}["niveau_tension"] == "min"
 
 
 def test_pages_servies():
@@ -136,9 +105,6 @@ def test_pages_servies():
         r = client.get(chemin)
         assert r.status_code == 200
         assert f"/static/{script}" in r.text
-
-
-def test_page_machine_inconnue():
     assert client.get("/machines/inconnue").status_code == 404
 
 

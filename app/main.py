@@ -108,7 +108,7 @@ def _etat(conn: duckdb.DuckDBPyConnection) -> dict:
 
 @router.get("/etat", response_model=EtatParc)
 def etat():
-    """Statut actuel des 50 machines : plan de l'atelier et matrice risque × criticité."""
+    """Statut actuel des 50 machines : plan de l'atelier et matrice risque x criticité."""
     return _lire(_etat)
 
 
