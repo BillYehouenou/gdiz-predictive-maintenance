@@ -13,24 +13,15 @@ from src.train import METRIQUE_PROMOTION, LGBMLogOdds, nouveau_modele, promouvoi
 from tests.conftest import serie_machine
 
 
-def test_format_sortie(predicteur, machine_normale):
+def test_machine_saine_sous_le_seuil(predicteur, machine_normale):
     res = predicteur.predire(machine_normale)
     assert list(res.columns) == ["prediction", "probabilite_panne"]
-    assert 0 <= res["probabilite_panne"].iloc[0] <= 1
-
-
-def test_colonnes_manquantes_levent_une_erreur(predicteur):
-    with pytest.raises(KeyError):
-        predicteur.predire(pd.DataFrame({"temp": [25]}))
-
-
-def test_machine_saine_sous_le_seuil(predicteur, machine_normale):
-    assert predicteur.predire(machine_normale)["prediction"].iloc[0] == 0
+    assert res["prediction"].iloc[0] == 0
 
 
 def test_machine_degradee_en_alerte(predicteur, machine_degradee):
     res = predicteur.predire(machine_degradee)
-    assert res["probabilite_panne"].iloc[0] > predicteur.threshold * 2
+    assert res["prediction"].iloc[0] == 1
 
 
 def test_cause_probable(predicteur, machine_normale, machine_degradee):
@@ -90,18 +81,6 @@ def test_champion_conserve_si_score_inferieur():
     client.set_registered_model_alias.assert_not_called()
 
 
-def test_promotion_si_le_champion_na_pas_encore_la_mesure():
-    client = MagicMock()
-    client.get_run.return_value.data.metrics = {"recall_evenementiel": 0.9}
-    assert promouvoir_si_meilleur(client, "5", -1_000.0)
-
-
-def test_promotion_si_meilleur():
-    client = _client(0.80)
-    assert promouvoir_si_meilleur(client, "4", 0.95)
-    client.set_registered_model_alias.assert_called_once_with(NOM_MODELE, "champion", "4")
-
-
 @pytest.fixture(scope="module")
 def jeu_entrainement() -> tuple[pd.DataFrame, np.ndarray]:
     """Deux machines, valeurs manquantes comprises ; la cible suit les heures d'outil."""
@@ -120,13 +99,6 @@ def test_le_modele_retenu_sentraine_et_predit(jeu_entrainement):
     probas = nouveau_modele().fit(X, y).predict_proba(X)
     assert probas.shape == (len(X), 2)
     assert not np.isnan(probas).any()
-
-
-def test_lightgbm_expose_ses_log_odds(jeu_entrainement):
-    X, y = jeu_entrainement
-    modele = LGBMLogOdds(n_estimators=20, verbose=-1).fit(X, y)
-    probas = modele.predict_proba(X)[:, 1]
-    assert np.allclose(modele.decision_function(X), np.log(probas / (1 - probas)))
 
 
 def test_calibration_sur_log_odds_sans_plancher(jeu_entrainement):

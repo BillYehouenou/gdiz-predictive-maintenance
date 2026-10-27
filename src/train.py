@@ -1,7 +1,7 @@
 """
 Entraînement du LightGBM retenu (pourquoi lui : notebooks/1_comparaison_modeles.ipynb) --> calibration sigmoïde et seuil
 choisis sur la validation --> métriques sur le test --> MLflow. Le @champion n'est remplacé que si le gain net en
-validation ne baisse pas. Usage : python -m src.train
+validation ne baisse pas ; sinon, la promotion se fait à la main après revue. Usage : python -m src.train
 """
 
 import logging
@@ -30,9 +30,10 @@ from src.metier import COUT_INSPECTION, DUREE_INTERVENTION_PLANIFIEE_H
 
 logger = logging.getLogger(__name__)
 
-# Peu de feuilles et forte régularisation : le signal de panne est rare
-HYPERPARAMETRES_LIGHTGBM: dict[str, Any] = {"n_estimators": 150, "learning_rate": 0.1, "num_leaves": 15, "min_child_samples": 80,
-                            "subsample": 0.7, "colsample_bytree": 0.7, "reg_alpha": 0.3, "reg_lambda": 0.3}  # fmt: skip
+# Arbres petits, feuilles d'au moins 1 000 relevés et peu d'arbres : les relevés d'une même machine se ressemblent d'un
+# pas à l'autre, un modèle plus libre apprend le train par cœur (la perte en validation remonte dès 50 arbres)
+HYPERPARAMETRES_LIGHTGBM: dict[str, Any] = {"n_estimators": 80, "learning_rate": 0.1, "num_leaves": 7, "min_child_samples": 1000,
+                            "reg_alpha": 0.3, "reg_lambda": 5.0}  # fmt: skip
 METRIQUE_PROMOTION = "gain_net_validation"  # décidée sur la validation : le test ne sert qu'au rapport
 
 

@@ -37,8 +37,8 @@ def metriques_evenementielles(df: pd.DataFrame, probas: np.ndarray, threshold: f
                               pas_max_episode: int | None = PAS_MAX_EPISODE_DEFAUT) -> dict:  # fmt: skip
     """
     df : id_machine, timestamp, panne, mode_panne (et etat), aligné avec probas. Une panne est attrapée si un épisode
-    d'alerte chevauche [panne - horizon, panne] ; le préavis court depuis le début de cet épisode. Les épisodes associés
-    à aucune panne sont des fausses alertes.
+    d'alerte chevauche [panne - horizon, panne] ; tous ces épisodes lui reviennent et le préavis court depuis le début
+    du premier, borné à l'horizon. Les épisodes associés à aucune panne sont des fausses alertes.
     """
     if len(df) != len(probas):
         raise ValueError(f"df et probas doivent avoir la même longueur ({len(df)} vs {len(probas)}).")
@@ -59,9 +59,9 @@ def metriques_evenementielles(df: pd.DataFrame, probas: np.ndarray, threshold: f
             nb_pannes += 1
             candidats = [i for i, (debut, fin) in enumerate(episodes) if debut <= f and fin >= f - pas_horizon]
             if candidats:
-                dernier = max(candidats, key=lambda i: episodes[i][0])
-                associes.add(dernier)
-                preavis.append((f - episodes[dernier][0]) * PAS / pd.Timedelta("1h"))
+                associes.update(candidats)
+                premier = min(episodes[i][0] for i in candidats)
+                preavis.append(min(f - premier, pas_horizon) * PAS / pd.Timedelta("1h"))
                 attrapees.append(int(g.index[f]))
         nb_episodes += len(episodes)
         nb_fausses += len(episodes) - len(associes)
@@ -69,7 +69,7 @@ def metriques_evenementielles(df: pd.DataFrame, probas: np.ndarray, threshold: f
     return {
         "recall_evenementiel": _ratio(nb_attrapees, nb_pannes),
         "recall_preavis_4h": _ratio(sum(h >= PREAVIS_UTILE_H for h in preavis), nb_pannes),
-        "precision_alertes": _ratio(nb_attrapees, nb_episodes),
+        "precision_alertes": _ratio(nb_episodes - nb_fausses, nb_episodes),  # part des épisodes utiles
         "nb_pannes": nb_pannes,
         "nb_attrapees": nb_attrapees,
         "nb_episodes": nb_episodes,

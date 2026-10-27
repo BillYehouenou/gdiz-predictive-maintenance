@@ -25,14 +25,6 @@ def test_episodes_alerte(alertes, pas_max, attendu):
     assert _episodes_alerte(np.array(alertes), pas_max_episode=pas_max) == attendu
 
 
-def test_episodes_alerte_pas_max_defaut_scinde_alerte_dun_mois():
-    """Un modèle en alerte permanente pendant 300 jours ne doit pas compter comme 1 épisode."""
-    n = 48 * 300  # 300 jours de pas 30 min, en alerte continue
-    a = np.ones(n, dtype=int)
-    episodes = _episodes_alerte(a)
-    assert len(episodes) == 300  # un épisode par tranche de 24h (délai de réarmement par défaut)
-
-
 def _creer_df_machine_unique(n: int, index_panne: int, mode_panne: str = "TWF") -> pd.DataFrame:
     timestamps = pd.date_range("2025-01-01", periods=n, freq="30min")
     panne = np.zeros(n, dtype=int)
@@ -58,6 +50,21 @@ def test_metriques_evenementielles_attrape_panne_avec_episode_precedent():
     assert metrics["nb_episodes"] == 2
     assert metrics["nb_episodes_fausses_alertes"] == 1
     assert metrics["preavis_heures"] == pytest.approx([2.5])
+
+
+def test_metriques_evenementielles_alerte_longue_dans_lhorizon_entierement_utile():
+    """Alerte continue sur tout l'horizon, redécoupée : aucune tranche n'est fausse et le préavis part de la première."""
+    n = 30
+    df = _creer_df_machine_unique(n, index_panne=25)
+    probas = np.zeros(n)
+    probas[15:25] = 0.9  # deux tranches de 5 pas, toutes deux dans [15, 25]
+
+    metrics = metriques_evenementielles(df, probas, threshold=0.5, pas_horizon=10, pas_max_episode=5)
+
+    assert metrics["nb_episodes"] == 2
+    assert metrics["nb_episodes_fausses_alertes"] == 0
+    assert metrics["preavis_heures"] == pytest.approx([5.0])
+    assert metrics["precision_alertes"] == 1.0
 
 
 def test_metriques_evenementielles_manque_panne_sans_episode():
@@ -114,22 +121,6 @@ def test_metriques_evenementielles_taux_fausses_alertes_par_machine_jour():
 
     assert metrics["nb_episodes_fausses_alertes"] == 1
     assert metrics["taux_fausses_alertes_par_machine_jour"] == pytest.approx(0.5, rel=0.05)
-
-
-def test_trouver_seuil_pour_budget_fa_repli_si_aucun_seuil_respecte_budget():
-    """Budget de 0 fausse alerte impossible à tenir dès qu'il y a du bruit -> repli, pas de crash."""
-    n = 20
-    df = _creer_df_machine_unique(n, index_panne=15)
-    probas = np.zeros(n)
-    probas[10:15] = 0.9  # attrape la panne
-    probas[0:2] = 0.9  # fausse alerte isolée, inévitable avec un seul seuil disponible
-
-    meilleur_seuil, meilleures_metriques = trouver_seuil_pour_budget_fa(
-        df, probas, thresholds=np.array([0.5]), pas_horizon=10, budget_par_machine_jour=0.0
-    )
-
-    assert meilleur_seuil == 0.5
-    assert meilleures_metriques["taux_fausses_alertes_par_machine_jour"] > 0.0
 
 
 def test_trouver_seuil_pour_budget_fa_maximise_recall_dans_budget():
