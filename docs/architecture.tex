@@ -1,0 +1,390 @@
+% Document d'architecture du projet GDIZ Maintenance prédictive. Compilation : cd docs && latexmk -pdf architecture.tex
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{lmodern}
+\usepackage[default]{sourcesanspro}
+\usepackage{microtype}
+\usepackage[a4paper,margin=2.3cm,top=2.6cm,bottom=2.6cm,headheight=14pt]{geometry}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{xltabular}
+\usepackage{colortbl}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{needspace}
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{hyperref}
+
+% ---------------------------------------------------------------------------------------------------------------------
+% Charte : une couleur par couche du système, un bleu pour la structure du document
+\definecolor{bleu}{HTML}{0A5CB8}
+\definecolor{encre}{HTML}{1D1D1F}
+\definecolor{gris}{HTML}{6E6E73}
+\definecolor{filet}{HTML}{D8D8DE}
+\definecolor{donnees}{HTML}{E8F1FC}
+\definecolor{modele}{HTML}{FFF1DF}
+\definecolor{service}{HTML}{E3F6E8}
+\definecolor{trait}{HTML}{424245}
+\definecolor{alerte}{HTML}{FF9500}
+\definecolor{panne}{HTML}{E5372B}
+
+% Résultats du modèle déployé (src.train, test 2025)
+\newcommand{\recallval}{82\,\%}
+\newcommand{\recalltest}{81\,\%}
+\newcommand{\pannestest}{283}
+\newcommand{\preavis}{114~h}
+\newcommand{\utiles}{23\,\%}
+\newcommand{\fa}{0,18}
+\newcommand{\gainnet}{8,1~M~FCFA}
+
+\hypersetup{colorlinks=true,linkcolor=bleu,urlcolor=bleu,pdftitle={GDIZ Maintenance prédictive : document d'architecture},pdfauthor={Bill Yehouenou}}
+\setlist{itemsep=3pt,topsep=4pt,leftmargin=1.4em}
+\setlength{\parskip}{5pt}
+\setlength{\parindent}{0pt}
+\renewcommand{\arraystretch}{1.25}
+\color{encre}
+
+% Titres
+\titleformat{\section}{\Large\bfseries\color{bleu}}{\thesection}{0.8em}{}[{\color{filet}\titlerule[0.6pt]}]
+\titleformat{\subsection}{\large\bfseries\color{encre}}{\thesubsection}{0.8em}{}
+\titlespacing*{\section}{0pt}{18pt}{10pt}
+\titlespacing*{\subsection}{0pt}{12pt}{4pt}
+
+% En-têtes et pieds de page
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\color{gris}GDIZ Maintenance prédictive}
+\fancyfoot[C]{\small\color{gris}\thepage\ / \pageref*{LastPage}}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrule}{\color{filet}\hrule width\headwidth height\headrulewidth}
+
+% Légendes et tableaux
+\captionsetup{font={small,color=gris},labelfont={bf,color=gris},labelsep=period,skip=6pt}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcommand{\entete}{}
+\newcommand{\var}[1]{\texttt{#1}}
+
+
+% Schémas
+\tikzset{
+  fleche/.style={-{Stealth[length=2.2mm]},draw=trait,line width=0.7pt},
+  legende/.style={font=\scriptsize\itshape,text=gris},
+}
+
+\begin{document}
+
+% ---------------------------------------------------------------------------------------------------------------------
+% Page de garde
+\begin{titlepage}
+\vspace*{5.2cm}
+{\color{bleu}\rule{1.6cm}{1.1mm}}\par\vspace{0.9cm}
+{\fontsize{36}{42}\selectfont\bfseries\color{encre}GDIZ Maintenance\par}
+{\fontsize{36}{42}\selectfont\bfseries\color{bleu}prédictive\par}
+\vfill
+{\color{filet}\rule{\linewidth}{0.5pt}}\par\smallskip
+{\small\textcolor{gris}{Auteur}\hspace{1.2em}Bill Yehouenou\par}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% ---------------------------------------------------------------------------------------------------------------------
+\section{Vue d'ensemble}
+
+Le système tient en quatre couches : les \emph{données} (simulées à partir de la météo réelle), le \emph{modèle}
+(entraîné puis enregistré dans MLflow), le \emph{service} (API et tableau de bord) et le \emph{suivi} (performance
+réelle et dérive). Tout passe par une base DuckDB embarquée et un registre MLflow : il n'y a pas d'autre état partagé.
+
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{@{}L{3.6cm}L{12cm}@{}}
+\toprule
+\entete \textbf{Dossier} & \textbf{Rôle} \\
+\midrule
+\var{simulation/} & Météo réelle, physique des machines, défaillances des capteurs, écriture dans DuckDB \\
+\var{src/donnees.py} & Chargement, features glissantes, cible à 120~h, découpage dans le temps \\
+\var{src/evaluation.py} & Métrique événementielle (pannes annoncées, fausses alertes, préavis) et bilan en FCFA \\
+\var{src/train.py} & Entraînement, calibration, choix du seuil, enregistrement et promotion dans MLflow \\
+\var{src/modele.py} & Modèle en service, cause probable (SHAP), scoring des 60 derniers jours \\
+\var{src/metier.py} & Règles et coûts de l'atelier, indicateurs servis au tableau de bord \\
+\var{src/drift.py} & Performance réelle récente et dérive des capteurs \\
+\var{app/}, \var{web/} & API FastAPI et schémas ; tableau de bord HTML, CSS et JavaScript sans framework \\
+\var{tests/}, \var{notebooks/} & Tests automatisés ; exploration des données et comparaison des modèles \\
+\bottomrule
+\end{tabular}
+\caption{Organisation du code.}
+\end{table}
+
+% ---------------------------------------------------------------------------------------------------------------------
+\section{Données}
+
+Aucune donnée réelle de capteurs n'est disponible pour l'atelier de Glo-Djigbé : les données sont donc simulées, mais
+ancrées dans le réel. Le point de départ est la météo horaire observée sur le site en 2024 et 2025, téléchargée depuis
+Open-Meteo : température, humidité et pluie issues de la réanalyse ERA5, poussière désertique issue du service
+atmosphérique CAMS, qui capte les épisodes d'Harmattan de décembre à mars. Cette météo est ramenée au pas de 30 minutes,
+puis sert de décor commun aux 50 machines de l'atelier, réparties en trois gammes aux comportements différents : des
+machines rustiques plus sensibles à la poussière, des machines standard, et des machines de précision protégées par
+un onduleur mais plus sensibles aux variations de tension.
+
+De l'extérieur, on passe à l'intérieur de l'atelier comme le ferait un bâtiment réel. La toiture en tôle transmet la
+chaleur avec environ trois heures de retard, les machines en marche ajoutent leur propre chaleur et une ventilation
+se déclenche au-delà de 38~°C. L'air réchauffé voit son humidité relative baisser, la poussière extérieure s'infiltre
+progressivement et s'ajoute aux fibres textiles soulevées par la production. Le rythme de l'usine suit trois équipes
+en 3$\times$8, avec une relève moins productive et un arrêt complet le week-end. Le réseau électrique de la SBEE, enfin,
+connaît des délestages, plus fréquents aux heures de pointe et d'une heure environ, et une tension qui fléchit quand
+la charge augmente.
+
+Chaque machine porte ensuite un état caché qui évolue pas à pas, comme sur une vraie ligne de production. L'outil
+s'use plus vite dans la poussière et sous une tension instable, la machine s'encrasse et dissipe moins bien sa chaleur,
+les roulements s'usent avec la vitesse. Cet état se lit indirectement dans les capteurs : la vibration augmente avec
+l'usure, la température avec l'encrassement. Cinq risques de panne se font concurrence, sur le modèle du jeu de
+référence AI4I 2020 : la rupture de l'outil à l'approche d'un seuil propre à chaque machine, la surchauffe soutenue,
+la surcharge mécanique, le choc électrique au retour du courant et une part d'aléatoire. Chaque panne immobilise la
+machine pour une réparation de durée réaliste et remplace le composant en cause ; des entretiens préventifs, plus
+probables sur une machine usée, remettent aussi les compteurs à zéro. Sur deux ans, l'atelier connaît 713 pannes.
+
+Enfin, le modèle ne voit que ce qu'une usine verrait réellement. L'état caché n'est jamais exporté : seuls les
+capteurs, les conditions de l'atelier et les compteurs de maintenance (GMAO) le sont. Les capteurs eux-mêmes sont
+imparfaits, avec des paquets perdus (environ 1\,\% de valeurs manquantes), des valeurs figées et des dérives lentes.
+L'ensemble, reproductible grâce à une graine aléatoire fixe, forme 1,75 million de relevés écrits dans une base
+DuckDB. Ces mécanismes sont plausibles et calibrés avec soin, mais ils restent une simulation : les résultats du modèle
+devront être confirmés sur de vrais capteurs.
+
+% ---------------------------------------------------------------------------------------------------------------------
+\section{Du relevé à la prédiction}
+
+\subsection{Variables du modèle}
+
+Le modèle voit 35 variables. Les statistiques glissantes sont calculées sur les \emph{seuls relevés en marche} : le
+week-end, les capteurs tombent à zéro et feraient croire, le lundi matin, à une machine plus calme qu'elle ne l'est.
+Une même fonction calcule les variables pour l'entraînement, le scoring et l'API : une prédiction n'a besoin que des
+24 dernières heures de la machine.
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{@{}L{4.2cm}L{9.8cm}r@{}}
+\toprule
+\entete \textbf{Groupe} & \textbf{Variables} & \textbf{Nombre} \\
+\midrule
+Gamme & \var{type\_machine} & 1 \\
+Mesures du relevé & capteurs de la machine, conditions de l'atelier et réseau électrique & 11 \\
+Compteurs GMAO & heures depuis le changement d'outil, depuis la dernière intervention & 2 \\
+Écart thermique & température du process moins température ambiante & 1 \\
+Statistiques glissantes & pour la vibration, la température du process, l'écart thermique, le couple et la poussière :
+moyenne, maximum et écart-type sur 24~h, hausse sur 4~h & 20 \\
+\midrule
+\textbf{Total} & & \textbf{35} \\
+\bottomrule
+\end{tabular}
+\caption{Variables d'entrée du modèle.}
+\end{table}
+
+\subsection{Cible}
+
+Un relevé est positif si une panne prévisible (TWF, OSF ou HDF) survient sur la machine dans les 120 heures qui
+suivent. Le modèle n'apprend et ne note que les relevés en marche : une machine arrêtée ne déclenche jamais d'alerte.
+
+\subsection{Découpage dans le temps}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=0.62cm,y=0.6cm]
+  \foreach \m/\l in {0/janv. 2024,3/avr.,6/juil.,9/oct.,12/janv. 2025,24/janv. 2026} {
+    \draw[gris] (\m,-0.15) -- (\m,0.15);
+    \node[font=\scriptsize,text=gris,below] at (\m,-0.2) {\l};
+  }
+  \draw[gris] (0,0) -- (24,0);
+  \fill[donnees,draw=trait] (0,0.5) rectangle (3,1.3);
+  \node[font=\scriptsize] at (1.5,0.9) {train};
+  \fill[modele,draw=trait] (3,0.5) rectangle (6,1.3);
+  \node[font=\scriptsize] at (4.5,0.9) {T2};
+  \fill[modele,draw=trait] (6,0.5) rectangle (9,1.3);
+  \node[font=\scriptsize] at (7.5,0.9) {T3};
+  \fill[modele,draw=trait] (9,0.5) rectangle (12,1.3);
+  \node[font=\scriptsize] at (10.5,0.9) {T4};
+  \fill[service,draw=trait] (12,0.5) rectangle (24,1.3);
+  \node[font=\scriptsize] at (18,0.9) {test 2025 : rapport uniquement};
+  \draw[fleche,bleu!60] (0,1.9) -- node[above,font=\scriptsize]{modèle du pli T2} (3,1.9);
+  \draw[fleche,bleu!60] (0,2.7) -- node[above,font=\scriptsize]{modèle du pli T3} (6,2.7);
+  \draw[fleche,bleu!60] (0,3.5) -- node[above,font=\scriptsize]{modèle livré (calibré sur T4)} (9,3.5);
+  \node[legende,align=left,anchor=west] at (12.3,2.7) {Tampon de 120~h avant chaque coupure :\\la cible d'un relevé ne doit pas\\dépendre de la période suivante.};
+\end{tikzpicture}
+\caption{Chaque trimestre de validation est noté par un modèle entraîné sur ce qui le précède, pour comparer les
+modèles. Le modèle livré est calibré et seuillé sur T4 ; 2025 ne sert qu'au rapport.}
+\end{figure}
+
+Une machine sur cinq n'est jamais vue à l'entraînement : elle mesure la généralisation à une machine neuve.
+
+\subsection{Modèle}
+
+\begin{itemize}
+  \item \textbf{LightGBM}, retenu face à une régression logistique, un arbre de décision et HistGradientBoosting
+        (\var{notebooks/1\_comparaison\_modeles.ipynb}) : les quatre se tiennent à moins de 1,5 écart-type, LightGBM est
+        le plus rapide et SHAP l'explique exactement. Réglage volontairement contraint : 80 arbres de 7 feuilles, au
+        moins 1\,000 relevés par feuille ; un modèle plus libre apprend le train par cœur.
+  \item \textbf{Calibration sigmoïde} sur la validation, appliquée aux log-odds : une probabilité de 10\,\% signifie
+        qu'environ une machine sur dix tombe en panne dans les 5 jours.
+  \item \textbf{Seuil d'alerte} : celui qui annonce le plus de pannes sans dépasser 0,2 fausse alerte par machine et
+        par jour, choisi sur le dernier trimestre de validation. Il est enregistré avec le modèle : les deux ne
+        peuvent pas diverger.
+  \item \textbf{Cause probable} : les contributions SHAP sont regroupées en quatre familles physiques (usure et
+        entretien, surchauffe, surcharge mécanique, environnement et réseau).
+\end{itemize}
+
+\subsection{Mesure de la performance}
+
+Le système note chaque machine toutes les 30 minutes, mais un technicien ne se déplace qu'une fois pour une alerte qui
+dure : la mesure compte donc des \emph{épisodes} d'alerte, redécoupés toutes les 24~h pour qu'alerter en permanence
+ne paie pas.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=0.075cm,y=0.6cm]
+  \draw[gris] (0,0) -- (200,0);
+  \fill[panne!10] (60,0) rectangle (180,2.2);
+  \node[font=\scriptsize,text=panne] at (120,2.5) {fenêtre de 120~h avant la panne};
+  \draw[panne,line width=1.2pt] (180,0) -- (180,2.2);
+  \node[font=\scriptsize\bfseries,text=panne,right] at (181,1.4) {panne};
+  \fill[gris!50] (10,0.4) rectangle (24,1.0);
+  \node[font=\scriptsize,above] at (17,1.0) {fausse};
+  \fill[alerte] (95,0.4) rectangle (119,1.0);
+  \fill[alerte] (119.5,0.4) rectangle (143,1.0);
+  \fill[alerte] (143.5,0.4) rectangle (165,1.0);
+  \node[font=\scriptsize,above] at (130,1.0) {utiles (même alerte, tranches de 24~h)};
+  \draw[{Stealth[length=1.6mm]}-{Stealth[length=1.6mm]},trait] (95,-0.45) -- node[below,font=\scriptsize]{préavis} (180,-0.45);
+\end{tikzpicture}
+\caption{Une panne est annoncée si un épisode chevauche les 120~h qui la précèdent. Toutes les tranches de cette
+fenêtre lui reviennent ; le préavis part de la première. Un épisode rattaché à aucune panne est une fausse alerte.}
+\end{figure}
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{@{}L{9.5cm}r@{}}
+\toprule
+\entete \textbf{Indicateur, modèle déployé} & \textbf{Valeur} \\
+\midrule
+Pannes prévisibles annoncées, validation 2024 & \recallval \\
+Pannes prévisibles annoncées, test 2025 (\pannestest{} pannes) & \recalltest \\
+\quad dont usure de l'outil / surchauffe / surcharge mécanique & 100 / 71 / 66\,\% \\
+Préavis médian & \preavis \\
+Épisodes d'alerte utiles & \utiles \\
+Fausses alertes par machine et par jour (budget 0,2) & \fa \\
+Gain net 2025 & \gainnet \\
+\bottomrule
+\end{tabular}
+\caption{Performance du modèle déployé.}
+\end{table}
+
+% ---------------------------------------------------------------------------------------------------------------------
+\section{Registre et cycle de vie du modèle}
+
+Chaque entraînement enregistre dans MLflow le modèle calibré, ses hyperparamètres, son seuil exact et ses métriques.
+Le service ne charge jamais autre chose que l'alias \var{@champion} : un entraînement raté ne touche pas la
+production.
+
+
+Le scoring écrit ensuite la probabilité de chaque relevé en marche des 60 derniers jours dans la table
+\var{predictions}, avec la cause probable du dernier relevé des machines en alerte.
+
+% ---------------------------------------------------------------------------------------------------------------------
+\Needspace{28\baselineskip}  % titre, sous-titre et tableau des routes ensemble
+\section{Service}
+
+\subsection{API}
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{@{}lL{5.4cm}L{8cm}@{}}
+\toprule
+\entete \textbf{Méthode} & \textbf{Route} & \textbf{Rôle} \\
+\midrule
+POST & \var{/api/v1/predict} & Un relevé : probabilité de panne et alerte \\
+POST & \var{/api/v1/predict/batch} & Plusieurs relevés en un appel au modèle \\
+GET & \var{/api/v1/etat} & Statut actuel des 50 machines, risque et criticité \\
+GET & \var{/api/v1/parc} & Indicateurs d'une période et de la précédente, coût des pannes \\
+GET & \var{/api/v1/machines/\{id\}} & Fiche machine : santé, cause, contributions SHAP, capteurs \\
+GET & \var{/api/v1/machines/\{id\}/risque} & Risque au pas de 2~h sur 30 jours \\
+GET / POST & \var{/api/v1/info}, \var{/reload} & Version chargée ; rechargement du @champion \\
+\bottomrule
+\end{tabular}
+\caption{Routes de l'API (documentation interactive sur \var{/docs}).}
+\end{table}
+
+Une prédiction ajoute le relevé reçu aux 24 dernières heures de sa machine, calcule les variables avec le même code
+qu'à l'entraînement et répond en une trentaine de millisecondes.
+
+\subsection{Tableau de bord}
+
+Servi par la même application FastAPI, en HTML, CSS et JavaScript sans framework :
+\begin{itemize}
+  \item \textbf{Parc} : indicateurs de la période (disponibilité, MTBF, coût des pannes, heures d'arrêt) comparés à la
+        période précédente, plan de l'atelier, matrice risque $\times$ criticité qui dit quoi faire (agir, planifier,
+        surveiller), pannes par gamme et par cause, coût par mois ;
+  \item \textbf{Machine} : santé, risque à 5 jours, cause probable expliquée en une phrase, contributions SHAP,
+        historique des pannes sur 12 mois, capteurs face aux limites du parc, courbe du risque sur 30 jours.
+\end{itemize}
+
+La criticité vient de la chaîne de production : une cardeuse (4 machines sur l'étape) pèse plus qu'un métier à tisser
+(24 machines). Le coût d'une panne compte les pièces, la production perdue et le technicien pendant la durée réelle
+de l'arrêt, et le tissu rebuté ; une panne annoncée devient un arrêt planifié de 2~h sans rebut.
+
+% ---------------------------------------------------------------------------------------------------------------------
+\section{Suivi en production}
+
+\var{make check-drift} répond à deux questions :
+\begin{itemize}
+  \item \textbf{Le modèle tient-il ?} Sur les 60 derniers jours, les pannes passées sont connues : on les compare aux
+        alertes qui les précédaient, avec la même métrique qu'à l'entraînement.
+  \item \textbf{Les capteurs dérivent-ils ?} Les 30 derniers jours sont comparés aux mêmes jours un an plus tôt
+        (indice de stabilité de population, PSI) : la météo est saisonnière, comparer avec le mois précédent
+        signalerait l'Harmattan comme une dérive.
+\end{itemize}
+Une dérive est un signal à examiner, pas un réentraînement automatique.
+
+% ---------------------------------------------------------------------------------------------------------------------
+\Needspace{10\baselineskip}
+\section{Limites}
+
+\begin{enumerate}
+  \item Les données sont simulées : les mécanismes sont plausibles, mais les résultats restent à confirmer sur de vrais
+        capteurs.
+  \item Les pannes électriques et aléatoires n'ont pas de signe avant-coureur et ne sont pas apprises.
+  \item Moins d'une alerte sur quatre précède une panne : le modèle n'est rentable que tant qu'une inspection coûte
+        moins d'environ 5\,700~FCFA.
+  \item La cause probable désigne une famille physique, pas un diagnostic du mode de panne.
+\end{enumerate}
+
+% ---------------------------------------------------------------------------------------------------------------------
+\section*{Glossaire}
+\addcontentsline{toc}{section}{Glossaire}
+
+{\small
+\begin{xltabular}{\linewidth}{@{}L{3.4cm}X@{}}
+\toprule
+\entete \textbf{Terme} & \textbf{Définition} \\
+\midrule
+Calibration & Ajustement des scores du modèle pour qu'ils se lisent comme des probabilités \\
+Champion & Version du modèle servie en production (alias MLflow \var{@champion}) \\
+Épisode d'alerte & Suite d'alertes consécutives sur une machine, redécoupée toutes les 24~h : une intervention \\
+GMAO & Gestion de maintenance assistée par ordinateur : compteurs d'heures et historique des interventions \\
+Harmattan & Vent sec chargé de poussière saharienne, de décembre à mars en Afrique de l'Ouest \\
+MTBF, MTTR & Temps moyen de marche entre deux pannes ; temps moyen de réparation \\
+PSI & Population Stability Index : écart entre deux distributions d'une même variable \\
+Recall événementiel & Part des pannes précédées d'au moins une alerte dans les 120~h \\
+SBEE & Société béninoise d'énergie électrique, dont les délestages coupent le courant \\
+SHAP & Méthode qui attribue à chaque variable sa contribution à une prédiction \\
+TWF, OSF, HDF, PWF, RNF & Modes de panne : usure de l'outil, surcharge mécanique, surchauffe, électrique, aléatoire \\
+\bottomrule
+\end{xltabular}}
+
+\end{document}

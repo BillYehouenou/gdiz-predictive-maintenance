@@ -23,6 +23,8 @@ jobs:
       - run: uv sync --frozen
       - name: Lint et types
         run: uv run ruff format --check . && uv run ruff check . && uv run mypy src app simulation
+      - name: Syntaxe JavaScript du tableau de bord
+        run: for f in web/static/*.js; do node --check "$f"; done
       - name: Données et modèle en cache
         id: cache
         uses: actions/cache@v4

@@ -22,3 +22,11 @@ mlartifacts/
 
 # Fichiers système
 .DS_Store
+
+# Fichiers intermédiaires LaTeX (docs/architecture.pdf reste versionné)
+docs/*.aux
+docs/*.log
+docs/*.fls
+docs/*.fdb_latexmk
+docs/*.toc
+docs/*.out
